@@ -51,8 +51,11 @@ class AgentManager:
         # 2. Use Claude Code web authentication (when running through Claude Code with subscription)
         # If CLAUDE_API_KEY is not set, the SDK will use Claude Code authentication.
         self.active_clients: dict[TaskIdentifier, ClaudeSDKClient] = {}
-        # Client pool for managing SDK client lifecycle
-        self.client_pool = ClientPool()
+        # Client pool for managing SDK client lifecycle (with configurable limits)
+        self.client_pool = ClientPool(
+            max_size=_settings.agent_pool_max_size,
+            lock_timeout=_settings.agent_pool_lock_timeout,
+        )
         # Stream parser for SDK message parsing
         self.stream_parser = StreamParser()
 
@@ -126,9 +129,9 @@ class AgentManager:
         }
 
         options = ClaudeAgentOptions(
-            model="claude-sonnet-4-5-20250929"
+            model="claude-opus-4-5-20250114"
             if not USE_HAIKU
-            else "claude-haiku-4-5-20251001",  # "claude-opus-4-1-20250805"
+            else "claude-haiku-4-5-20251001",
             system_prompt=final_system_prompt,
             disallowed_tools=disallowed_tools,
             permission_mode="default",
@@ -136,7 +139,7 @@ class AgentManager:
             mcp_servers=mcp_servers,
             allowed_tools=allowed_tool_names,
             setting_sources=[],
-            cwd="/tmp/claude-empty",
+            cwd=_settings.agent_cwd,
         )
 
         if context.session_id:

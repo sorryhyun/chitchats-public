@@ -15,7 +15,7 @@ tools:
   memorize:
     name: "mcp__action__memorize"
     group: "action"
-    description: 'Records significant events as one-liners when ''TodoWrite'' reminder is triggered. Format: "Event description - emotional core"'
+    description: 'Records significant events as one-liners to recent_events.md. Format: "Event description - emotional core"'
     input_schema:
       memory_entry:
         type: "string"
@@ -43,7 +43,7 @@ tools:
     name: "mcp__character__guidelines"
     group: "character"
     # Load guidelines from separate file
-    source: "guidelines.yaml"
+    source: "guidelines_3rd.yaml"
     input_schema: {}
     response: "This tool exists only to provide role instructions."
     enabled: true

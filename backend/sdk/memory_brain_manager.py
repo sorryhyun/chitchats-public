@@ -217,7 +217,7 @@ After analyzing the context and selecting memories using the select_memory tool,
         # Create or reuse client
         if self._client_cache is None:
             options = ClaudeAgentOptions(
-                model="claude-sonnet-4-5-20250929",
+                model="claude-opus-4-5-20250114",
                 system_prompt=system_prompt,
                 disallowed_tools=BUILTIN_TOOLS.copy(),
                 allowed_tools=[

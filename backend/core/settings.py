@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Debug configuration
     debug_agents: bool = False
 
+    # Agent SDK configuration
+    agent_cwd: str = "/tmp/claude-empty"
+    agent_pool_max_size: int = 50  # Maximum number of concurrent SDK clients
+    agent_pool_lock_timeout: float = 30.0  # Seconds to wait for connection lock
+
     # Background scheduler configuration
     max_concurrent_rooms: int = 5
 

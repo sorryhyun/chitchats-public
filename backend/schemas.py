@@ -1,19 +1,33 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, field_serializer, model_validator
+from pydantic import BaseModel, Field, field_serializer, model_validator
 from utils.serializers import serialize_sqlite_bool as _serialize_sqlite_bool
 from utils.serializers import serialize_utc_datetime as _serialize_utc_datetime
 
+# Input length limits to prevent DoS and database bloat
+MAX_NAME_LENGTH = 100
+MAX_GROUP_LENGTH = 100
+MAX_PATH_LENGTH = 500
+MAX_PROFILE_PIC_LENGTH = 50000  # Data URLs can be large
+MAX_NUTSHELL_LENGTH = 10000
+MAX_CHARACTERISTICS_LENGTH = 50000
+MAX_RECENT_EVENTS_LENGTH = 20000
+MAX_MESSAGE_CONTENT_LENGTH = 100000
+MAX_THINKING_LENGTH = 200000
+MAX_ROLE_LENGTH = 50
+MAX_PARTICIPANT_TYPE_LENGTH = 50
+MAX_ROOM_NAME_LENGTH = 200
+
 
 class AgentBase(BaseModel):
-    name: str
-    group: Optional[str] = None
-    config_file: Optional[str] = None
-    profile_pic: Optional[str] = None
-    in_a_nutshell: Optional[str] = None
-    characteristics: Optional[str] = None
-    recent_events: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
+    group: Optional[str] = Field(None, max_length=MAX_GROUP_LENGTH)
+    config_file: Optional[str] = Field(None, max_length=MAX_PATH_LENGTH)
+    profile_pic: Optional[str] = Field(None, max_length=MAX_PROFILE_PIC_LENGTH)
+    in_a_nutshell: Optional[str] = Field(None, max_length=MAX_NUTSHELL_LENGTH)
+    characteristics: Optional[str] = Field(None, max_length=MAX_CHARACTERISTICS_LENGTH)
+    recent_events: Optional[str] = Field(None, max_length=MAX_RECENT_EVENTS_LENGTH)
     is_critic: bool = False
 
 
@@ -31,10 +45,10 @@ class AgentCreate(AgentBase):
 class AgentUpdate(BaseModel):
     """Update agent's runtime fields: nutshell, characteristics, or recent events."""
 
-    profile_pic: Optional[str] = None
-    in_a_nutshell: Optional[str] = None
-    characteristics: Optional[str] = None
-    recent_events: Optional[str] = None
+    profile_pic: Optional[str] = Field(None, max_length=MAX_PROFILE_PIC_LENGTH)
+    in_a_nutshell: Optional[str] = Field(None, max_length=MAX_NUTSHELL_LENGTH)
+    characteristics: Optional[str] = Field(None, max_length=MAX_CHARACTERISTICS_LENGTH)
+    recent_events: Optional[str] = Field(None, max_length=MAX_RECENT_EVENTS_LENGTH)
 
 
 class Agent(AgentBase):
@@ -56,15 +70,15 @@ class Agent(AgentBase):
 
 
 class MessageBase(BaseModel):
-    content: str
-    role: str
-    participant_type: Optional[str] = None  # 'user', 'situation_builder', 'character', or None for agents
-    participant_name: Optional[str] = None  # Custom name for 'character' mode
+    content: str = Field(..., min_length=1, max_length=MAX_MESSAGE_CONTENT_LENGTH)
+    role: str = Field(..., min_length=1, max_length=MAX_ROLE_LENGTH)
+    participant_type: Optional[str] = Field(None, max_length=MAX_PARTICIPANT_TYPE_LENGTH)
+    participant_name: Optional[str] = Field(None, max_length=MAX_NAME_LENGTH)
 
 
 class MessageCreate(MessageBase):
     agent_id: Optional[int] = None
-    thinking: Optional[str] = None
+    thinking: Optional[str] = Field(None, max_length=MAX_THINKING_LENGTH)
 
 
 class Message(MessageBase):
@@ -111,7 +125,7 @@ class Message(MessageBase):
 
 
 class RoomBase(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=MAX_ROOM_NAME_LENGTH)
 
 
 class RoomCreate(RoomBase):

@@ -52,7 +52,7 @@ backend/
 │   ├── parser.py                 # Agent config parser
 │   └── tools/                    # YAML configuration files
 │       ├── tools.yaml            # Tool definitions
-│       ├── guidelines.yaml       # System prompt template
+│       ├── guidelines_3rd.yaml   # System prompt template
 │       └── debug.yaml            # Debug logging config
 ├── domain/                        # Domain models
 │   ├── task_identifier.py        # TaskIdentifier dataclass (Phase 5)
@@ -129,7 +129,7 @@ backend/
 
 **YAML Configuration Files (`config/tools/`):**
 - `tools.yaml`: Tool definitions (skip, memorize, recall, guidelines, configuration)
-- `guidelines.yaml`: System prompt template with `{agent_name}` placeholders
+- `guidelines_3rd.yaml`: System prompt template with `{agent_name}` placeholders
 - `debug.yaml`: Debug logging configuration
 
 **Agent Configuration:**
@@ -167,7 +167,7 @@ AgentManager (445 lines) - Orchestrates responses and interruption
 - **Client Management:** Uses ClientPool with `TaskIdentifier(room_id, agent_id)` keys
 - **Interruption Support:** `interrupt_all()`, `interrupt_room()`, `interrupt_agent()`
 - **Response Generation:** `generate_sdk_response()` yields stream events
-- Model: `claude-sonnet-4-5-20250929`, 32K thinking tokens
+- Model: `claude-opus-4-5-20250114`, 32K thinking tokens
 
 **ClientPool (`sdk/client_pool.py`):**
 - **SDK Best Practices:** Reuse clients within sessions, connection locking, exponential backoff retry
@@ -341,7 +341,7 @@ All endpoints except `/auth/*`, `/health`, `/docs`, and profile pictures require
 3. Update export in `sdk/tools.py`
 
 **Update system prompt/guidelines:**
-1. Edit `config/tools/guidelines.yaml`
+1. Edit `config/tools/guidelines_3rd.yaml`
 2. Changes apply immediately (hot-reloading)
 
 ### Architecture Patterns

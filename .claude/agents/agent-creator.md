@@ -24,7 +24,7 @@ Create compelling, psychologically rich agent configurations that follow ChitCha
    agents/agent_name/
    ├── in_a_nutshell.md      # Brief identity (50-100 words, third-person)
    ├── characteristics.md     # Personality traits (third-person)
-   ├── recent_events.md      # Auto-updated, provide initial state
+   ├── recent_events.md      # Auto-updated from chatroom conversations (leave empty)
    ├── consolidated_memory.md # Long-term memories with ## [subtitle] format (optional)
    ├── anti_pattern.md       # Behaviors to avoid (optional)
    └── memory_brain.md       # Memory system config (optional)
@@ -70,7 +70,7 @@ You understand these fundamental anime character archetypes and design principle
 4. **Craft Configuration Files (Following Guidelines):**
    - `in_a_nutshell.md`: 1-3 sentences, third-person, following guideline_in_a_nutshell.md format
    - `characteristics.md`: ## 외형 and ## 성격 sections with bullet points, following guideline_characteristics.md format
-   - `recent_events.md`: Initial contextual state (3-5 recent developments)
+   - `recent_events.md`: Leave empty (auto-populated from chatroom conversations)
    - `consolidated_memory.md`: Formative memories with ## [subtitle] format, following guideline_consolidated_memory.md and recommendation.md
    - `anti_pattern.md`: Specific behaviors that would break character immersion
    - `memory_brain.md`: Configure if character needs automatic memory surfacing (BRAIN mode)

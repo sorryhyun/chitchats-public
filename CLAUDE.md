@@ -133,7 +133,7 @@ ChitChats supports **two mutually exclusive memory modes** controlled by the `ME
 
 **Agent configs**, **system prompt**, and **tool configurations** use filesystem as single source of truth:
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
-- System prompt: `backend/config/tools/guidelines.yaml` (`system_prompt` field)
+- System prompt: `backend/config/tools/guidelines_3rd.yaml` (`system_prompt` field)
 - Tool configurations: `backend/config/tools/*.yaml` files
 - Changes apply immediately on next agent response (hot-reloading)
 - File locking prevents concurrent write conflicts
@@ -144,15 +144,15 @@ ChitChats supports **two mutually exclusive memory modes** controlled by the `ME
 Tool descriptions and debug settings are configured via YAML files in `backend/config/tools/`:
 
 **`tools.yaml`** - Tool definitions and descriptions
-- Defines available tools (skip, memorize, guidelines, configuration)
+- Defines available tools (skip, memorize, recall, guidelines, configuration)
 - Tool descriptions support template variables (`{agent_name}`, `{config_sections}`)
 - Enable/disable tools individually
 - Changes apply immediately (no restart required)
 
-**`guidelines.yaml`** - Role guidelines for agent behavior
+**`guidelines_3rd.yaml`** - Role guidelines for agent behavior
 - Defines system prompt template and behavioral guidelines
 - Uses third-person perspective in agent configurations (explained below)
-- Currently uses `v1` (enhanced guidelines with explicit scene handling)
+- Currently uses `v3` (enhanced guidelines with explicit scene handling)
 - Guidelines are injected via tool descriptions
 - Supports situation builder notes
 
@@ -171,7 +171,7 @@ ChitChats uses a **third-person perspective** approach for agent configurations,
    - English: "Dr. Sarah Chen is a seasoned data scientist..."
    - Korean: "프리렌은 1000년 이상 살아온 엘프 마법사로..."
 
-2. **System prompt** (in `guidelines.yaml`) uses `{agent_name}` placeholders:
+2. **System prompt** (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders:
    - "You are {agent_name}. Embody {agent_name}'s complete personality..."
    - "Think only 'what would {agent_name} do?', not 'what is morally correct?'"
 
@@ -275,11 +275,11 @@ debug:
 
 **Update agent:** Edit `.md` files directly (changes apply immediately)
 
-**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines.yaml` (changes apply immediately)
+**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
 
 **Update tool descriptions:** Edit YAML files in `backend/config/tools/` (changes apply immediately)
 
-**Update guidelines:** Edit `v1.template` section in `backend/config/tools/guidelines.yaml` (changes apply immediately)
+**Update guidelines:** Edit `v3.template` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/tools/debug.yaml`
 
