@@ -10,6 +10,30 @@ Complete setup guide for Claude Code Role Play, covering authentication, deploym
 make install
 ```
 
+#### Windows one-click setup
+
+If you want a single PowerShell command that installs uv + Node, creates `.env`, hashes your password, and (optionally) starts the servers:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File scripts/windows/one_click_setup.ps1 -Password "your_password" -StartServers
+```
+
+The script fetches uv, installs backend/frontend dependencies, writes `API_KEY_HASH` and `JWT_SECRET` to `.env`, and launches both servers. Omit `-StartServers` if you only want to install and configure. `winget` is used when available, but if it is missing or fails the script will silently fall back to downloading the official Node.js LTS MSI and installing it with `msiexec`.
+
+**Prefer an .exe-style installer?** You can wrap the PowerShell script into a single self-extracting binary without changing the app:
+
+```powershell
+# Install the packager (one-time)
+Install-Module -Scope CurrentUser -Name ps2exe -Force
+
+# Build a signed-by-you installer binary
+Invoke-ps2exe scripts/windows/one_click_setup.ps1 ClaudeCodeSetup.exe
+```
+
+This produces `ClaudeCodeSetup.exe` that runs the same steps as the script. Signing or reputation is up to you; the project does not ship an .exe to avoid unsigned binaries and to keep installers versioned by the repo owner.
+
+**CI-built installer artifact:** If you want GitHub Actions to generate the `.exe` for you, trigger the `Build Windows installer` workflow from the Actions tab. It uses `Invoke-ps2exe` on `scripts/windows/one_click_setup.ps1` and uploads `ClaudeCodeSetup.exe` as an artifact (optionally stamping a version string via the workflow input).
+
 ### 2. Configure Authentication
 
 Claude Code Role Play uses JWT token-based authentication with bcrypt password hashing.
@@ -19,6 +43,8 @@ Claude Code Role Play uses JWT token-based authentication with bcrypt password h
 make generate-hash
 # Or manually:
 # cd backend && uv run python generate_hash.py
+# Non-interactive (for scripts/CI):
+# cd backend && uv run python generate_hash.py --password "your_password" --output-only
 ```
 
 **Generate JWT secret:**

@@ -1,0 +1,44 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      installer_version:
+        description: "Optional version string to stamp into the EXE metadata"
+        required: false
+        default: ""
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ps2exe
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted
+          Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
+
+      - name: Build one-click installer executable
+        shell: pwsh
+        run: |
+          $version = if ([string]::IsNullOrWhiteSpace('${{ github.event.inputs.installer_version }}')) { '0.0.0' } else { '${{ github.event.inputs.installer_version }}' }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $output = "dist/ClaudeCodeSetup.exe"
+          Write-Host "Building installer at $output with version $version"
+          Invoke-ps2exe `
+            -inputFile "scripts/windows/one_click_setup.ps1" `
+            -outputFile $output `
+            -title "Claude Code Role Play Setup" `
+            -description "One-click Windows setup for Claude Code Role Play" `
+            -version $version
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeCodeSetup
+          path: dist/ClaudeCodeSetup.exe
+          if-no-files-found: error
