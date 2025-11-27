@@ -192,6 +192,24 @@ export const MessageList = ({ messages }: MessageListProps) => {
                     </div>
                   )}
 
+                  {/* Image attachment */}
+                  {message.image_data && (
+                    <div className="mb-2">
+                      <img
+                        src={`data:${message.image_data.media_type};base64,${message.image_data.data}`}
+                        alt="Attached image"
+                        className="max-w-full max-h-80 rounded-xl shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
+                        onClick={() => {
+                          // Open image in new tab for full view
+                          const win = window.open();
+                          if (win) {
+                            win.document.write(`<img src="data:${message.image_data!.media_type};base64,${message.image_data!.data}" />`);
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+
                   {/* Message content */}
                   <div
                     className={`relative group px-4 py-3 rounded-2xl shadow-sm ${

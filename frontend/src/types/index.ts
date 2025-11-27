@@ -40,6 +40,11 @@ export interface AgentConfig {
   [key: string]: string;
 }
 
+export interface ImageAttachment {
+  data: string;  // Base64-encoded image data
+  media_type: string;  // MIME type (e.g., 'image/png', 'image/jpeg')
+}
+
 export interface Message {
   id: number | string;  // Can be temp_id (string) during streaming or real DB id (number) after
   room_id?: number;
@@ -57,12 +62,14 @@ export interface Message {
   is_streaming?: boolean;  // True while message is being streamed
   temp_id?: string;  // Temporary ID for streaming messages
   is_skipped?: boolean;  // True when agent chose to skip/ignore the message
+  image_data?: ImageAttachment | null;  // Optional attached image
 }
 
 export interface MessageCreate {
   content: string;
   role: string;
   agent_id?: number | null;
+  image_data?: ImageAttachment | null;  // Optional attached image
 }
 
 export interface Room {

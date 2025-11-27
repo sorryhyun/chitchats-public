@@ -4,8 +4,8 @@ Consolidated context data structures.
 Contains all context dataclasses for operations throughout the application.
 """
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Optional
 
 from .agent_config import AgentConfigData
 from .task_identifier import TaskIdentifier
@@ -69,6 +69,20 @@ class OrchestrationContext:
 
 
 @dataclass
+class ImageData:
+    """
+    Image attachment data for sending to Claude SDK.
+
+    Attributes:
+        data: Base64-encoded image data
+        media_type: MIME type (e.g., 'image/png', 'image/jpeg')
+    """
+
+    data: str
+    media_type: str
+
+
+@dataclass
 class AgentResponseContext:
     """
     Context required for generating agent responses.
@@ -88,6 +102,7 @@ class AgentResponseContext:
         task_id: Optional unique identifier for tracking this task (for interruption)
         conversation_started: Optional timestamp when the conversation started
         has_situation_builder: Whether the room has a situation builder participant
+        image_data: Optional image attachment to include with the message
     """
 
     system_prompt: str
@@ -101,3 +116,4 @@ class AgentResponseContext:
     task_id: Optional[TaskIdentifier] = None
     conversation_started: Optional[str] = None
     has_situation_builder: bool = False
+    image_data: Optional[ImageData] = None

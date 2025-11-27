@@ -14,7 +14,7 @@ from typing import Optional
 import crud
 import schemas
 from config.constants import SKIP_MESSAGE_TEXT
-from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
+from domain.contexts import AgentMessageData, AgentResponseContext, ImageData, MessageContext, OrchestrationContext
 from services.memory_mode_service import get_memory_mode_service
 from utils.conversation_utils import detect_conversation_type
 from utils.helpers import get_pool_key
@@ -193,6 +193,28 @@ class ResponseGenerator:
         if memory_injection:
             message_to_agent = memory_injection + message_to_agent
 
+        # Check if the most recent user message has an image attachment
+        # Only pass image for initial responses (user_message_content is not None)
+        image_data = None
+        if user_message_content is not None and room_messages:
+            # Find the most recent user message with an image
+            for msg in reversed(room_messages):
+                if msg.role == "user" and hasattr(msg, "image_data") and msg.image_data:
+                    import json
+
+                    try:
+                        # Parse image_data from JSON string if needed
+                        img_dict = json.loads(msg.image_data) if isinstance(msg.image_data, str) else msg.image_data
+                        if img_dict and isinstance(img_dict, dict):
+                            image_data = ImageData(
+                                data=img_dict.get("data", ""),
+                                media_type=img_dict.get("media_type", "image/png"),
+                            )
+                            logger.info(f"📷 Found image attachment in user message for agent: '{agent.name}'")
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(f"Failed to parse image_data: {e}")
+                    break  # Only use the most recent image
+
         # Build agent response context
         logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id})")
         response_context = AgentResponseContext(
@@ -207,6 +229,7 @@ class ResponseGenerator:
             task_id=task_id,
             conversation_started=conversation_started,
             has_situation_builder=has_situation_builder,
+            image_data=image_data,
         )
 
         # Handle streaming response events

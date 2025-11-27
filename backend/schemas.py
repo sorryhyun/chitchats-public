@@ -18,6 +18,14 @@ MAX_THINKING_LENGTH = 200000
 MAX_ROLE_LENGTH = 50
 MAX_PARTICIPANT_TYPE_LENGTH = 50
 MAX_ROOM_NAME_LENGTH = 200
+MAX_IMAGE_DATA_LENGTH = 20000000  # ~15MB base64 (images can be large)
+
+
+class ImageAttachment(BaseModel):
+    """Image attachment with base64-encoded data."""
+
+    data: str = Field(..., max_length=MAX_IMAGE_DATA_LENGTH)
+    media_type: str = Field(..., max_length=50)  # e.g., 'image/png', 'image/jpeg'
 
 
 class AgentBase(BaseModel):
@@ -74,6 +82,7 @@ class MessageBase(BaseModel):
     role: str = Field(..., min_length=1, max_length=MAX_ROLE_LENGTH)
     participant_type: Optional[str] = Field(None, max_length=MAX_PARTICIPANT_TYPE_LENGTH)
     participant_name: Optional[str] = Field(None, max_length=MAX_NAME_LENGTH)
+    image_data: Optional[ImageAttachment] = None  # Optional image attachment
 
 
 class MessageCreate(MessageBase):
@@ -99,6 +108,16 @@ class Message(MessageBase):
             # Get the agent relationship if it exists
             agent = getattr(data, "agent", None)
             if agent:
+                # Parse image_data from JSON string if stored in DB
+                image_data_raw = getattr(data, "image_data", None)
+                image_data = None
+                if image_data_raw:
+                    import json
+
+                    try:
+                        image_data = json.loads(image_data_raw) if isinstance(image_data_raw, str) else image_data_raw
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 # Create a dict from the model and add agent fields
                 data_dict = {
                     "id": data.id,
@@ -112,8 +131,21 @@ class Message(MessageBase):
                     "timestamp": data.timestamp,
                     "agent_name": agent.name,
                     "agent_profile_pic": agent.profile_pic,
+                    "image_data": image_data,
                 }
                 return data_dict
+            else:
+                # No agent relationship, but still need to handle image_data
+                image_data_raw = getattr(data, "image_data", None)
+                if image_data_raw and isinstance(image_data_raw, str):
+                    import json
+
+                    try:
+                        data_dict = {k: getattr(data, k, None) for k in ["id", "room_id", "agent_id", "content", "role", "participant_type", "participant_name", "thinking", "timestamp"]}
+                        data_dict["image_data"] = json.loads(image_data_raw)
+                        return data_dict
+                    except (json.JSONDecodeError, TypeError):
+                        pass
         return data
 
     @field_serializer("timestamp")

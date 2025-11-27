@@ -205,9 +205,31 @@ class AgentManager:
             memory_entries = []  # Track memory entries from memorize tool calls
 
             # Build the message with conversation history if provided
-            message_to_send = context.user_message
-            if context.conversation_history:
-                message_to_send = f"{context.conversation_history}\n\n{context.user_message}"
+            # If there's an image attachment, create a content list with both image and text
+            if context.image_data:
+                # For the Claude Agent SDK, we need to send the message with image as a structured content
+                # The SDK should support the Messages API format with content blocks
+                text_content = context.user_message
+                if context.conversation_history:
+                    text_content = f"{context.conversation_history}\n\n{context.user_message}"
+
+                # Create message content with image block followed by text
+                # The Claude Agent SDK query() accepts either a string or a list of content blocks
+                message_to_send = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": context.image_data.media_type,
+                            "data": context.image_data.data,
+                        },
+                    },
+                    {"type": "text", "text": text_content},
+                ]
+            else:
+                message_to_send = context.user_message
+                if context.conversation_history:
+                    message_to_send = f"{context.conversation_history}\n\n{context.user_message}"
 
             # Get or create client from pool (reuses client for same room-agent pair)
             # This prevents creating hundreds of agent session files

@@ -71,6 +71,9 @@ async def run_migrations(engine: AsyncEngine):
         # Migration 15: Add joined_at to room_agents for invitation tracking
         await _add_joined_at_to_room_agents(conn)
 
+        # Migration 16: Add image_data column to messages for image attachments
+        await _add_image_data_to_messages(conn)
+
     logger.info("✅ Database migrations completed")
 
 
@@ -518,3 +521,17 @@ async def _add_joined_at_to_room_agents(conn):
         logger.info("  Adding joined_at column to room_agents table...")
         await conn.execute(text("ALTER TABLE room_agents ADD COLUMN joined_at DATETIME"))
         logger.info("  ✓ Added joined_at column")
+
+
+async def _add_image_data_to_messages(conn):
+    """Add image_data column to messages table for image attachments."""
+    # Check if image_data column exists
+    result = await conn.execute(
+        text("SELECT COUNT(*) as count FROM pragma_table_info('messages') WHERE name='image_data'")
+    )
+    row = result.first()
+
+    if row and row.count == 0:
+        logger.info("  Adding image_data column to messages table...")
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN image_data TEXT"))
+        logger.info("  ✓ Added image_data column for image attachments")

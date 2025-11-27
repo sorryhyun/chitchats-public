@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Message } from '../types';
+import type { Message, ImageAttachment } from '../types';
 import { getApiKey } from '../utils/api';
 
 interface UsePollingReturn {
   messages: Message[];
-  sendMessage: (content: string, participant_type?: string, participant_name?: string) => void;
+  sendMessage: (content: string, participant_type?: string, participant_name?: string, image_data?: ImageAttachment) => void;
   isConnected: boolean;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   resetMessages: () => Promise<void>;
@@ -232,7 +232,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     };
   }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents]);
 
-  const sendMessage = async (content: string, participant_type?: string, participant_name?: string) => {
+  const sendMessage = async (content: string, participant_type?: string, participant_name?: string, image_data?: ImageAttachment) => {
     if (!roomId) return;
 
     try {
@@ -255,6 +255,9 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       }
       if (participant_name) {
         messageData.participant_name = participant_name;
+      }
+      if (image_data) {
+        messageData.image_data = image_data;
       }
 
       const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages/send`, {
