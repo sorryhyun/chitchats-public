@@ -125,6 +125,7 @@ class Message(Base):
     )  # For user messages: 'user', 'situation_builder', 'character'; NULL for agents
     participant_name = Column(String, nullable=True)  # Custom name for 'character' mode
     thinking = Column(Text, nullable=True)  # Agent's thinking process (for assistant messages)
+    image_data = Column(Text, nullable=True)  # JSON string of ImageAttachment (base64 image + media_type)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     # Indexes for frequently queried foreign keys

@@ -6,7 +6,7 @@ import { AgentManager } from './AgentManager';
 import { ChatHeader } from './chat-room/ChatHeader';
 import { MessageInput } from './chat-room/MessageInput';
 import { api } from '../utils/api';
-import type { Room, ParticipantType } from '../types';
+import type { Room, ParticipantType, ImageAttachment } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
 interface ChatRoomProps {
@@ -164,8 +164,8 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     }
   };
 
-  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string) => {
-    sendMessage(message, participantType, characterName);
+  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string, imageData?: ImageAttachment) => {
+    sendMessage(message, participantType, characterName, imageData);
   };
 
   if (!roomId) {

@@ -2,6 +2,7 @@
 CRUD operations for Message entities.
 """
 
+import json
 from datetime import datetime
 from typing import List
 
@@ -30,6 +31,11 @@ async def create_message(
     Returns:
         Created message
     """
+    # Serialize image_data to JSON string if present
+    image_data_json = None
+    if message.image_data:
+        image_data_json = json.dumps(message.image_data.model_dump())
+
     db_message = models.Message(
         room_id=room_id,
         agent_id=message.agent_id,
@@ -38,6 +44,7 @@ async def create_message(
         participant_type=message.participant_type,
         participant_name=message.participant_name,
         thinking=message.thinking,
+        image_data=image_data_json,
     )
     db.add(db_message)
 
