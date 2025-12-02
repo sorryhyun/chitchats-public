@@ -1,4 +1,4 @@
-import { useState, FormEvent, KeyboardEvent, DragEvent, useRef } from 'react';
+import { useState, FormEvent, KeyboardEvent, DragEvent, useRef, useEffect } from 'react';
 import { Send, User, Sparkles, UserCircle, ImageIcon } from 'lucide-react';
 import type { ParticipantType, ImageAttachment } from '../../types';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,15 @@ export const MessageInput = ({ isConnected, onSendMessage }: MessageInputProps) 
   // Supported image types
   const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
+  // Cleanup: revoke object URL when component unmounts or imagePreview changes
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
   // Process a file into base64
   const processImageFile = async (file: File): Promise<void> => {

@@ -1,5 +1,38 @@
 import type { Room, RoomSummary, RoomUpdate, Agent, AgentCreate, AgentUpdate, AgentConfig, Message } from '../types';
 
+/**
+ * Typed API error class for better error handling
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public data?: unknown
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * Request deduplication - prevents duplicate simultaneous requests
+ */
+const pendingRequests = new Map<string, Promise<unknown>>();
+
+function deduplicatedFetch<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
+  const existing = pendingRequests.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+
+  const promise = fetchFn().finally(() => {
+    pendingRequests.delete(key);
+  });
+
+  pendingRequests.set(key, promise);
+  return promise;
+}
+
 // Get clean API URL without credentials
 function getApiUrl(): string {
   // If VITE_API_BASE_URL is explicitly set, use it
@@ -57,6 +90,22 @@ export function getApiKey(): string | null {
   return globalApiKey;
 }
 
+/**
+ * Helper to handle API response errors
+ */
+async function handleResponse<T>(response: Response, errorMessage: string): Promise<T> {
+  if (!response.ok) {
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch {
+      // Response body is not JSON
+    }
+    throw new ApiError(errorMessage, response.status, data);
+  }
+  return response.json();
+}
+
 // Helper to create fetch options with API key
 function getFetchOptions(options: RequestInit = {}): RequestInit {
   // Properly merge headers: user headers first, then add API key
@@ -82,15 +131,17 @@ function getFetchOptions(options: RequestInit = {}): RequestInit {
 export const api = {
   // Rooms
   async getRooms(): Promise<RoomSummary[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch rooms');
-    return response.json();
+    return deduplicatedFetch('getRooms', async () => {
+      const response = await fetch(`${API_BASE_URL}/rooms`, getFetchOptions());
+      return handleResponse<RoomSummary[]>(response, 'Failed to fetch rooms');
+    });
   },
 
   async getRoom(roomId: number): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch room');
-    return response.json();
+    return deduplicatedFetch(`getRoom:${roomId}`, async () => {
+      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions());
+      return handleResponse<Room>(response, 'Failed to fetch room');
+    });
   },
 
   async createRoom(name: string): Promise<Room> {
@@ -99,11 +150,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     }));
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Failed to create room' }));
-      throw new Error(errorData.detail || 'Failed to create room');
-    }
-    return response.json();
+    return handleResponse<Room>(response, 'Failed to create room');
   },
 
   async updateRoom(roomId: number, roomData: RoomUpdate): Promise<Room> {
@@ -112,59 +159,57 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(roomData),
     }));
-    if (!response.ok) throw new Error('Failed to update room');
-    return response.json();
+    return handleResponse<Room>(response, 'Failed to update room');
   },
 
   async pauseRoom(roomId: number): Promise<Room> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/pause`, getFetchOptions({
       method: 'POST',
     }));
-    if (!response.ok) throw new Error('Failed to pause room');
-    return response.json();
+    return handleResponse<Room>(response, 'Failed to pause room');
   },
 
   async resumeRoom(roomId: number): Promise<Room> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/resume`, getFetchOptions({
       method: 'POST',
     }));
-    if (!response.ok) throw new Error('Failed to resume room');
-    return response.json();
+    return handleResponse<Room>(response, 'Failed to resume room');
   },
 
   async markRoomAsRead(roomId: number): Promise<{ message: string; last_read_at: string }> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/mark-read`, getFetchOptions({
       method: 'POST',
     }));
-    if (!response.ok) throw new Error('Failed to mark room as read');
-    return response.json();
+    return handleResponse<{ message: string; last_read_at: string }>(response, 'Failed to mark room as read');
   },
 
   async deleteRoom(roomId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions({
       method: 'DELETE',
     }));
-    if (!response.ok) throw new Error('Failed to delete room');
-    return response.json();
+    return handleResponse<void>(response, 'Failed to delete room');
   },
 
   // Agents
   async getAllAgents(): Promise<Agent[]> {
-    const response = await fetch(`${API_BASE_URL}/agents`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch agents');
-    return response.json();
+    return deduplicatedFetch('getAllAgents', async () => {
+      const response = await fetch(`${API_BASE_URL}/agents`, getFetchOptions());
+      return handleResponse<Agent[]>(response, 'Failed to fetch agents');
+    });
   },
 
   async getAgent(agentId: number): Promise<Agent> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch agent');
-    return response.json();
+    return deduplicatedFetch(`getAgent:${agentId}`, async () => {
+      const response = await fetch(`${API_BASE_URL}/agents/${agentId}`, getFetchOptions());
+      return handleResponse<Agent>(response, 'Failed to fetch agent');
+    });
   },
 
   async getRoomAgents(roomId: number): Promise<Agent[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch room agents');
-    return response.json();
+    return deduplicatedFetch(`getRoomAgents:${roomId}`, async () => {
+      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents`, getFetchOptions());
+      return handleResponse<Agent[]>(response, 'Failed to fetch room agents');
+    });
   },
 
   async createAgent(agentData: AgentCreate): Promise<Agent> {
@@ -173,32 +218,28 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(agentData),
     }));
-    if (!response.ok) throw new Error('Failed to create agent');
-    return response.json();
+    return handleResponse<Agent>(response, 'Failed to create agent');
   },
 
   async deleteAgent(agentId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/agents/${agentId}`, getFetchOptions({
       method: 'DELETE',
     }));
-    if (!response.ok) throw new Error('Failed to delete agent');
-    return response.json();
+    return handleResponse<void>(response, 'Failed to delete agent');
   },
 
   async addAgentToRoom(roomId: number, agentId: number): Promise<Room> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents/${agentId}`, getFetchOptions({
       method: 'POST',
     }));
-    if (!response.ok) throw new Error('Failed to add agent to room');
-    return response.json();
+    return handleResponse<Room>(response, 'Failed to add agent to room');
   },
 
   async removeAgentFromRoom(roomId: number, agentId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents/${agentId}`, getFetchOptions({
       method: 'DELETE',
     }));
-    if (!response.ok) throw new Error('Failed to remove agent from room');
-    return response.json();
+    return handleResponse<void>(response, 'Failed to remove agent from room');
   },
 
   async updateAgent(agentId: number, agentData: AgentUpdate): Promise<Agent> {
@@ -207,34 +248,33 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(agentData),
     }));
-    if (!response.ok) throw new Error('Failed to update agent');
-    return response.json();
+    return handleResponse<Agent>(response, 'Failed to update agent');
   },
 
   async getAgentConfigs(): Promise<{ configs: AgentConfig }> {
-    const response = await fetch(`${API_BASE_URL}/agent-configs`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch agent configs');
-    return response.json();
+    return deduplicatedFetch('getAgentConfigs', async () => {
+      const response = await fetch(`${API_BASE_URL}/agent-configs`, getFetchOptions());
+      return handleResponse<{ configs: AgentConfig }>(response, 'Failed to fetch agent configs');
+    });
   },
 
   async getAgentDirectRoom(agentId: number): Promise<Room> {
     const response = await fetch(`${API_BASE_URL}/agents/${agentId}/direct-room`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to get agent direct room');
-    return response.json();
+    return handleResponse<Room>(response, 'Failed to get agent direct room');
   },
 
   // Messages
   async getMessages(roomId: number): Promise<Message[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch messages');
-    return response.json();
+    return deduplicatedFetch(`getMessages:${roomId}`, async () => {
+      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions());
+      return handleResponse<Message[]>(response, 'Failed to fetch messages');
+    });
   },
 
   async clearRoomMessages(roomId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions({
       method: 'DELETE',
     }));
-    if (!response.ok) throw new Error('Failed to clear messages');
-    return response.json();
+    return handleResponse<void>(response, 'Failed to clear messages');
   },
 };

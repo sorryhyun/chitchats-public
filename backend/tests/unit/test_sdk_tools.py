@@ -7,9 +7,9 @@ Tests tool creation, configuration, and execution.
 from unittest.mock import Mock, patch
 
 import pytest
-from sdk.tools import create_action_mcp_server, create_action_tools
+from sdk.brain_tools import create_character_config_mcp_server, create_character_config_tool
 from sdk.guidelines_tools import create_guidelines_mcp_server
-from sdk.brain_tools import create_character_config_tool, create_character_config_mcp_server
+from sdk.tools import create_action_mcp_server, create_action_tools
 
 
 class TestCreateActionTools:
@@ -151,9 +151,7 @@ class TestCreateActionTools:
     @patch("sdk.action_tools.is_tool_enabled")
     @patch("sdk.action_tools.get_tool_description")
     @patch("sdk.action_tools.get_tool_input_schema")
-    async def test_recall_tool_without_memory_index(
-        self, mock_get_schema, mock_get_description, mock_is_enabled
-    ):
+    async def test_recall_tool_without_memory_index(self, mock_get_schema, mock_get_description, mock_is_enabled):
         """Test that recall tool is not created when memory index is not provided."""
         mock_is_enabled.side_effect = lambda x: x == "recall"
         mock_get_description.return_value = "Recall description"

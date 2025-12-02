@@ -38,6 +38,10 @@ class BackgroundScheduler:
         self.get_db_session = get_db_session
         self.max_concurrent_rooms = max_concurrent_rooms
         self.is_running = False
+        # Error tracking for backoff
+        self._consecutive_errors = 0
+        self._max_backoff_errors = 5  # After this many errors, skip processing for a cycle
+        self._cleanup_tasks: set[asyncio.Task] = set()  # Track cleanup tasks
 
     def start(self):
         """Start the background scheduler."""
@@ -79,20 +83,35 @@ class BackgroundScheduler:
         - It has messages in the last 5 minutes
         - It's not paused
         - It has at least 2 agents
+
+        Implements exponential backoff on repeated errors.
         """
+        # Check if we should skip due to backoff
+        if self._consecutive_errors >= self._max_backoff_errors:
+            logger.warning(
+                f"⏸️ Skipping processing cycle due to {self._consecutive_errors} consecutive errors. "
+                "Will retry next cycle."
+            )
+            self._consecutive_errors = 0  # Reset to try again next cycle
+            return
+
         try:
             async with self._session_scope() as db:
                 active_rooms = await self._get_active_rooms(db)
 
             if not active_rooms:
                 # Don't log when there's no activity (too noisy)
+                # Reset error counter on successful (idle) cycle
+                self._consecutive_errors = 0
                 return
 
             logger.info(f"🔄 Processing {len(active_rooms)} active room(s)")
 
             semaphore = asyncio.Semaphore(self.max_concurrent_rooms) if self.max_concurrent_rooms else None
+            room_errors = 0
 
             async def process_with_error_handling(room):
+                nonlocal room_errors
                 try:
                     if semaphore:
                         async with semaphore:
@@ -100,6 +119,7 @@ class BackgroundScheduler:
                     else:
                         await self._process_room_for_background_job(room)
                 except Exception as e:
+                    room_errors += 1
                     logger.error(f"❌ Error processing room {room.id}: {e}")
                     import traceback
 
@@ -108,8 +128,18 @@ class BackgroundScheduler:
             # Process all active rooms concurrently with a small cap
             await asyncio.gather(*[process_with_error_handling(room) for room in active_rooms])
 
+            # Update error tracking
+            if room_errors == 0:
+                self._consecutive_errors = 0  # Reset on success
+            elif room_errors == len(active_rooms):
+                self._consecutive_errors += 1  # All rooms failed
+                logger.warning(
+                    f"⚠️ All {room_errors} room(s) failed. Consecutive error count: {self._consecutive_errors}"
+                )
+
         except Exception as e:
-            logger.error(f"💥 Error in _process_active_rooms: {e}")
+            self._consecutive_errors += 1
+            logger.error(f"💥 Error in _process_active_rooms (consecutive: {self._consecutive_errors}): {e}")
             import traceback
 
             traceback.print_exc()
@@ -168,10 +198,23 @@ class BackgroundScheduler:
         return active_rooms
 
     def _cleanup_completed_tasks(self):
-        """Remove completed tasks from active_room_tasks to prevent memory leak."""
+        """
+        Remove completed tasks from active_room_tasks to prevent memory leak.
+        Also logs any exceptions that occurred in completed tasks.
+        """
         completed_rooms = [room_id for room_id, task in self.chat_orchestrator.active_room_tasks.items() if task.done()]
         for room_id in completed_rooms:
+            task = self.chat_orchestrator.active_room_tasks[room_id]
             del self.chat_orchestrator.active_room_tasks[room_id]
+
+            # Check if task had an exception (important for debugging)
+            try:
+                exc = task.exception()
+                if exc:
+                    logger.error(f"Task for room {room_id} failed with exception: {exc}")
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                pass  # Task was cancelled or still running (shouldn't happen since we check done())
+
             logger.debug(f"Cleaned up completed task for room {room_id}")
 
     async def _process_room_autonomous_round(self, db: AsyncSession, room: models.Room):

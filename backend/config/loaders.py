@@ -2,6 +2,25 @@
 Configuration file loaders.
 
 Provides functions to load specific configuration files with caching.
+
+Caching Behavior:
+-----------------
+Configuration files are cached with mtime-based invalidation. The cache is
+automatically refreshed when the underlying YAML file is modified.
+
+Environment Variable Behavior:
+-----------------------------
+Environment variable overrides (like DEBUG_AGENTS) are applied AFTER loading
+from cache. This means:
+1. YAML file changes → cache invalidated → fresh load
+2. Environment variable changes → cache NOT invalidated → requires restart
+
+To apply environment variable changes without restart:
+- Modify the YAML file (even a whitespace change) to force cache refresh, OR
+- Restart the application
+
+Supported environment overrides:
+- DEBUG_AGENTS: Overrides debug.enabled in debug.yaml (true/false)
 """
 
 import logging

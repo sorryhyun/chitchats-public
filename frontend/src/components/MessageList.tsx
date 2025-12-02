@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check, ChevronRight, MessageSquare } from 'lucide-react';
@@ -17,6 +17,30 @@ import {
 interface MessageListProps {
   messages: Message[];
 }
+
+// Memoized ReactMarkdown plugins to prevent recreation on each render
+const remarkPlugins = [remarkGfm];
+
+// Memoized ReactMarkdown components to prevent recreation on each render
+const markdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => <p className="mb-1 last:mb-0">{children}</p>,
+  ul: ({ children }: { children?: React.ReactNode }) => <ul className="list-disc list-inside my-1">{children}</ul>,
+  ol: ({ children }: { children?: React.ReactNode }) => <ol className="list-decimal list-inside my-1">{children}</ol>,
+  li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
+  code: ({ className, children, ...props }: React.ComponentPropsWithoutRef<'code'> & { className?: string }) => {
+    const isInline = !className;
+    return isInline ? (
+      <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+        {children}
+      </code>
+    ) : (
+      <code className="block bg-secondary text-secondary-foreground p-3 rounded-lg text-sm font-mono overflow-x-auto" {...props}>
+        {children}
+      </code>
+    );
+  },
+  pre: ({ children }: { children?: React.ReactNode }) => <pre className="my-2 rounded-lg overflow-hidden">{children}</pre>,
+};
 
 // Check if two messages should be grouped (same sender, within 5 minutes)
 const shouldGroupWithPrevious = (current: Message, previous: Message | null): boolean => {
@@ -40,16 +64,17 @@ const shouldGroupWithPrevious = (current: Message, previous: Message | null): bo
   return timeDiff < 5 * 60 * 1000;
 };
 
-export const MessageList = ({ messages }: MessageListProps) => {
+export const MessageList = React.memo(({ messages }: MessageListProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [expandedThinking, setExpandedThinking] = useState<Set<number | string>>(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState<number | string | null>(null);
   const hasScrolledInitiallyRef = useRef(false);
+  const scrollCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   // Reset scroll flag when messages become empty (e.g., switching rooms)
   useEffect(() => {
@@ -66,20 +91,32 @@ export const MessageList = ({ messages }: MessageListProps) => {
     }
   }, [messages.length > 0]);
 
-  // Smart scroll for new messages (only if user is near bottom)
+  // Smart scroll for new messages (only if user is near bottom) - throttled to avoid DOM reflows
   useEffect(() => {
     if (hasScrolledInitiallyRef.current) {
-      const container = containerRef.current;
-      if (container) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-        if (isNearBottom) {
-          scrollToBottom();
-        }
+      if (scrollCheckTimeoutRef.current) {
+        clearTimeout(scrollCheckTimeoutRef.current);
       }
+      scrollCheckTimeoutRef.current = setTimeout(() => {
+        const container = containerRef.current;
+        if (container) {
+          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+          if (isNearBottom) {
+            scrollToBottom();
+          }
+        }
+        scrollCheckTimeoutRef.current = null;
+      }, 50);
     }
-  }, [messages]);
 
-  const toggleThinking = (messageId: number | string) => {
+    return () => {
+      if (scrollCheckTimeoutRef.current) {
+        clearTimeout(scrollCheckTimeoutRef.current);
+      }
+    };
+  }, [messages, scrollToBottom]);
+
+  const toggleThinking = useCallback((messageId: number | string) => {
     setExpandedThinking(prev => {
       const newSet = new Set(prev);
       if (newSet.has(messageId)) {
@@ -89,7 +126,7 @@ export const MessageList = ({ messages }: MessageListProps) => {
       }
       return newSet;
     });
-  };
+  }, []);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -114,7 +151,7 @@ export const MessageList = ({ messages }: MessageListProps) => {
     }) + ` at ${formatTime(timestamp)}`;
   };
 
-  const copyToClipboard = async (messageId: number | string, content: string) => {
+  const copyToClipboard = useCallback(async (messageId: number | string, content: string) => {
     try {
       await navigator.clipboard.writeText(content);
       setCopiedMessageId(messageId);
@@ -122,7 +159,7 @@ export const MessageList = ({ messages }: MessageListProps) => {
     } catch (err) {
       console.error('Failed to copy:', err);
     }
-  };
+  }, []);
 
   // Get sender name for a message
   const getSenderName = (message: Message): string => {
@@ -283,16 +320,46 @@ export const MessageList = ({ messages }: MessageListProps) => {
                         </div>
                       )}
 
+                      {/* Partial thinking while chatting */}
+                      {message.is_chatting && message.thinking && (
+                        <div className="pl-3 py-2 my-1 border-l-2 border-primary/30 text-muted-foreground text-sm bg-muted/30 rounded-r-lg">
+                          <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
+                            <ChevronRight className="w-4 h-4 rotate-90" />
+                            <span>Thinking...</span>
+                          </div>
+                          <div className="whitespace-pre-wrap break-words leading-relaxed italic font-mono text-xs max-h-40 overflow-y-auto">
+                            {message.thinking}
+                            <span className="inline-block w-1.5 h-3 bg-muted-foreground/60 ml-0.5 animate-pulse"></span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Message content */}
                       <div className={cn(
                         'relative px-4 py-2 rounded-2xl',
                         isUser ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md'
                       )}>
-                        {message.is_typing || message.is_chatting ? (
+                        {message.is_typing || (message.is_chatting && !message.content) ? (
                           <div className="flex items-center gap-1.5 py-1">
                             <span className="typing-dot"></span>
                             <span className="typing-dot"></span>
                             <span className="typing-dot"></span>
+                          </div>
+                        ) : message.is_chatting && message.content ? (
+                          <div className={cn(
+                            'text-sm leading-relaxed select-text',
+                            'prose prose-sm dark:prose-invert max-w-none',
+                            'prose-p:my-1 prose-p:leading-relaxed',
+                            'prose-pre:bg-secondary prose-pre:rounded-lg',
+                            'prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono prose-code:before:content-none prose-code:after:content-none'
+                          )}>
+                            <ReactMarkdown
+                              remarkPlugins={remarkPlugins}
+                              components={markdownComponents}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                            <span className="inline-block w-2 h-4 bg-foreground/60 ml-0.5 animate-pulse"></span>
                           </div>
                         ) : message.is_skipped ? (
                           <div className="text-sm italic text-muted-foreground">
@@ -307,26 +374,8 @@ export const MessageList = ({ messages }: MessageListProps) => {
                             !isUser && 'prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:font-mono prose-code:before:content-none prose-code:after:content-none'
                           )}>
                             <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-                                ul: ({ children }) => <ul className="list-disc list-inside my-1">{children}</ul>,
-                                ol: ({ children }) => <ol className="list-decimal list-inside my-1">{children}</ol>,
-                                li: ({ children }) => <li className="mb-0.5">{children}</li>,
-                                code: ({ className, children, ...props }: React.ComponentPropsWithoutRef<'code'> & { className?: string }) => {
-                                  const isInline = !className;
-                                  return isInline ? (
-                                    <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                                      {children}
-                                    </code>
-                                  ) : (
-                                    <code className="block bg-secondary text-secondary-foreground p-3 rounded-lg text-sm font-mono overflow-x-auto" {...props}>
-                                      {children}
-                                    </code>
-                                  );
-                                },
-                                pre: ({ children }) => <pre className="my-2 rounded-lg overflow-hidden">{children}</pre>,
-                              }}
+                              remarkPlugins={remarkPlugins}
+                              components={markdownComponents}
                             >
                               {message.content}
                             </ReactMarkdown>
@@ -387,4 +436,4 @@ export const MessageList = ({ messages }: MessageListProps) => {
       </div>
     </ScrollArea>
   );
-};
+});

@@ -58,22 +58,51 @@ class Agent(Base):
         Extract agent configuration from filesystem (primary source) or database (fallback).
         This implements the filesystem-primary architecture with in-memory caching.
 
+        Cache entries are invalidated when underlying config files are modified.
+
         Args:
             use_cache: If True, check cache before loading from filesystem (default: True)
 
         Returns:
             AgentConfigData instance with this agent's configuration
         """
+
+        from core.paths import get_work_dir
         from domain.agent_config import AgentConfigData
         from utils.cache import agent_config_key, get_cache
+
+        def _get_config_mtime() -> float:
+            """Get the most recent mtime of all config files for this agent."""
+            if not self.config_file:
+                return 0
+            config_path = get_work_dir() / self.config_file
+            if not config_path.is_dir():
+                return config_path.stat().st_mtime if config_path.exists() else 0
+            # For folder-based configs, check all .md files
+            max_mtime = 0
+            for md_file in config_path.glob("*.md"):
+                try:
+                    max_mtime = max(max_mtime, md_file.stat().st_mtime)
+                except OSError:
+                    pass
+            return max_mtime
 
         # Check cache first if enabled
         if use_cache:
             cache = get_cache()
             cache_key = agent_config_key(self.id)
+            mtime_key = f"{cache_key}:mtime"
             cached_config = cache.get(cache_key)
-            if cached_config is not None:
-                return cached_config
+            cached_mtime = cache.get(mtime_key)
+
+            if cached_config is not None and cached_mtime is not None:
+                # Check if files have been modified since caching
+                current_mtime = _get_config_mtime()
+                if current_mtime <= cached_mtime:
+                    return cached_config
+                # Files modified - invalidate and reload
+                cache.invalidate(cache_key)
+                cache.invalidate(mtime_key)
 
         # FILESYSTEM-PRIMARY: Load from filesystem first
         config_data = None
@@ -103,11 +132,13 @@ class Agent(Base):
             # Ensure config_file is set even when loaded from filesystem
             config_data.config_file = self.config_file
 
-        # Cache the result (TTL: 300 seconds = 5 minutes)
+        # Cache the result with mtime tracking (TTL: 300 seconds = 5 minutes)
         if use_cache:
             cache = get_cache()
             cache_key = agent_config_key(self.id)
+            mtime_key = f"{cache_key}:mtime"
             cache.set(cache_key, config_data, ttl_seconds=300)
+            cache.set(mtime_key, _get_config_mtime(), ttl_seconds=300)
 
         return config_data
 
@@ -133,6 +164,7 @@ class Message(Base):
         Index("idx_message_room_id", "room_id"),
         Index("idx_message_agent_id", "agent_id"),
         Index("idx_message_room_timestamp", "room_id", "timestamp"),
+        Index("idx_message_room_agent", "room_id", "agent_id"),  # Composite for efficient agent message queries
     )
 
     room = relationship("Room", back_populates="messages")

@@ -245,14 +245,14 @@ async def create_test_rooms(base_url: str, api_key: str, count: int) -> List[int
     async with aiohttp.ClientSession() as session:
         for i in range(count):
             async with session.post(
-                f"{base_url}/rooms", json={"name": f"Load Test Room {i+1}"}, headers=headers
+                f"{base_url}/rooms", json={"name": f"Load Test Room {i + 1}"}, headers=headers
             ) as response:
                 if response.status == 200:
                     data = await response.json()
                     room_ids.append(data["id"])
                     print(f"Created room {data['id']}: {data['name']}")
                 else:
-                    print(f"Failed to create room {i+1}: {response.status}")
+                    print(f"Failed to create room {i + 1}: {response.status}")
 
     return room_ids
 
@@ -292,10 +292,10 @@ def print_metrics_report(metrics: Metrics, num_users: int, num_rooms_per_user: i
     print("\nRequest Statistics:")
     print(f"  Total requests:     {metrics.total_requests:,}")
     print(
-        f"  Successful:         {metrics.successful_requests:,} ({metrics.successful_requests/metrics.total_requests*100:.1f}%)"
+        f"  Successful:         {metrics.successful_requests:,} ({metrics.successful_requests / metrics.total_requests * 100:.1f}%)"
     )
     print(
-        f"  Failed:             {metrics.failed_requests:,} ({metrics.failed_requests/metrics.total_requests*100:.1f}%)"
+        f"  Failed:             {metrics.failed_requests:,} ({metrics.failed_requests / metrics.total_requests * 100:.1f}%)"
     )
     print(f"  Rate limited:       {metrics.rate_limited_requests:,}")
     print(f"  Requests/second:    {metrics.get_requests_per_second():.2f}")
@@ -305,23 +305,25 @@ def print_metrics_report(metrics: Metrics, num_users: int, num_rooms_per_user: i
         print(f"  {endpoint:45s} {count:,}")
 
     print("\nLatency (milliseconds):")
-    print(f"  Min:                {latency['min']*1000:.2f} ms")
-    print(f"  Mean:               {latency['mean']*1000:.2f} ms")
-    print(f"  Median:             {latency['median']*1000:.2f} ms")
-    print(f"  95th percentile:    {latency['p95']*1000:.2f} ms")
-    print(f"  99th percentile:    {latency['p99']*1000:.2f} ms")
-    print(f"  Max:                {latency['max']*1000:.2f} ms")
+    print(f"  Min:                {latency['min'] * 1000:.2f} ms")
+    print(f"  Mean:               {latency['mean'] * 1000:.2f} ms")
+    print(f"  Median:             {latency['median'] * 1000:.2f} ms")
+    print(f"  95th percentile:    {latency['p95'] * 1000:.2f} ms")
+    print(f"  99th percentile:    {latency['p99'] * 1000:.2f} ms")
+    print(f"  Max:                {latency['max'] * 1000:.2f} ms")
 
     print("\nBandwidth:")
-    print(f"  Downstream:         {bandwidth['downstream_kbps']:.2f} kbps ({bandwidth['downstream_kbps']/8:.2f} KB/s)")
-    print(f"  Upstream:           {bandwidth['upstream_kbps']:.2f} kbps ({bandwidth['upstream_kbps']/8:.2f} KB/s)")
-    print(f"  Total:              {bandwidth['total_kbps']:.2f} kbps ({bandwidth['total_kbps']/8:.2f} KB/s)")
+    print(
+        f"  Downstream:         {bandwidth['downstream_kbps']:.2f} kbps ({bandwidth['downstream_kbps'] / 8:.2f} KB/s)"
+    )
+    print(f"  Upstream:           {bandwidth['upstream_kbps']:.2f} kbps ({bandwidth['upstream_kbps'] / 8:.2f} KB/s)")
+    print(f"  Total:              {bandwidth['total_kbps']:.2f} kbps ({bandwidth['total_kbps'] / 8:.2f} KB/s)")
 
     print("\nData Transfer:")
     print(
-        f"  Total received:     {metrics.total_bytes_received:,} bytes ({metrics.total_bytes_received/1024/1024:.2f} MB)"
+        f"  Total received:     {metrics.total_bytes_received:,} bytes ({metrics.total_bytes_received / 1024 / 1024:.2f} MB)"
     )
-    print(f"  Total sent:         {metrics.total_bytes_sent:,} bytes ({metrics.total_bytes_sent/1024/1024:.2f} MB)")
+    print(f"  Total sent:         {metrics.total_bytes_sent:,} bytes ({metrics.total_bytes_sent / 1024 / 1024:.2f} MB)")
 
     # Extrapolate to hourly/daily
     hours_multiplier = 3600 / duration if duration > 0 else 0
@@ -345,12 +347,12 @@ def print_metrics_report(metrics: Metrics, num_users: int, num_rooms_per_user: i
         print("      Consider increasing rate limits or reducing poll frequency")
 
     if latency["p95"] > 1.0:  # Over 1 second
-        print(f"  ⚠️  High latency detected (p95: {latency['p95']*1000:.0f}ms)")
+        print(f"  ⚠️  High latency detected (p95: {latency['p95'] * 1000:.0f}ms)")
         print("      Consider optimizing database queries or adding more caching")
 
     error_rate = metrics.failed_requests / metrics.total_requests if metrics.total_requests > 0 else 0
     if error_rate > 0.01:  # Over 1% error rate
-        print(f"  ⚠️  High error rate: {error_rate*100:.2f}%")
+        print(f"  ⚠️  High error rate: {error_rate * 100:.2f}%")
         print("      Investigate server logs for errors")
 
     if error_rate == 0 and latency["p95"] < 0.5 and metrics.rate_limited_requests == 0:
@@ -364,7 +366,7 @@ async def run_load_test(
     base_url: str, password: str, num_users: int, num_rooms_per_user: int, duration: int, cleanup: bool = True
 ):
     """Run the complete load test"""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("Starting Load Test")
     print("=" * 80)
     print("Configuration:")
@@ -436,7 +438,8 @@ async def run_load_test(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Load test Claude Code Role Play network usage", formatter_class=argparse.RawDescriptionHelpFormatter
+        description="Load test Claude Code Role Play network usage",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument("--password", required=True, help="Password for authentication")

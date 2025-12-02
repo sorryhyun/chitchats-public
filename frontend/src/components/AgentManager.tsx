@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../utils/api';
 import type { Agent } from '../types';
 import { AgentAvatar } from './AgentAvatar';
@@ -26,14 +26,7 @@ export const AgentManager = ({ roomId }: AgentManagerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  useEffect(() => {
-    if (roomId) {
-      fetchRoomAgents();
-      fetchAllAgents();
-    }
-  }, [roomId]);
-
-  const fetchRoomAgents = async () => {
+  const fetchRoomAgents = useCallback(async () => {
     try {
       const data = await api.getRoomAgents(roomId);
       setRoomAgents(data);
@@ -41,9 +34,9 @@ export const AgentManager = ({ roomId }: AgentManagerProps) => {
       console.error('Failed to fetch room agents:', err);
       addToast('Unable to load room agents. Please try again.', 'error');
     }
-  };
+  }, [roomId, addToast]);
 
-  const fetchAllAgents = async () => {
+  const fetchAllAgents = useCallback(async () => {
     try {
       const data = await api.getAllAgents();
       setAllAgents(data);
@@ -51,35 +44,64 @@ export const AgentManager = ({ roomId }: AgentManagerProps) => {
       console.error('Failed to fetch all agents:', err);
       addToast('Unable to load agents. Please try again.', 'error');
     }
-  };
+  }, [addToast]);
 
-  const handleAddAgent = async (agentId: number) => {
+  useEffect(() => {
+    if (roomId) {
+      fetchRoomAgents();
+      fetchAllAgents();
+    }
+  }, [roomId, fetchRoomAgents, fetchAllAgents]);
+
+  const handleAddAgent = useCallback(async (agentId: number) => {
+    // Find the agent to add from allAgents
+    const agentToAdd = allAgents.find(a => a.id === agentId);
+    if (!agentToAdd) return;
+
+    // Optimistic update: add agent to roomAgents immediately
+    setRoomAgents(prev => [...prev, agentToAdd]);
+    setShowAddAgent(false);
+
     try {
       await api.addAgentToRoom(roomId, agentId);
-      setShowAddAgent(false);
-      fetchRoomAgents();
       addToast('Agent added to room', 'success');
     } catch (err) {
       console.error('Failed to add agent to room:', err);
+      // Rollback on error
+      setRoomAgents(prev => prev.filter(a => a.id !== agentId));
       addToast('Failed to add agent to room', 'error');
     }
-  };
+  }, [roomId, allAgents, addToast]);
 
-  const handleRemoveAgent = async (agentId: number) => {
+  const handleRemoveAgent = useCallback(async (agentId: number) => {
+    // Store the agent for potential rollback
+    const removedAgent = roomAgents.find(a => a.id === agentId);
+    if (!removedAgent) return;
+
+    // Optimistic update: remove agent immediately
+    setRoomAgents(prev => prev.filter(a => a.id !== agentId));
+
     try {
       await api.removeAgentFromRoom(roomId, agentId);
-      fetchRoomAgents();
       addToast('Agent removed from room', 'success');
     } catch (err) {
       console.error('Failed to remove agent from room:', err);
+      // Rollback on error
+      setRoomAgents(prev => [...prev, removedAgent]);
       addToast('Failed to remove agent from room', 'error');
     }
-  };
+  }, [roomId, roomAgents, addToast]);
 
-  const handleUpdateAgent = async () => {
+  const handleUpdateAgent = useCallback(async () => {
     if (!selectedAgent) return;
 
     setIsUpdating(true);
+    // Store original for rollback
+    const originalAgent = roomAgents.find(a => a.id === selectedAgent.id);
+
+    // Optimistic update
+    setRoomAgents(prev => prev.map(a => a.id === selectedAgent.id ? selectedAgent : a));
+
     try {
       await api.updateAgent(selectedAgent.id, {
         in_a_nutshell: selectedAgent.in_a_nutshell,
@@ -89,28 +111,35 @@ export const AgentManager = ({ roomId }: AgentManagerProps) => {
         recent_events: selectedAgent.recent_events
       });
       setSelectedAgent(null);
-      fetchRoomAgents();
       addToast('Agent updated', 'success');
     } catch (err) {
       console.error('Failed to update agent:', err);
+      // Rollback on error
+      if (originalAgent) {
+        setRoomAgents(prev => prev.map(a => a.id === originalAgent.id ? originalAgent : a));
+      }
       addToast('Failed to update agent', 'error');
     } finally {
       setIsUpdating(false);
     }
-  };
+  }, [selectedAgent, roomAgents, addToast]);
 
-  // Get agents not already in the room
-  const availableAgents = allAgents.filter(
-    (agent) => !roomAgents.some((ra) => ra.id === agent.id)
-  );
-
-  const filteredAvailableAgents = availableAgents.filter((agent) =>
-    agent.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredRoomAgents = roomAgents.filter((agent) =>
-    agent.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Memoize computed values to avoid recalculating on every render
+  const { availableAgents, filteredAvailableAgents, filteredRoomAgents } = useMemo(() => {
+    const available = allAgents.filter(
+      (agent) => !roomAgents.some((ra) => ra.id === agent.id)
+    );
+    const searchLower = searchTerm.toLowerCase();
+    return {
+      availableAgents: available,
+      filteredAvailableAgents: available.filter((agent) =>
+        agent.name.toLowerCase().includes(searchLower)
+      ),
+      filteredRoomAgents: roomAgents.filter((agent) =>
+        agent.name.toLowerCase().includes(searchLower)
+      ),
+    };
+  }, [allAgents, roomAgents, searchTerm]);
 
   return (
     <div className="h-full flex flex-col p-4 bg-background">

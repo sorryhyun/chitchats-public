@@ -5,7 +5,6 @@ Helper functions shared across CRUD operations.
 import base64
 import logging
 import re
-from pathlib import Path
 from typing import Optional
 
 import models

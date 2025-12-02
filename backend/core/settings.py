@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     agent_cwd: str = ""  # Will be set to platform-appropriate default via validator
     agent_pool_max_size: int = 50  # Maximum number of concurrent SDK clients
     agent_pool_lock_timeout: float = 30.0  # Seconds to wait for connection lock
+    agent_query_timeout: float = 10.0  # Seconds to wait for agent query to complete
 
     # Background scheduler configuration
     max_concurrent_rooms: int = 5
@@ -219,28 +220,34 @@ class Settings(BaseSettings):
 
 # Singleton instance - load settings once at module import
 _settings: Optional[Settings] = None
+_settings_lock = __import__("threading").Lock()
 
 
 def get_settings() -> Settings:
     """
     Get the application settings singleton.
 
+    Thread-safe implementation using double-checked locking pattern.
+
     Returns:
         Settings instance
     """
     global _settings
     if _settings is None:
-        # Find .env file (handles both dev and frozen exe modes)
-        env_path = get_work_dir() / ".env"
+        with _settings_lock:
+            # Double-check inside lock to prevent race conditions
+            if _settings is None:
+                # Find .env file (handles both dev and frozen exe modes)
+                env_path = get_work_dir() / ".env"
 
-        # Create settings with explicit env file path
-        if env_path.exists():
-            _settings = Settings(_env_file=str(env_path))
-        else:
-            _settings = Settings()
+                # Create settings with explicit env file path
+                if env_path.exists():
+                    _settings = Settings(_env_file=str(env_path))
+                else:
+                    _settings = Settings()
 
-        # Log deprecation warnings
-        _settings.log_deprecation_warnings()
+                # Log deprecation warnings
+                _settings.log_deprecation_warnings()
 
     return _settings
 

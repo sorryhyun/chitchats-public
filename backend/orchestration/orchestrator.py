@@ -54,6 +54,36 @@ class ChatOrchestrator:
         # Initialize response generator
         self.response_generator = ResponseGenerator(self.last_user_message_time, self.memory_brain)
 
+    async def shutdown(self, timeout: float = 5.0):
+        """
+        Gracefully shutdown the orchestrator, cancelling all active room tasks.
+
+        Args:
+            timeout: Maximum time to wait for tasks to complete before cancelling
+        """
+        if not self.active_room_tasks:
+            return
+
+        logger.info(f"🛑 Shutting down orchestrator with {len(self.active_room_tasks)} active room tasks")
+
+        # Cancel all active tasks
+        for room_id, task in list(self.active_room_tasks.items()):
+            if not task.done():
+                task.cancel()
+
+        # Wait for all tasks to complete (or be cancelled)
+        if self.active_room_tasks:
+            tasks = list(self.active_room_tasks.values())
+            done, pending = await asyncio.wait(tasks, timeout=timeout)
+
+            if pending:
+                logger.warning(f"⚠️ {len(pending)} room tasks did not complete within {timeout}s")
+
+        # Clear tracking dicts
+        self.active_room_tasks.clear()
+        self.last_user_message_time.clear()
+        logger.info("✅ Orchestrator shutdown complete")
+
     def _separate_priority_agents(self, agents: List) -> tuple[List, List]:
         """
         Separate agents into priority and regular groups based on priority_agent_names.
@@ -358,7 +388,7 @@ class ChatOrchestrator:
         if priority_agents:
             logger.info(f"⭐ Processing {len(priority_agents)} priority agent(s) sequentially...")
             for i, agent in enumerate(priority_agents):
-                logger.info(f"🎯 Priority agent {i+1}/{len(priority_agents)}: {agent.name}")
+                logger.info(f"🎯 Priority agent {i + 1}/{len(priority_agents)}: {agent.name}")
                 try:
                     result = await self.response_generator.generate_response(
                         orch_context=orch_context, agent=agent, user_message_content=user_message_content

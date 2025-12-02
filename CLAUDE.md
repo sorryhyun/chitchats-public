@@ -27,8 +27,17 @@ cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 # Frontend only
 cd frontend && npm run dev
 
-# Run tests
+# Run all tests with coverage
 uv run pytest --cov=backend --cov-report=term-missing
+
+# Run a single test file
+uv run pytest backend/tests/unit/test_crud.py -v
+
+# Run a single test function
+uv run pytest backend/tests/unit/test_crud.py::test_function_name -v
+
+# Lint code (auto-fixes issues)
+uv run ruff check --fix .
 ```
 
 ## Architecture Overview
@@ -60,12 +69,6 @@ uv run pytest --cov=backend --cov-report=term-missing
 - Session management
 - Phase 5 refactored SDK integration (AgentManager, ClientPool, StreamParser)
 - Debugging guides
-
-**For Phase 5 refactoring details**, see [plan.md](plan.md) which documents:
-- AgentManager split into focused components (TaskIdentifier, ClientPool, StreamParser)
-- SDK best practices integration
-- 172 lines reduced, improved testability
-- All phases completed (0-4)
 
 **For caching system details**, see [backend/CACHING.md](backend/CACHING.md).
 
@@ -308,7 +311,11 @@ debug:
 
 **Add database field:** Update `models.py`, add migration in `backend/utils/migrations.py`, update `schemas.py` and `crud.py`, restart
 
-**Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud.py`, add endpoint in `main.py`
+**Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud/`, add router endpoint in `routers/`
+
+**Run single test:** `uv run pytest backend/tests/unit/test_file.py::test_name -v`
+
+**Build Windows executable:** `uv run poe build-exe` (requires frontend build first)
 
 ## Automated Simulations
 

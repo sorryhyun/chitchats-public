@@ -77,13 +77,13 @@ async def get_chatting_agents(
 ):
     """
     Get list of agents currently generating responses in a room.
-    Used by frontend to display 'chatting...' indicators.
+    Used by frontend to display 'chatting...' indicators with partial thinking.
 
     Args:
         room_id: Room ID
 
     Returns:
-        Dict with list of chatting agents (id, name, profile_pic)
+        Dict with list of chatting agents (id, name, profile_pic, partial_thinking, partial_content)
     """
     # Verify room exists (use cache for performance)
     room = await crud.get_room_cached(db, room_id)
@@ -96,16 +96,24 @@ async def get_chatting_agents(
     # Get currently chatting agent IDs from orchestrator
     chatting_agent_ids = chat_orchestrator.get_chatting_agents(room_id, agent_manager)
 
-    # Get agent details for chatting agents (use cache for performance)
+    # Get streaming state (partial thinking/content) from agent manager
+    streaming_state = agent_manager.get_streaming_state(room_id)
+
+    # Get agent details for chatting agents only (more efficient than loading all room agents)
     chatting_agents = []
     if chatting_agent_ids:
-        all_agents = await crud.get_agents_cached(db, room_id)
-        agent_map = {agent.id: agent for agent in all_agents}
-
-        for agent_id in chatting_agent_ids:
-            if agent_id in agent_map:
-                agent = agent_map[agent_id]
-                chatting_agents.append({"id": agent.id, "name": agent.name, "profile_pic": agent.profile_pic})
+        agents = await crud.get_agents_by_ids(db, chatting_agent_ids)
+        for agent in agents:
+            agent_state = streaming_state.get(agent.id, {})
+            chatting_agents.append(
+                {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "profile_pic": agent.profile_pic,
+                    "partial_thinking": agent_state.get("thinking", ""),
+                    "partial_content": agent_state.get("content", ""),
+                }
+            )
 
     return {"chatting_agents": chatting_agents}
 
@@ -171,7 +179,10 @@ async def send_message(
                 pass  # Session cleanup handled by generator
             break  # Only use first (and only) session
 
-    asyncio.create_task(trigger_agent_responses())
+    # Create task and track it in app state for proper cleanup
+    task = asyncio.create_task(trigger_agent_responses())
+    request.app.state.background_tasks.add(task)
+    task.add_done_callback(request.app.state.background_tasks.discard)
 
     return saved_message
 

@@ -4,8 +4,8 @@ Consolidated context data structures.
 Contains all context dataclasses for operations throughout the application.
 """
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
 
 from .agent_config import AgentConfigData
 from .task_identifier import TaskIdentifier

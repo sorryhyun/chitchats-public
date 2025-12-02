@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAgents } from './hooks/useAgents';
 import { useRooms } from './hooks/useRooms';
 import { useFocusTrap } from './hooks/useFocusTrap';
@@ -6,6 +6,7 @@ import { useAuth } from './contexts/AuthContext';
 import { MainSidebar } from './components/MainSidebar';
 import { ChatRoom } from './components/ChatRoom';
 import { AgentProfileModal } from './components/AgentProfileModal';
+import { HowToUseModal } from './components/HowToUseModal';
 import { Login } from './components/Login';
 import type { Agent } from './types';
 import { api } from './utils/api';
@@ -50,6 +51,7 @@ function App() {
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showHowToUse, setShowHowToUse] = useState(false);
 
   // Focus trap for mobile sidebar drawer
   const sidebarRef = useFocusTrap<HTMLDivElement>(isSidebarOpen);
@@ -61,16 +63,17 @@ function App() {
     }
   }, [selectedRoomId, selectedAgentId]);
 
-  // Handle Escape key to close sidebar
+  // Handle Escape key to close sidebar - stable handler that doesn't re-register
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setIsSidebarOpen(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isSidebarOpen) {
-        setIsSidebarOpen(false);
-      }
-    };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [isSidebarOpen]);
+  }, [handleEscape]);
 
   const handleSelectAgent = async (agentId: number) => {
     try {
@@ -190,6 +193,7 @@ function App() {
           onCreateAgent={createAgent}
           onDeleteAgent={deleteAgent}
           onViewProfile={handleViewProfile}
+          onShowHowToUse={() => setShowHowToUse(true)}
         />
       </div>
 
@@ -199,6 +203,9 @@ function App() {
         onRoomRead={refreshRooms}
         onMarkRoomAsRead={markRoomAsReadOptimistic}
         onRenameRoom={renameRoom}
+        onCreateRoom={createRoom}
+        onOpenSidebar={() => setIsSidebarOpen(true)}
+        onShowHowToUse={() => setShowHowToUse(true)}
       />
 
       {/* Agent Profile Modal */}
@@ -208,6 +215,11 @@ function App() {
           onClose={handleCloseProfile}
           onUpdate={handleUpdateProfile}
         />
+      )}
+
+      {/* How To Use Modal */}
+      {showHowToUse && (
+        <HowToUseModal onClose={() => setShowHowToUse(false)} />
       )}
     </div>
   );

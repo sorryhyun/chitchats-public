@@ -9,7 +9,6 @@ from typing import Dict
 
 from auth import require_admin
 from fastapi import APIRouter, Depends
-
 from services.cache_service import get_cache_service
 
 router = APIRouter()

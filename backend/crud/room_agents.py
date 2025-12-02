@@ -6,12 +6,10 @@ from datetime import datetime
 from typing import List, Optional
 
 import models
-from sqlalchemy import insert
+from sqlalchemy import func, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-
-from .helpers import get_room_with_relationships
 
 
 async def get_agents(db: AsyncSession, room_id: int) -> List[models.Agent]:
@@ -25,15 +23,24 @@ async def get_agents(db: AsyncSession, room_id: int) -> List[models.Agent]:
 
 async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Optional[models.Room]:
     """Add an existing agent to a room with invitation tracking."""
-    room = await get_room_with_relationships(db, room_id)
+    # Load room with agents only (not messages - too expensive for large conversations)
+    room_result = await db.execute(
+        select(models.Room).options(selectinload(models.Room.agents)).where(models.Room.id == room_id)
+    )
+    room = room_result.scalar_one_or_none()
 
     agent_result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
     agent = agent_result.scalar_one_or_none()
 
     if room and agent:
         if agent not in room.agents:
-            # Check if room has existing messages (mid-conversation addition)
-            has_messages = len(room.messages) > 0
+            # Efficient check for existing messages (O(1) instead of loading all)
+            has_messages = (
+                await db.scalar(
+                    select(func.count()).select_from(models.Message).where(models.Message.room_id == room_id).limit(1)
+                )
+                > 0
+            )
 
             # Insert into room_agents with joined_at timestamp
             joined_at = datetime.utcnow()
@@ -46,8 +53,8 @@ async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Op
 
                 await create_system_message(db, room_id, f"{agent.name} joined the chat")
 
-            # Refresh room to get updated agents and messages
-            await db.refresh(room, attribute_names=["agents", "messages"])
+            # Refresh room to get updated agents only
+            await db.refresh(room, attribute_names=["agents"])
 
             # Invalidate room agents cache
             from utils.cache import get_cache, room_agents_key

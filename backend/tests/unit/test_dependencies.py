@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from dependencies import get_agent_manager, get_chat_orchestrator
-from fastapi import FastAPI
 from orchestration import ChatOrchestrator
 from sdk import AgentManager
 

@@ -351,7 +351,11 @@ class TestProcessActiveRooms:
 
         scheduler = BackgroundScheduler(mock_orchestrator, mock_agent_manager, session_factory)
 
-        mock_rooms = [Mock(id=1, max_interactions=None), Mock(id=2, max_interactions=None), Mock(id=3, max_interactions=None)]
+        mock_rooms = [
+            Mock(id=1, max_interactions=None),
+            Mock(id=2, max_interactions=None),
+            Mock(id=3, max_interactions=None),
+        ]
 
         with (
             patch.object(scheduler, "_get_active_rooms", return_value=mock_rooms),

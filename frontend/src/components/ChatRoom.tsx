@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePolling } from '../hooks/usePolling';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { MessageList } from './MessageList';
@@ -10,16 +10,19 @@ import type { Room, ParticipantType, ImageAttachment } from '../types';
 import { useToast } from '../contexts/ToastContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, X, AlertTriangle } from 'lucide-react';
+import { MessageSquare, X, AlertTriangle, Plus, Users, BookOpen } from 'lucide-react';
 
 interface ChatRoomProps {
   roomId: number | null;
   onRoomRead?: () => void;
   onMarkRoomAsRead?: (roomId: number) => void;
   onRenameRoom: (roomId: number, name: string) => Promise<Room>;
+  onCreateRoom?: () => void;
+  onOpenSidebar?: () => void;
+  onShowHowToUse?: () => void;
 }
 
-export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }: ChatRoomProps) => {
+export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, onCreateRoom, onOpenSidebar, onShowHowToUse }: ChatRoomProps) => {
   const [roomName, setRoomName] = useState('');
   const [roomData, setRoomData] = useState<Room | null>(null);
   const [showAgentManager, setShowAgentManager] = useState(false);
@@ -85,7 +88,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     return () => window.removeEventListener('keydown', handleEscape);
   }, [showAgentManager]);
 
-  const fetchRoomDetails = async () => {
+  const fetchRoomDetails = useCallback(async () => {
     if (!roomId) return;
 
     try {
@@ -97,9 +100,9 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     } catch (err) {
       console.error('Failed to fetch room details:', err);
     }
-  };
+  }, [roomId]);
 
-  const handlePauseToggle = async () => {
+  const handlePauseToggle = useCallback(async () => {
     if (!roomId || !roomData) return;
 
     try {
@@ -110,9 +113,9 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     } catch (err) {
       console.error('Failed to toggle pause:', err);
     }
-  };
+  }, [roomId, roomData]);
 
-  const handleLimitUpdate = async (limit: number | null) => {
+  const handleLimitUpdate = useCallback(async (limit: number | null) => {
     if (!roomId) return;
 
     try {
@@ -121,9 +124,9 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     } catch (err) {
       console.error('Failed to update interaction limit:', err);
     }
-  };
+  }, [roomId]);
 
-  const handleClearMessages = async () => {
+  const handleClearMessages = useCallback(async () => {
     if (!roomId) return;
 
     setClearError(null);
@@ -139,9 +142,9 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
       setClearError('Failed to clear messages. Please try again.');
       addToast('Failed to clear messages', 'error');
     }
-  };
+  }, [roomId, resetMessages, addToast]);
 
-  const handleRenameRoom = async (name: string) => {
+  const handleRenameRoom = useCallback(async (name: string) => {
     if (!roomId) return;
 
     try {
@@ -152,9 +155,9 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
       console.error('Failed to rename room:', err);
       throw err;
     }
-  };
+  }, [roomId, onRenameRoom]);
 
-  const handleRefreshMessages = async () => {
+  const handleRefreshMessages = useCallback(async () => {
     if (!roomId || isRefreshing) return;
 
     try {
@@ -165,11 +168,11 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [roomId, isRefreshing, setMessages, resetMessages, addToast]);
 
-  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string, imageData?: ImageAttachment) => {
+  const handleSendMessage = useCallback((message: string, participantType: ParticipantType, characterName?: string, imageData?: ImageAttachment) => {
     sendMessage(message, participantType, characterName, imageData);
-  };
+  }, [sendMessage]);
 
   if (!roomId) {
     return (
@@ -180,7 +183,41 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom }:
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-foreground mb-3 sm:mb-4">Welcome to Claude Code RP</h3>
           <p className="text-muted-foreground mb-2 text-sm sm:text-base">Select a chatroom or agent from the sidebar</p>
-          <p className="text-muted-foreground/70 text-xs sm:text-sm">Click an agent to start a direct chat, or create a new chatroom for multiple agents</p>
+          <p className="text-muted-foreground/70 text-xs sm:text-sm mb-6">Click an agent to start a direct chat, or create a new chatroom for multiple agents</p>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {onCreateRoom && (
+              <Button
+                onClick={onCreateRoom}
+                className="gap-2"
+                size="lg"
+              >
+                <Plus className="w-5 h-5" />
+                Create Room
+              </Button>
+            )}
+            {onOpenSidebar && (
+              <Button
+                onClick={onOpenSidebar}
+                variant="outline"
+                className="gap-2 lg:hidden"
+                size="lg"
+              >
+                <Users className="w-5 h-5" />
+                View Agents
+              </Button>
+            )}
+          </div>
+
+          {onShowHowToUse && (
+            <button
+              onClick={onShowHowToUse}
+              className="mt-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <BookOpen className="w-4 h-4" />
+              How to Use
+            </button>
+          )}
         </div>
       </div>
     );

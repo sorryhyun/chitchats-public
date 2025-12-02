@@ -141,7 +141,20 @@ class Message(MessageBase):
                     import json
 
                     try:
-                        data_dict = {k: getattr(data, k, None) for k in ["id", "room_id", "agent_id", "content", "role", "participant_type", "participant_name", "thinking", "timestamp"]}
+                        data_dict = {
+                            k: getattr(data, k, None)
+                            for k in [
+                                "id",
+                                "room_id",
+                                "agent_id",
+                                "content",
+                                "role",
+                                "participant_type",
+                                "participant_name",
+                                "thinking",
+                                "timestamp",
+                            ]
+                        }
                         data_dict["image_data"] = json.loads(image_data_raw)
                         return data_dict
                     except (json.JSONDecodeError, TypeError):

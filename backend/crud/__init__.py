@@ -12,6 +12,7 @@ from .agents import (
     create_agent,
     delete_agent,
     get_agent,
+    get_agents_by_ids,
     get_all_agents,
     reload_agent_from_config,
     seed_agents_from_configs,
@@ -74,6 +75,7 @@ __all__ = [
     # Agent operations
     "create_agent",
     "get_all_agents",
+    "get_agents_by_ids",
     "get_agent",
     "delete_agent",
     "update_agent",

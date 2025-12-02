@@ -6,7 +6,7 @@ that write operations properly invalidate related cache entries.
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from utils.cache import (
     CacheManager,

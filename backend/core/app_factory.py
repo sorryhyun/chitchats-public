@@ -5,7 +5,6 @@ This module provides functions for creating and configuring the FastAPI applicat
 with all necessary middleware, routers, and dependencies.
 """
 
-import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -38,6 +37,7 @@ def get_static_dir() -> Path | None:
         return dev_static
 
     return None
+
 
 logger = get_logger("AppFactory")
 
@@ -98,6 +98,7 @@ def create_app() -> FastAPI:
         app.state.agent_manager = agent_manager
         app.state.chat_orchestrator = chat_orchestrator
         app.state.background_scheduler = background_scheduler
+        app.state.background_tasks = set()  # Track fire-and-forget tasks
 
         # Seed agents from config files
         async for db in get_db():
@@ -114,6 +115,20 @@ def create_app() -> FastAPI:
         # Shutdown
         logger.info("🛑 Application shutdown...")
         background_scheduler.stop()
+
+        # Wait for background tasks to complete (with timeout)
+        if app.state.background_tasks:
+            import asyncio
+
+            logger.info(f"⏳ Waiting for {len(app.state.background_tasks)} background tasks...")
+            done, pending = await asyncio.wait(app.state.background_tasks, timeout=5.0)
+            if pending:
+                logger.warning(f"⚠️ Cancelling {len(pending)} pending background tasks")
+                for task in pending:
+                    task.cancel()
+
+        # Shutdown orchestrator (cancels active room tasks)
+        await chat_orchestrator.shutdown()
         await agent_manager.shutdown()
         await stop_writer()
         logger.info("✅ Application shutdown complete")
@@ -142,6 +157,11 @@ def create_app() -> FastAPI:
 
     # Add authentication middleware
     app.add_middleware(AuthMiddleware)
+
+    # Add request ID middleware for log correlation
+    from middleware import RequestIDMiddleware
+
+    app.add_middleware(RequestIDMiddleware)
 
     # Register routers
     # IMPORTANT: agent_management must come before agents to ensure /agents/configs

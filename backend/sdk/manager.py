@@ -58,6 +58,9 @@ class AgentManager:
         )
         # Stream parser for SDK message parsing
         self.stream_parser = StreamParser()
+        # Streaming state for active responses (partial thinking/content)
+        # Key: TaskIdentifier, Value: {"thinking": str, "content": str}
+        self.streaming_state: dict[TaskIdentifier, dict[str, str]] = {}
 
     async def interrupt_all(self):
         """Interrupt all currently active agent responses."""
@@ -94,8 +97,26 @@ class AgentManager:
                     await client.interrupt()
                     logger.debug(f"Interrupted task: {task_id}")
                     del self.active_clients[task_id]
+                # Clean up streaming state too
+                self.streaming_state.pop(task_id, None)
             except Exception as e:
                 logger.warning(f"Failed to interrupt task {task_id}: {e}")
+
+    def get_streaming_state(self, room_id: int) -> dict[int, dict[str, str]]:
+        """
+        Get streaming state for all active agents in a room.
+
+        Args:
+            room_id: Room ID
+
+        Returns:
+            Dict mapping agent_id to {"thinking": str, "content": str}
+        """
+        result = {}
+        for task_id, state in self.streaming_state.items():
+            if task_id.room_id == room_id:
+                result[task_id.agent_id] = state
+        return result
 
     def _build_agent_options(self, context: AgentResponseContext, final_system_prompt: str) -> ClaudeAgentOptions:
         """Build Claude Agent SDK options for the agent."""
@@ -129,9 +150,7 @@ class AgentManager:
         }
 
         options = ClaudeAgentOptions(
-            model="claude-opus-4-5-20251101"
-            if not USE_HAIKU
-            else "claude-haiku-4-5-20251001",
+            model="claude-opus-4-5-20251101" if not USE_HAIKU else "claude-haiku-4-5-20251001",
             system_prompt=final_system_prompt,
             disallowed_tools=disallowed_tools,
             permission_mode="default",
@@ -238,100 +257,108 @@ class AgentManager:
 
             # Register this client for interruption support
             self.active_clients[task_id] = client
+            # Initialize streaming state for this task
+            self.streaming_state[task_id] = {"thinking": "", "content": ""}
             logger.debug(f"Registered client for task: {task_id}")
 
-            # Write debug log with complete agent input
-            await write_debug_log(
-                agent_name=context.agent_name,
-                task_id=str(task_id),
-                system_prompt=final_system_prompt,
-                message_to_send=message_to_send,
-                config_data={
-                    "in_a_nutshell": context.config.in_a_nutshell,
-                    "characteristics": context.config.characteristics,
-                    "recent_events": context.config.recent_events,
-                },
-                options=options,
-                has_situation_builder=context.has_situation_builder,
-            )
-
-            # Send the message via query() - this is the correct SDK pattern
-            logger.info(
-                f"📤 Sending message to agent | Task: {context.task_id} | Message length: {len(message_to_send)}"
-            )
-
             try:
-                # Add timeout to query to prevent hanging
-                await asyncio.wait_for(client.query(message_to_send), timeout=10.0)
-                logger.info(f"📬 Message sent, waiting for response | Task: {context.task_id}")
-            except asyncio.TimeoutError:
-                logger.error(f"⏰ Timeout sending message to agent | Task: {context.task_id}")
-                raise Exception("Timeout sending message to agent")
+                # Write debug log with complete agent input
+                await write_debug_log(
+                    agent_name=context.agent_name,
+                    task_id=str(task_id),
+                    system_prompt=final_system_prompt,
+                    message_to_send=message_to_send,
+                    config_data={
+                        "in_a_nutshell": context.config.in_a_nutshell,
+                        "characteristics": context.config.characteristics,
+                        "recent_events": context.config.recent_events,
+                    },
+                    options=options,
+                    has_situation_builder=context.has_situation_builder,
+                )
 
-            # Receive and stream the response
-            async for message in client.receive_response():
-                # Parse the message using StreamParser
-                parsed = self.stream_parser.parse_message(message, response_text, thinking_text)
+                # Send the message via query() - this is the correct SDK pattern
+                logger.info(f"📤 Sending message to agent | Task: {task_id} | Message length: {len(message_to_send)}")
 
-                # Calculate deltas for yielding
-                content_delta = parsed.response_text[len(response_text) :]
-                thinking_delta = parsed.thinking_text[len(thinking_text) :]
+                try:
+                    # Add timeout to query to prevent hanging (configurable via AGENT_QUERY_TIMEOUT)
+                    await asyncio.wait_for(client.query(message_to_send), timeout=_settings.agent_query_timeout)
+                    logger.info(f"📬 Message sent, waiting for response | Task: {task_id}")
+                except asyncio.TimeoutError:
+                    logger.error(f"⏰ Timeout sending message to agent | Task: {task_id}")
+                    raise Exception(f"Timeout sending message to agent (>{_settings.agent_query_timeout}s)")
 
-                # Update session if found
-                if parsed.session_id:
-                    new_session_id = parsed.session_id
+                # Receive and stream the response
+                async for message in client.receive_response():
+                    # Parse the message using StreamParser
+                    parsed = self.stream_parser.parse_message(message, response_text, thinking_text)
 
-                # Update skip flag
-                if parsed.skip_used:
-                    skip_tool_called = True
+                    # Calculate deltas for yielding
+                    content_delta = parsed.response_text[len(response_text) :]
+                    thinking_delta = parsed.thinking_text[len(thinking_text) :]
 
-                # Collect memory entries
-                memory_entries.extend(parsed.memory_entries)
+                    # Update session if found
+                    if parsed.session_id:
+                        new_session_id = parsed.session_id
 
-                # Update accumulated text
-                response_text = parsed.response_text
-                thinking_text = parsed.thinking_text
+                    # Update skip flag
+                    if parsed.skip_used:
+                        skip_tool_called = True
 
-                # Yield delta events for content and thinking
-                if content_delta:
-                    logger.info(f"🔄 YIELDING content delta | Length: {len(content_delta)}")
-                    yield {
-                        "type": "content_delta",
-                        "delta": content_delta,
-                        "temp_id": temp_id,
-                    }
+                    # Collect memory entries
+                    memory_entries.extend(parsed.memory_entries)
 
-                if thinking_delta:
-                    logger.info(f"🔄 YIELDING thinking delta | Length: {len(thinking_delta)}")
-                    yield {
-                        "type": "thinking_delta",
-                        "delta": thinking_delta,
-                        "temp_id": temp_id,
-                    }
+                    # Update accumulated text
+                    response_text = parsed.response_text
+                    thinking_text = parsed.thinking_text
 
-                # Debug log each message received from the SDK
-                # Configuration loaded from debug.yaml
-                if DEBUG_MODE:
-                    # Get streaming config from debug.yaml
-                    config = get_debug_config()
-                    streaming_config = config.get("debug", {}).get("logging", {}).get("streaming", {})
+                    # Yield delta events for content and thinking
+                    if content_delta:
+                        logger.info(f"🔄 YIELDING content delta | Length: {len(content_delta)}")
+                        # Update streaming state for polling
+                        if task_id in self.streaming_state:
+                            self.streaming_state[task_id]["content"] = response_text
+                        yield {
+                            "type": "content_delta",
+                            "delta": content_delta,
+                            "temp_id": temp_id,
+                        }
 
-                    if streaming_config.get("enabled", True):
-                        # Skip system init messages if configured
-                        is_system_init = (
-                            message.__class__.__name__ == "SystemMessage"
-                            and hasattr(message, "subtype")
-                            and message.subtype == "init"
-                        )
-                        skip_system_init = streaming_config.get("skip_system_init", True)
+                    if thinking_delta:
+                        logger.info(f"🔄 YIELDING thinking delta | Length: {len(thinking_delta)}")
+                        # Update streaming state for polling
+                        if task_id in self.streaming_state:
+                            self.streaming_state[task_id]["thinking"] = thinking_text
+                        yield {
+                            "type": "thinking_delta",
+                            "delta": thinking_delta,
+                            "temp_id": temp_id,
+                        }
 
-                        if not (is_system_init and skip_system_init):
-                            logger.debug(f"📨 Received message:\n{format_message_for_debug(message)}")
+                    # Debug log each message received from the SDK
+                    # Configuration loaded from debug.yaml
+                    if DEBUG_MODE:
+                        # Get streaming config from debug.yaml
+                        config = get_debug_config()
+                        streaming_config = config.get("debug", {}).get("logging", {}).get("streaming", {})
 
-            # Unregister the client when done
-            if context.task_id and context.task_id in self.active_clients:
-                del self.active_clients[context.task_id]
-                logger.debug(f"Unregistered client for task: {context.task_id}")
+                        if streaming_config.get("enabled", True):
+                            # Skip system init messages if configured
+                            is_system_init = (
+                                message.__class__.__name__ == "SystemMessage"
+                                and hasattr(message, "subtype")
+                                and message.subtype == "init"
+                            )
+                            skip_system_init = streaming_config.get("skip_system_init", True)
+
+                            if not (is_system_init and skip_system_init):
+                                logger.debug(f"📨 Received message:\n{format_message_for_debug(message)}")
+            finally:
+                # Always unregister the client when done (success or failure)
+                self.active_clients.pop(task_id, None)
+                # Clean up streaming state
+                self.streaming_state.pop(task_id, None)
+                logger.debug(f"Unregistered client for task: {task_id}")
 
             # Log response summary
             final_response = response_text if response_text else None
@@ -367,12 +394,8 @@ class AgentManager:
 
         except asyncio.CancelledError:
             # Task was cancelled due to interruption - this is expected
-            # Clean up client from active_clients (but keep it in pool for reuse)
-            if context.task_id and context.task_id in self.active_clients:
-                del self.active_clients[context.task_id]
-                logger.debug(f"Unregistered client for task (interrupted): {context.task_id}")
-
-            logger.info(f"🛑 Agent response interrupted | Task: {context.task_id}")
+            # Client cleanup handled by finally block above
+            logger.info(f"🛑 Agent response interrupted | Task: {task_id}")
             # Yield stream_end to indicate interruption
             yield {
                 "type": "stream_end",
@@ -385,15 +408,12 @@ class AgentManager:
             }
 
         except Exception as e:
-            # Clean up client on error
-            if context.task_id and context.task_id in self.active_clients:
-                del self.active_clients[context.task_id]
-                logger.debug(f"Unregistered client for task (error cleanup): {context.task_id}")
+            # Client cleanup handled by finally block above
 
             # Check if this is an interruption-related error
             error_str = str(e).lower()
             if "interrupt" in error_str or "cancelled" in error_str:
-                logger.info(f"🛑 Agent response interrupted | Task: {context.task_id}")
+                logger.info(f"🛑 Agent response interrupted | Task: {task_id}")
                 # Yield stream_end to indicate interruption
                 yield {
                     "type": "stream_end",

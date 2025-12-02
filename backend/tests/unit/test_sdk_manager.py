@@ -149,6 +149,7 @@ class TestBuildAgentOptions:
             assert "claude-sonnet" in options.model or "claude-haiku" in options.model
             # Check that max_thinking_tokens is set from environment variable
             from config.constants import MAX_THINKING_TOKENS
+
             assert options.max_thinking_tokens == MAX_THINKING_TOKENS
             assert "guidelines" in options.mcp_servers
             assert "action" in options.mcp_servers

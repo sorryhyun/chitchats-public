@@ -60,14 +60,31 @@ class ClientPool:
         self._lock_timeout = lock_timeout
 
     async def _evict_lru_client(self) -> None:
-        """Evict the least recently used client to make room for new ones."""
+        """
+        Evict the least recently used client to make room for new ones.
+
+        Note: This method assumes it's called from within _connection_lock context.
+        The lock is held while finding LRU to prevent race conditions.
+        """
         if not self._last_used:
             return
 
-        # Find the oldest client
+        # Find the oldest client (safe since we're inside _connection_lock)
         oldest_task_id = min(self._last_used.keys(), key=lambda k: self._last_used[k])
         logger.info(f"🗑️ Pool full ({len(self.pool)}/{self._max_size}), evicting LRU client: {oldest_task_id}")
-        await self.cleanup(oldest_task_id)
+
+        # Inline cleanup logic to avoid releasing lock during eviction
+        if oldest_task_id not in self.pool:
+            return
+
+        client = self.pool[oldest_task_id]
+        del self.pool[oldest_task_id]
+        self._last_used.pop(oldest_task_id, None)
+
+        # Schedule disconnect in background (doesn't need lock)
+        task = asyncio.create_task(self._disconnect_client_background(client, oldest_task_id))
+        self._cleanup_tasks.add(task)
+        task.add_done_callback(self._cleanup_tasks.discard)
 
     async def get_or_create(self, task_id: TaskIdentifier, options: ClaudeAgentOptions) -> Tuple[ClaudeSDKClient, bool]:
         """

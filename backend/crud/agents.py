@@ -8,7 +8,7 @@ from typing import List, Optional
 
 import models
 import schemas
-from config import get_base_system_prompt, list_available_configs, parse_agent_config
+from config import list_available_configs, parse_agent_config
 from domain.agent_config import AgentConfigData
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -62,6 +62,25 @@ async def get_all_agents(db: AsyncSession) -> List[models.Agent]:
     """Get all agents globally."""
     result = await db.execute(select(models.Agent))
     return result.scalars().all()
+
+
+async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[models.Agent]:
+    """
+    Get agents by a list of IDs.
+
+    More efficient than fetching all room agents when only a few are needed.
+
+    Args:
+        db: Database session
+        agent_ids: List of agent IDs to fetch
+
+    Returns:
+        List of agents matching the provided IDs
+    """
+    if not agent_ids:
+        return []
+    result = await db.execute(select(models.Agent).where(models.Agent.id.in_(agent_ids)))
+    return list(result.scalars().all())
 
 
 async def get_agent(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:

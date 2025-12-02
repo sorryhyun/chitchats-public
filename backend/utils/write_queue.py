@@ -160,8 +160,12 @@ async def enqueue_write(coro: Awaitable[T]) -> T:
 
     if _write_queue is None:
         # Fallback: execute directly if queue not initialized
-        # This allows the system to work during tests or if queue fails
-        logger.warning("Write queue not initialized, executing directly")
+        # This should only happen during tests or startup issues
+        logger.error(
+            "Write queue not initialized - executing write directly. "
+            "This may cause SQLite contention issues in production. "
+            "Ensure start_writer() is called during app startup."
+        )
         return await coro
 
     op = WriteOperation(coro)

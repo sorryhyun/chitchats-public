@@ -115,6 +115,11 @@ class CacheManager:
 
         Args:
             pattern: Key prefix to match
+
+        Note:
+            Current implementation is O(n) where n is cache size.
+            For large deployments, consider adding a secondary prefix index
+            (trie or dict of prefix->keys) for O(1) pattern lookups.
         """
         with self._lock:
             keys_to_delete = [k for k in self._cache.keys() if k.startswith(pattern)]
@@ -195,7 +200,17 @@ class CacheManager:
         return value
 
     def get_stats(self) -> Dict[str, int]:
-        """Get cache statistics."""
+        """
+        Get cache statistics.
+
+        Note:
+            For production monitoring, consider exporting these stats
+            as prometheus metrics using prometheus_client library:
+            - cache_hits_total (counter)
+            - cache_misses_total (counter)
+            - cache_size (gauge)
+            - cache_hit_rate (gauge)
+        """
         with self._lock:
             total = self._stats["hits"] + self._stats["misses"]
             hit_rate = (self._stats["hits"] / total * 100) if total > 0 else 0

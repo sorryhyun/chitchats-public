@@ -92,7 +92,9 @@ def generate_hash(password: str | None = None, *, allow_short: bool = False, out
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate bcrypt hash for API_KEY_HASH")
     parser.add_argument("--password", help="Password to hash (non-interactive)")
-    parser.add_argument("--allow-short", action="store_true", help="Allow passwords shorter than 8 characters without prompting")
+    parser.add_argument(
+        "--allow-short", action="store_true", help="Allow passwords shorter than 8 characters without prompting"
+    )
     parser.add_argument(
         "--output-only",
         action="store_true",

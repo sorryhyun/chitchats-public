@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Hash, Users, Plus, X, Search, LogOut } from 'lucide-react';
+import { Hash, Users, Plus, X, Search, LogOut, BookOpen } from 'lucide-react';
 import type { Agent, AgentCreate, RoomSummary, Room } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useFetchAgentConfigs } from '../hooks/useFetchAgentConfigs';
@@ -26,6 +26,7 @@ interface MainSidebarProps {
   onCreateAgent: (agentData: AgentCreate) => Promise<Agent>;
   onDeleteAgent: (agentId: number) => Promise<void>;
   onViewProfile: (agent: Agent) => void;
+  onShowHowToUse?: () => void;
 }
 
 export const MainSidebar = ({
@@ -40,6 +41,7 @@ export const MainSidebar = ({
   onCreateAgent,
   onDeleteAgent,
   onViewProfile,
+  onShowHowToUse,
 }: MainSidebarProps) => {
   const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'rooms' | 'agents'>('rooms');
@@ -227,6 +229,18 @@ export const MainSidebar = ({
         </div>
 
         <Separator className="bg-sidebar-border" />
+
+        {/* How To Use Button */}
+        {onShowHowToUse && (
+          <Button
+            onClick={onShowHowToUse}
+            variant="ghost"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+          >
+            <BookOpen className="w-4 h-4" />
+            How to Use
+          </Button>
+        )}
 
         {/* Logout Button */}
         <Button

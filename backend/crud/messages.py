@@ -31,6 +31,13 @@ async def create_message(
     Returns:
         Created message
     """
+    # Verify room exists before creating message (prevents orphaned messages)
+    room = await db.get(models.Room, room_id)
+    if not room:
+        from exceptions import RoomNotFoundError
+
+        raise RoomNotFoundError(room_id)
+
     # Serialize image_data to JSON string if present
     image_data_json = None
     if message.image_data:
@@ -50,19 +57,17 @@ async def create_message(
 
     # Update room's last_activity_at if requested (atomic with message creation)
     if update_room_activity:
-        room = await db.get(models.Room, room_id)
-        if room:
-            room.last_activity_at = datetime.utcnow()
+        room.last_activity_at = datetime.utcnow()
 
-    await db.commit()
-    await db.refresh(db_message)
-
-    # Invalidate message cache for this room
+    # Invalidate cache BEFORE commit to prevent race condition
+    # This ensures concurrent reads get a cache miss and wait for fresh data
     from utils.cache import get_cache, room_messages_key
 
     cache = get_cache()
-    # Invalidate all message-related cache entries for this room
     cache.invalidate_pattern(room_messages_key(room_id))
+
+    await db.commit()
+    await db.refresh(db_message)
 
     return db_message
 
@@ -100,14 +105,14 @@ async def create_system_message(
         if room:
             room.last_activity_at = datetime.utcnow()
 
-    await db.commit()
-    await db.refresh(db_message)
-
-    # Invalidate message cache for this room
+    # Invalidate cache BEFORE commit to prevent race condition
     from utils.cache import get_cache, room_messages_key
 
     cache = get_cache()
     cache.invalidate_pattern(room_messages_key(room_id))
+
+    await db.commit()
+    await db.refresh(db_message)
 
     return db_message
 
@@ -160,11 +165,14 @@ async def get_recent_messages(db: AsyncSession, room_id: int, limit: int = 200) 
     Args:
         db: Database session
         room_id: Room ID
-        limit: Maximum number of messages to return (default: 200)
+        limit: Maximum number of messages to return (default: 200, max: 1000)
 
     Returns:
         List of recent messages ordered by timestamp
     """
+    # Cap limit at 1000 to prevent memory issues
+    limit = min(limit, 1000)
+
     query = (
         select(models.Message)
         .options(selectinload(models.Message.agent))
@@ -190,11 +198,14 @@ async def get_messages_after_agent_response(
         db: Database session
         room_id: Room ID
         agent_id: Agent ID to filter after
-        limit: Maximum number of messages to return
+        limit: Maximum number of messages to return (default: 200, max: 1000)
 
     Returns:
         Chronologically ordered messages after the agent's last response or invitation
     """
+    # Cap limit at 1000 to prevent memory issues
+    limit = min(limit, 1000)
+
     # Find the agent's last message ID (if any)
     last_agent_message_id = await _get_last_agent_message_id(db, room_id, agent_id)
 
