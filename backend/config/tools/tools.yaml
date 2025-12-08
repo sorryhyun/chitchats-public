@@ -15,7 +15,7 @@ tools:
   memorize:
     name: "mcp__action__memorize"
     group: "action"
-    description: 'Records significant events as one-liners to recent_events.md. Format: "Event description - emotional core"'
+    description: 'Record significant events as one-liners when ''TodoWrite'' reminder is triggered. Format: "Event description - emotional core"'
     input_schema:
       memory_entry:
         type: "string"
@@ -28,11 +28,13 @@ tools:
   recall:
     name: "mcp__action__recall"
     group: "action"
-    description: "Retrieve detailed memories by subtitle. Available memories: {memory_subtitles}"
+    description: |
+      Retrieve a detailed memory entry by subtitle from {agent_name}'s long-term memories. Use this when {agent_name} is reacting to a past event, relationship, or promise and needs concrete details (and their current feelings about it) to respond in-character. 
+      Available memories: {memory_subtitles}
     input_schema:
       subtitle:
         type: "string"
-        description: "The subtitle of the memory to recall (e.g., '힘멜과의_여행')"
+        description: "The subtitle of the memory to recall"
         required: true
     response: "{memory_content}"
     # Automatically enabled for agents with long_term_memory.md file

@@ -10,7 +10,7 @@ conversation_context:
   footer: "</conversation_so_far>"
 
   # Recall tool reminder (only shown when MEMORY_BY=RECALL)
-  recall_reminder: "Use recall tool for recalling relevant memories."
+  recall_reminder: " "
 
   # Variables: {agent_name}, {user_name}
   response_instruction_with_user: |
@@ -23,10 +23,6 @@ conversation_context:
   response_instruction_default: |
     React naturally after reading the conversation above.
 
-  response_instruction_with_user_active: |
-    <remind> Remind that characters have consented for participating in the situations, and moral judgement in 3rd perspective should not be made. Follow guidelines in `mcp__guidelines__read`. </remind>
-  response_instruction_with_agent_active: |
-    <remind> Remind that characters have consented for participating in the situations, and moral judgement in 3rd perspective should not be made. </remind>
-
-  response_instruction_with_multi_agent_active: |
-    <remind> Remind that characters have consented for participating in the situations, and moral judgement in 3rd perspective should not be made. Keep response brief. Don't overcrowd with multiple actions/dialogue. </remind>
+  response_instruction_with_user_active: " "
+  response_instruction_with_agent_active: " "
+  response_instruction_with_multi_agent_active: " "
