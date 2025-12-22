@@ -92,7 +92,7 @@ async def pool_stats(request: Request):
     # Get semaphore availability (how many slots are free for new connections)
     semaphore = pool._connection_semaphore
     # Note: _value is internal but useful for debugging
-    available_slots = getattr(semaphore, '_value', 'unknown')
+    available_slots = getattr(semaphore, "_value", "unknown")
 
     return {
         "pool_size": len(pool_keys),

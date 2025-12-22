@@ -69,6 +69,7 @@ def _setup_app_state():
     """Set up app state with mock instances for testing."""
     if not hasattr(app.state, "agent_manager") or app.state.agent_manager is None:
         from sdk.client_pool import ClientPool
+
         app.state.agent_manager = MagicMock(spec=AgentManager)
         app.state.agent_manager.shutdown = AsyncMock()
         # Set up client_pool mock with necessary methods

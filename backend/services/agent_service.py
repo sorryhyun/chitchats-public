@@ -153,9 +153,7 @@ async def clear_room_messages_with_cleanup(
     if chat_orchestrator:
         try:
             logger.info(f"🛑 Interrupting room {room_id} processing before clearing messages")
-            await chat_orchestrator.interrupt_room_processing(
-                room_id, agent_manager, save_partial_responses=False
-            )
+            await chat_orchestrator.interrupt_room_processing(room_id, agent_manager, save_partial_responses=False)
         except Exception as e:
             logger.error(f"❌ Error interrupting room {room_id}: {e}")
             # Continue with cleanup even if interruption fails

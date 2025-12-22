@@ -309,25 +309,31 @@ class AuthMiddleware:
                 (b"content-type", b"application/json"),
             ]
             if origin:
-                response_headers.extend([
-                    (b"access-control-allow-origin", origin.encode()),
-                    (b"access-control-allow-credentials", b"true"),
-                    (b"access-control-allow-methods", b"*"),
-                    (b"access-control-allow-headers", b"*"),
-                ])
+                response_headers.extend(
+                    [
+                        (b"access-control-allow-origin", origin.encode()),
+                        (b"access-control-allow-credentials", b"true"),
+                        (b"access-control-allow-methods", b"*"),
+                        (b"access-control-allow-headers", b"*"),
+                    ]
+                )
 
             body = b'{"detail":"Invalid or missing authentication token"}'
             response_headers.append((b"content-length", str(len(body)).encode()))
 
-            await send({
-                "type": "http.response.start",
-                "status": 401,
-                "headers": response_headers,
-            })
-            await send({
-                "type": "http.response.body",
-                "body": body,
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 401,
+                    "headers": response_headers,
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": body,
+                }
+            )
             return
 
         # Store auth info in scope state for later use

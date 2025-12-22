@@ -8,7 +8,7 @@ import re
 from typing import Optional
 
 import models
-from core.paths import get_agents_dir
+from core.settings import get_settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -110,7 +110,7 @@ def save_base64_profile_pic(agent_name: str, base64_data: str) -> bool:
         image_data = base64.b64decode(encoded_data)
 
         # Determine file path (handles both dev and frozen exe modes)
-        agents_dir = get_agents_dir()
+        agents_dir = get_settings().agents_dir
         agent_folder = agents_dir / agent_name
 
         # Create agent folder if it doesn't exist

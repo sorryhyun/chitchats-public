@@ -7,11 +7,11 @@ recent room messages for multi-agent awareness.
 
 from typing import List, Optional
 
-from sdk.config import get_conversation_context_config
 from core import get_settings
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.enums import ParticipantType
 from i18n.korean import format_with_particles
+from sdk.config import get_conversation_context_config
 
 from orchestration.whiteboard import process_messages_for_whiteboard
 

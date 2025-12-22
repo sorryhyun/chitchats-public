@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk.types import HookMatcher, PostToolUseHookInput, SyncHookJSONOutput
-
 from core import get_settings
+
 from .action_tools import create_action_mcp_server
 from .config import get_tool_names_by_group
 from .guidelines_tools import create_guidelines_mcp_server
@@ -124,8 +124,4 @@ def _build_anthropic_capture_hooks(
                 logger.info(f"Captured anthropic tool call: {situation[:100]}...")
         return {"continue_": True}
 
-    return {
-        "PostToolUse": [
-            HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool])
-        ]
-    }
+    return {"PostToolUse": [HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool])]}

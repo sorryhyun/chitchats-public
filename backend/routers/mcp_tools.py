@@ -23,8 +23,10 @@ router = APIRouter(prefix="/mcp-tools", tags=["MCP Tools"])
 
 # ============ Schemas ============
 
+
 class AgentInfo(BaseModel):
     """Simple agent info"""
+
     id: int
     name: str
     group: Optional[str] = None
@@ -32,12 +34,14 @@ class AgentInfo(BaseModel):
 
 class ChatRequest(BaseModel):
     """Chat with an agent"""
+
     agent_name: str = Field(..., description="Name of the agent to chat with (e.g., '프리렌', 'Dr. Chen')")
     message: str = Field(..., description="Your message to the agent")
 
 
 class ChatResponse(BaseModel):
     """Agent's response"""
+
     agent_name: str
     response: str
     thinking: Optional[str] = None
@@ -46,18 +50,21 @@ class ChatResponse(BaseModel):
 
 class RoomRequest(BaseModel):
     """Create a room with multiple agents"""
+
     name: str = Field(..., description="Name for the chat room")
     agent_names: list[str] = Field(..., description="List of agent names to add to the room")
 
 
 class RoomMessageRequest(BaseModel):
     """Send message to a room"""
+
     room_id: int = Field(..., description="Room ID")
     message: str = Field(..., description="Your message")
 
 
 class ConversationMessage(BaseModel):
     """A message in conversation"""
+
     role: str
     sender: str
     content: str
@@ -65,6 +72,7 @@ class ConversationMessage(BaseModel):
 
 
 # ============ Endpoints ============
+
 
 @router.get("/agents", response_model=list[AgentInfo], summary="List all available agents")
 async def list_agents(db: AsyncSession = Depends(get_db)) -> list[AgentInfo]:
@@ -74,10 +82,7 @@ async def list_agents(db: AsyncSession = Depends(get_db)) -> list[AgentInfo]:
     Returns agent names and their groups (if any).
     """
     agents = await crud.get_all_agents(db)
-    return [
-        AgentInfo(id=a.id, name=a.name, group=a.group)
-        for a in agents
-    ]
+    return [AgentInfo(id=a.id, name=a.name, group=a.group) for a in agents]
 
 
 @router.post("/chat", response_model=ChatResponse, summary="Chat with an agent")
@@ -106,10 +111,7 @@ async def chat(
 
     if not agent:
         available = [a.name for a in agents[:10]]
-        raise HTTPException(
-            status_code=404,
-            detail=f"Agent '{request.agent_name}' not found. Available: {available}"
-        )
+        raise HTTPException(status_code=404, detail=f"Agent '{request.agent_name}' not found. Available: {available}")
 
     # Get or create direct room for this agent (owner_id="admin" for MCP access)
     room = await crud.get_or_create_direct_room(db, agent.id, owner_id="admin")

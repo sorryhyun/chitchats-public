@@ -241,10 +241,9 @@ class TapeExecutor:
 
     async def _count_agent_messages(self, db, room_id: int) -> int:
         """Count agent messages in room."""
+        import models
         from sqlalchemy import func
         from sqlalchemy.future import select
-
-        import models
 
         result = await db.execute(
             select(func.count(models.Message.id)).where(

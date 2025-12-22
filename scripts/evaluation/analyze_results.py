@@ -184,8 +184,8 @@ def print_humanness_analysis(analysis: dict, filepath: str = None):
         human_bar = int(human_wins / total * bar_width)
         agent_bar = bar_width - human_bar
 
-        print(f"Human wins:  {human_wins:4d} ({analysis['human_detection_rate']*100:5.1f}%) {'█' * human_bar}")
-        print(f"Agent wins:  {agent_wins:4d} ({analysis['agent_rate']*100:5.1f}%) {'█' * agent_bar}")
+        print(f"Human wins:  {human_wins:4d} ({analysis['human_detection_rate'] * 100:5.1f}%) {'█' * human_bar}")
+        print(f"Agent wins:  {agent_wins:4d} ({analysis['agent_rate'] * 100:5.1f}%) {'█' * agent_bar}")
         if fails > 0:
             print(f"Failures:    {fails:4d}")
     print()
@@ -207,10 +207,12 @@ def print_humanness_analysis(analysis: dict, filepath: str = None):
     eva = analysis["evaluation_time_stats"]
 
     print("Answer Collection:")
-    print(f"  Average: {collect['avg']/1000:.2f}s | Min: {collect['min']/1000:.2f}s | Max: {collect['max']/1000:.2f}s")
+    print(
+        f"  Average: {collect['avg'] / 1000:.2f}s | Min: {collect['min'] / 1000:.2f}s | Max: {collect['max'] / 1000:.2f}s"
+    )
     print("Evaluation (Judge):")
-    print(f"  Average: {eva['avg']/1000:.2f}s | Min: {eva['min']/1000:.2f}s | Max: {eva['max']/1000:.2f}s")
-    print(f"Total processing time: {(collect['total'] + eva['total'])/1000/60:.1f} minutes")
+    print(f"  Average: {eva['avg'] / 1000:.2f}s | Min: {eva['min'] / 1000:.2f}s | Max: {eva['max'] / 1000:.2f}s")
+    print(f"Total processing time: {(collect['total'] + eva['total']) / 1000 / 60:.1f} minutes")
     print()
 
     # Timestamps
@@ -258,9 +260,9 @@ def print_questions_analysis(analysis: dict, filepath: str = None):
         orig_bar = int(orig / total * bar_width)
         tie_bar = bar_width - jane_bar - orig_bar
 
-        print(f"Jane wins:     {jane:4d} ({analysis['win_rate']*100:5.1f}%) {'█' * jane_bar}")
-        print(f"Original wins: {orig:4d} ({analysis['loss_rate']*100:5.1f}%) {'█' * orig_bar}")
-        print(f"Ties:          {ties:4d} ({analysis['tie_rate']*100:5.1f}%) {'█' * tie_bar}")
+        print(f"Jane wins:     {jane:4d} ({analysis['win_rate'] * 100:5.1f}%) {'█' * jane_bar}")
+        print(f"Original wins: {orig:4d} ({analysis['loss_rate'] * 100:5.1f}%) {'█' * orig_bar}")
+        print(f"Ties:          {ties:4d} ({analysis['tie_rate'] * 100:5.1f}%) {'█' * tie_bar}")
         if fails > 0:
             print(f"Failures:      {fails:4d}")
     print()
@@ -272,10 +274,10 @@ def print_questions_analysis(analysis: dict, filepath: str = None):
     eva = analysis["evaluation_time_stats"]
 
     print("Generation (Jane):")
-    print(f"  Average: {gen['avg']/1000:.2f}s | Min: {gen['min']/1000:.2f}s | Max: {gen['max']/1000:.2f}s")
+    print(f"  Average: {gen['avg'] / 1000:.2f}s | Min: {gen['min'] / 1000:.2f}s | Max: {gen['max'] / 1000:.2f}s")
     print("Evaluation (Judge):")
-    print(f"  Average: {eva['avg']/1000:.2f}s | Min: {eva['min']/1000:.2f}s | Max: {eva['max']/1000:.2f}s")
-    print(f"Total processing time: {(gen['total'] + eva['total'])/1000/60:.1f} minutes")
+    print(f"  Average: {eva['avg'] / 1000:.2f}s | Min: {eva['min'] / 1000:.2f}s | Max: {eva['max'] / 1000:.2f}s")
+    print(f"Total processing time: {(gen['total'] + eva['total']) / 1000 / 60:.1f} minutes")
     print()
 
     # Timestamps
@@ -326,15 +328,15 @@ def compare_runs(results_list: list[tuple[str, dict]]):
             name = Path(filepath).stem[:28]
             print(
                 f"{name:<30} {analysis['total_evaluations']:>8} {analysis['human_wins']:>8} "
-                f"{analysis['agent_wins']:>8} {analysis['human_detection_rate']*100:>7.1f}%"
+                f"{analysis['agent_wins']:>8} {analysis['human_detection_rate'] * 100:>7.1f}%"
             )
         print()
 
         if len(humanness_runs) > 1:
             rates = [a["human_detection_rate"] for _, a in humanness_runs]
             avg_rate = sum(rates) / len(rates)
-            print(f"Average human detection rate: {avg_rate*100:.1f}%")
-            print(f"Range: {min(rates)*100:.1f}% - {max(rates)*100:.1f}%")
+            print(f"Average human detection rate: {avg_rate * 100:.1f}%")
+            print(f"Range: {min(rates) * 100:.1f}% - {max(rates) * 100:.1f}%")
             print()
 
     # Print question comparisons
@@ -347,15 +349,15 @@ def compare_runs(results_list: list[tuple[str, dict]]):
             name = Path(filepath).stem[:28]
             print(
                 f"{name:<30} {analysis['total_evaluations']:>8} {analysis['jane_wins']:>8} "
-                f"{analysis['original_wins']:>8} {analysis['ties']:>6} {analysis['win_rate']*100:>7.1f}%"
+                f"{analysis['original_wins']:>8} {analysis['ties']:>6} {analysis['win_rate'] * 100:>7.1f}%"
             )
         print()
 
         if len(question_runs) > 1:
             win_rates = [a["win_rate"] for _, a in question_runs]
             avg_rate = sum(win_rates) / len(win_rates)
-            print(f"Average win rate across runs: {avg_rate*100:.1f}%")
-            print(f"Range: {min(win_rates)*100:.1f}% - {max(win_rates)*100:.1f}%")
+            print(f"Average win rate across runs: {avg_rate * 100:.1f}%")
+            print(f"Range: {min(win_rates) * 100:.1f}% - {max(win_rates) * 100:.1f}%")
             print()
 
 

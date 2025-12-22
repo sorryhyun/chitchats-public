@@ -246,7 +246,9 @@ class TestProcessRoomAutonomousRound:
         mock_execution_result = Mock(all_skipped=False, total_responses=1)
 
         with (
-            patch("background_scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])),
+            patch(
+                "background_scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
+            ),
             patch("background_scheduler.TapeExecutor") as mock_executor_class,
             patch("background_scheduler.TapeGenerator") as mock_generator_class,
         ):
@@ -329,7 +331,9 @@ class TestProcessRoomAutonomousRound:
         mock_agent2 = Mock(id=2, name="Agent2", is_critic=False, priority=0, interrupt_every_turn=0, transparent=0)
 
         with (
-            patch("background_scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])),
+            patch(
+                "background_scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
+            ),
             patch.object(scheduler, "_count_agent_messages", new=AsyncMock(return_value=10)),
             patch("background_scheduler.TapeExecutor") as mock_executor_class,
         ):
@@ -375,7 +379,11 @@ class TestProcessActiveRooms:
 
         scheduler = BackgroundScheduler(mock_orchestrator, mock_agent_manager, session_factory)
 
-        mock_rooms = [Mock(id=1, max_interactions=None), Mock(id=2, max_interactions=None), Mock(id=3, max_interactions=None)]
+        mock_rooms = [
+            Mock(id=1, max_interactions=None),
+            Mock(id=2, max_interactions=None),
+            Mock(id=3, max_interactions=None),
+        ]
 
         with (
             patch.object(scheduler, "_get_active_rooms", return_value=mock_rooms),

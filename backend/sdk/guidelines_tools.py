@@ -9,6 +9,8 @@ This module defines MCP tools for guidelines:
 from typing import Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
+from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
+
 from .config import (
     get_extreme_traits,
     get_situation_builder_note,
@@ -16,7 +18,6 @@ from .config import (
     get_tool_response,
     is_tool_enabled,
 )
-from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
 
 
 def _create_guidelines_read_tool(agent_name: str, guidelines_content: str):

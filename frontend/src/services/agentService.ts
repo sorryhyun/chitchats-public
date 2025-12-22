@@ -58,7 +58,7 @@ export const agentService = {
   },
 
   async getAgentConfigs(): Promise<{ configs: AgentConfig }> {
-    const response = await fetch(`${API_BASE_URL}/agent-configs`, getFetchOptions());
+    const response = await fetch(`${API_BASE_URL}/agents/configs`, getFetchOptions());
     if (!response.ok) throw new Error('Failed to fetch agent configs');
     return response.json();
   },

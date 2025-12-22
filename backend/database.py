@@ -8,10 +8,7 @@ logger = logging.getLogger(__name__)
 
 # PostgreSQL connection URL from environment variable
 # Format: postgresql+asyncpg://user:password@host:port/database
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats"
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats")
 
 # Configure engine with connection pooling for PostgreSQL
 engine = create_async_engine(
@@ -20,7 +17,7 @@ engine = create_async_engine(
     pool_size=10,
     max_overflow=20,
     pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=3600,   # Recycle connections after 1 hour
+    pool_recycle=3600,  # Recycle connections after 1 hour
 )
 
 # Session factory with sensible defaults
@@ -68,13 +65,16 @@ async def init_db():
 
 def retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2):
     """No-op decorator. PostgreSQL handles concurrency natively."""
+
     def decorator(func):
         return func
+
     return decorator
 
 
 class SerializedWrite:
     """No-op async context manager. PostgreSQL handles concurrency natively."""
+
     def __init__(self, lock_key=None):
         pass
 

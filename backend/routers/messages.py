@@ -16,12 +16,12 @@ from dependencies import (
 )
 from exceptions import RoomNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Request
+from infrastructure.images import compress_image_base64
 from orchestration import ChatOrchestrator
 from sdk import AgentManager
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
-from infrastructure.images import compress_image_base64
 
 router = APIRouter()
 logger = logging.getLogger("MessageRouter")
@@ -110,13 +110,15 @@ async def get_chatting_agents(
             if agent_id in agent_map:
                 agent = agent_map[agent_id]
                 agent_state = streaming_state.get(agent_id, {})
-                chatting_agents.append({
-                    "id": agent.id,
-                    "name": agent.name,
-                    "profile_pic": agent.profile_pic,
-                    "thinking_text": agent_state.get("thinking_text", ""),
-                    "response_text": agent_state.get("response_text", ""),
-                })
+                chatting_agents.append(
+                    {
+                        "id": agent.id,
+                        "name": agent.name,
+                        "profile_pic": agent.profile_pic,
+                        "thinking_text": agent_state.get("thinking_text", ""),
+                        "response_text": agent_state.get("response_text", ""),
+                    }
+                )
 
     return {"chatting_agents": chatting_agents}
 
@@ -156,9 +158,7 @@ async def send_message(
     if message.image_data and message.image_media_type:
         try:
             logger.info(f"[send_message] Compressing image for room {room_id}")
-            compressed_data, compressed_media_type = compress_image_base64(
-                message.image_data, message.image_media_type
-            )
+            compressed_data, compressed_media_type = compress_image_base64(message.image_data, message.image_media_type)
             # Calculate compression ratio for logging
             original_size = len(message.image_data)
             compressed_size = len(compressed_data)

@@ -122,6 +122,7 @@ class Message(MessageBase):
             anthropic_calls = None
             if hasattr(data, "anthropic_calls") and data.anthropic_calls:
                 import json
+
                 try:
                     anthropic_calls = json.loads(data.anthropic_calls)
                 except (json.JSONDecodeError, TypeError):

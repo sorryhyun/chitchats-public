@@ -155,7 +155,7 @@ async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.Ag
     await db.refresh(agent)
 
     # Invalidate agent config cache
-    from utils.cache import agent_config_key, agent_object_key, get_cache
+    from infrastructure.cache import agent_config_key, agent_object_key, get_cache
 
     cache = get_cache()
     cache.invalidate(agent_config_key(agent_id))
@@ -228,7 +228,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
     await db.refresh(agent)
 
     # Invalidate agent config cache
-    from utils.cache import agent_config_key, agent_object_key, get_cache
+    from infrastructure.cache import agent_config_key, agent_object_key, get_cache
 
     cache = get_cache()
     cache.invalidate(agent_config_key(agent_id))
@@ -268,7 +268,7 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
         )
         if success:
             # Invalidate agent config cache since recent_events changed
-            from utils.cache import agent_config_key, get_cache
+            from infrastructure.cache import agent_config_key, get_cache
 
             cache = get_cache()
             cache.invalidate(agent_config_key(agent_id))

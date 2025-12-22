@@ -104,7 +104,7 @@ async def update_room(db: AsyncSession, room_id: int, room_update: schemas.RoomU
     await db.refresh(room, attribute_names=["agents", "messages"])
 
     # Invalidate room cache
-    from utils.cache import get_cache, room_object_key
+    from infrastructure.cache import get_cache, room_object_key
 
     cache = get_cache()
     cache.invalidate(room_object_key(room_id))

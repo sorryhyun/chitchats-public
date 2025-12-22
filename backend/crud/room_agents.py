@@ -57,7 +57,7 @@ async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Op
             await db.refresh(room, attribute_names=["agents"])
 
             # Invalidate room agents cache
-            from utils.cache import get_cache, room_agents_key
+            from infrastructure.cache import get_cache, room_agents_key
 
             cache = get_cache()
             cache.invalidate(room_agents_key(room_id))
@@ -85,7 +85,7 @@ async def remove_agent_from_room(db: AsyncSession, room_id: int, agent_id: int) 
             await db.commit()
 
             # Invalidate room agents cache
-            from utils.cache import get_cache, room_agents_key
+            from infrastructure.cache import get_cache, room_agents_key
 
             cache = get_cache()
             cache.invalidate(room_agents_key(room_id))

@@ -15,8 +15,8 @@ import logging
 from typing import List, Optional
 
 import models
+from infrastructure.cache import agent_object_key, get_cache, room_agents_key, room_messages_key, room_object_key
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.cache import agent_object_key, get_cache, room_agents_key, room_messages_key, room_object_key
 
 import crud
 
@@ -187,7 +187,7 @@ def invalidate_agent_cache(agent_id: int):
     Args:
         agent_id: Agent ID
     """
-    from utils.cache import agent_config_key
+    from infrastructure.cache import agent_config_key
 
     cache = get_cache()
     cache.invalidate(agent_object_key(agent_id))

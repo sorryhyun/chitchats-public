@@ -13,7 +13,6 @@ import uuid
 from typing import AsyncIterator
 
 from claude_agent_sdk import ClaudeSDKClient
-
 from core import get_settings
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier

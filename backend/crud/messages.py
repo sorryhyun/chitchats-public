@@ -59,7 +59,7 @@ async def create_message(
 
     # Invalidate cache BEFORE commit to prevent race condition
     # This ensures concurrent reads get a cache miss and wait for fresh data
-    from utils.cache import get_cache, room_messages_key
+    from infrastructure.cache import get_cache, room_messages_key
 
     cache = get_cache()
     cache.invalidate_pattern(room_messages_key(room_id))
@@ -103,7 +103,7 @@ async def create_system_message(
             room.last_activity_at = datetime.utcnow()
 
     # Invalidate cache BEFORE commit to prevent race condition
-    from utils.cache import get_cache, room_messages_key
+    from infrastructure.cache import get_cache, room_messages_key
 
     cache = get_cache()
     cache.invalidate_pattern(room_messages_key(room_id))

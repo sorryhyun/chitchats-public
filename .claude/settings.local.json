@@ -4,7 +4,8 @@
       "Bash(uv sync:*)",
       "Bash(powershell -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 -SkipFrontend)",
       "Bash(ls:*)",
-      "Bash(uv run ruff:*)"
+      "Bash(uv run ruff:*)",
+      "Bash(uv run:*)"
     ],
     "deny": [],
     "ask": []

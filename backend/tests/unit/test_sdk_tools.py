@@ -48,9 +48,7 @@ class TestCreateActionTools:
     @patch("sdk.action_tools.is_tool_enabled")
     @patch("sdk.action_tools.get_tool_description")
     @patch("sdk.action_tools.get_tool_response")
-    def test_create_recall_tool_with_memory_index(
-        self, mock_get_response, mock_get_description, mock_is_enabled
-    ):
+    def test_create_recall_tool_with_memory_index(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating recall tool when long-term memory is available."""
 
         def is_enabled_side_effect(tool_name):
@@ -98,9 +96,7 @@ class TestCreateActionTools:
     @patch("sdk.action_tools.is_tool_enabled")
     @patch("sdk.action_tools.get_tool_description")
     @patch("sdk.action_tools.get_tool_response")
-    async def test_memorize_tool_execution(
-        self, mock_get_response, mock_get_description, mock_is_enabled
-    ):
+    async def test_memorize_tool_execution(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating the memorize tool."""
         mock_is_enabled.side_effect = lambda x: x == "memorize"
         mock_get_description.return_value = "Memorize description"
@@ -117,9 +113,7 @@ class TestCreateActionTools:
     @patch("sdk.action_tools.is_tool_enabled")
     @patch("sdk.action_tools.get_tool_description")
     @patch("sdk.action_tools.get_tool_response")
-    async def test_recall_tool_creation_success(
-        self, mock_get_response, mock_get_description, mock_is_enabled
-    ):
+    async def test_recall_tool_creation_success(self, mock_get_response, mock_get_description, mock_is_enabled):
         """Test creating recall tool when memory index is provided."""
         mock_is_enabled.side_effect = lambda x: x == "recall"
         mock_get_description.return_value = "Recall description"
