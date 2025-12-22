@@ -11,7 +11,13 @@ import crud
 import schemas
 from core import get_settings
 from database import get_db
-from dependencies import get_agent_manager, get_chat_orchestrator
+from dependencies import (
+    RequestIdentity,
+    ensure_room_access,
+    get_agent_manager,
+    get_chat_orchestrator,
+    get_request_identity,
+)
 from fastapi import APIRouter, Depends, HTTPException
 from orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field
@@ -88,6 +94,7 @@ async def list_agents(db: AsyncSession = Depends(get_db)) -> list[AgentInfo]:
 @router.post("/chat", response_model=ChatResponse, summary="Chat with an agent")
 async def chat(
     request: ChatRequest,
+    identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
     chat_orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
     agent_manager: AgentManager = Depends(get_agent_manager),
@@ -113,8 +120,9 @@ async def chat(
         available = [a.name for a in agents[:10]]
         raise HTTPException(status_code=404, detail=f"Agent '{request.agent_name}' not found. Available: {available}")
 
-    # Get or create direct room for this agent (owner_id="admin" for MCP access)
-    room = await crud.get_or_create_direct_room(db, agent.id, owner_id="admin")
+    owner_id = "admin" if identity.role == "admin" else identity.user_id
+    # Get or create direct room for this agent
+    room = await crud.get_or_create_direct_room(db, agent.id, owner_id=owner_id)
 
     # Ensure agent is in the room
     room_agents = await crud.get_agents(db, room.id)
@@ -162,6 +170,7 @@ async def chat(
 async def get_conversation(
     agent_name: str,
     limit: int = 20,
+    identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
 ) -> list[ConversationMessage]:
     """
@@ -178,8 +187,9 @@ async def get_conversation(
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
 
+    owner_id = "admin" if identity.role == "admin" else identity.user_id
     # Get direct room (use get_or_create to find existing)
-    room = await crud.get_or_create_direct_room(db, agent.id, owner_id="admin")
+    room = await crud.get_or_create_direct_room(db, agent.id, owner_id=owner_id)
     if not room:
         return []
 
@@ -200,6 +210,7 @@ async def get_conversation(
 @router.post("/room", summary="Create a chat room with multiple agents")
 async def create_room(
     request: RoomRequest,
+    identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -211,7 +222,8 @@ async def create_room(
         create_room(name="Book Club", agent_names=["프리렌", "페른"])
     """
     # Create room
-    room = await crud.create_room(db, name=request.name)
+    owner_id = "admin" if identity.role == "admin" else identity.user_id
+    room = await crud.create_room(db, schemas.RoomCreate(name=request.name), owner_id=owner_id)
 
     # Find and add agents
     agents = await crud.get_all_agents(db)
@@ -240,6 +252,7 @@ async def create_room(
 @router.post("/room/message", response_model=list[ChatResponse], summary="Send message to a room")
 async def send_to_room(
     request: RoomMessageRequest,
+    identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
     chat_orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
     agent_manager: AgentManager = Depends(get_agent_manager),
@@ -252,6 +265,7 @@ async def send_to_room(
     room = await crud.get_room(db, request.room_id)
     if not room:
         raise HTTPException(status_code=404, detail=f"Room {request.room_id} not found")
+    await ensure_room_access(db, request.room_id, identity)
 
     settings = get_settings()
     user_name = settings.user_name

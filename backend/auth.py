@@ -367,5 +367,5 @@ def require_admin(request: Request):
     if user_role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This action requires admin privileges. Guests can chat but cannot modify rooms, agents, or messages.",
+            detail="This action requires admin privileges.",
         )

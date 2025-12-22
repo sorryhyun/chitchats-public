@@ -6,13 +6,14 @@ These endpoints provide access to cache statistics and other debugging informati
 
 from typing import Dict
 
-from fastapi import APIRouter
+from auth import require_admin
+from fastapi import APIRouter, Depends
 from services.cache_service import get_cache_service
 
 router = APIRouter()
 
 
-@router.get("/cache/stats")
+@router.get("/cache/stats", dependencies=[Depends(require_admin)])
 async def get_cache_stats() -> Dict[str, int]:
     """
     Get current cache statistics.
@@ -30,7 +31,7 @@ async def get_cache_stats() -> Dict[str, int]:
     return cache_service.get_stats()
 
 
-@router.post("/cache/cleanup")
+@router.post("/cache/cleanup", dependencies=[Depends(require_admin)])
 async def cleanup_cache() -> Dict[str, str]:
     """
     Manually trigger cache cleanup to remove expired entries.
@@ -43,7 +44,7 @@ async def cleanup_cache() -> Dict[str, str]:
     return {"status": "success", "message": "Cache cleanup completed"}
 
 
-@router.post("/cache/clear")
+@router.post("/cache/clear", dependencies=[Depends(require_admin)])
 async def clear_cache() -> Dict[str, str]:
     """
     Clear all cache entries.

@@ -23,7 +23,7 @@ async def login(request: Request):
 
     Supports both admin and guest passwords:
     - Admin password: Full access to all features
-    - Guest password: Read-only access, can chat but cannot modify rooms/agents/messages
+    - Guest password: Limited access to their own rooms and chat; admin-only operations remain restricted
 
     Security features:
     - Rate limited to 20 attempts per minute per IP address (via slowapi)
