@@ -24,8 +24,9 @@ datas = [
     (str(frontend_dist), 'static'),
     # Agent configurations
     (str(agents_dir), 'agents'),
-    # Backend config files (YAML)
-    (str(config_dir), 'backend/config'),
+    # Backend config files (YAML) - must be at config/ since settings.py looks for backend_dir/config
+    # In bundled mode, backend modules are at root, so config should be at config/ not backend/config/
+    (str(config_dir), 'config'),
     # .env.example as template
     (str(project_root / '.env.example'), '.'),
 ]
@@ -113,6 +114,10 @@ hiddenimports = [
     'email_validator',
     # Python-dotenv
     'dotenv',
+    # Image processing
+    'PIL',
+    'PIL.Image',
+    'PIL.WebPImagePlugin',
 ]
 
 a = Analysis(
@@ -130,7 +135,6 @@ a = Analysis(
         'numpy',
         'pandas',
         'scipy',
-        'PIL',
         'cv2',
     ],
     noarchive=False,

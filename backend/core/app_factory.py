@@ -5,7 +5,9 @@ This module provides functions for creating and configuring the FastAPI applicat
 with all necessary middleware, routers, and dependencies.
 """
 
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import crud
 from background_scheduler import BackgroundScheduler
@@ -141,5 +143,34 @@ def create_app() -> FastAPI:
     )
     mcp.mount()
     logger.info("🔌 MCP server mounted at /mcp (5 simplified tools)")
+
+    # Serve static frontend files when running as PyInstaller bundle
+    if getattr(sys, "frozen", False):
+        from fastapi.responses import FileResponse
+        from fastapi.staticfiles import StaticFiles
+
+        # Get the bundled static files directory
+        base_path = Path(sys._MEIPASS)
+        static_dir = base_path / "static"
+
+        if static_dir.exists():
+            # Mount static assets (JS, CSS, images)
+            app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+            logger.info(f"📦 Serving static files from: {static_dir}")
+
+            # Catch-all route for SPA - must be last
+            @app.get("/{full_path:path}")
+            async def serve_spa(full_path: str):
+                """Serve index.html for all non-API routes (SPA routing)."""
+                # Check if it's an API route (already handled by routers)
+                if full_path.startswith(("api/", "auth/", "rooms/", "agents/", "debug/", "mcp")):
+                    return None
+                # Serve index.html for SPA routes
+                index_file = static_dir / "index.html"
+                if index_file.exists():
+                    return FileResponse(index_file)
+                return FileResponse(static_dir / "index.html")
+        else:
+            logger.warning(f"⚠️ Static files directory not found: {static_dir}")
 
     return app
