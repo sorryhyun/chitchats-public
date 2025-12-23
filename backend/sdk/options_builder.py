@@ -8,6 +8,8 @@ This module handles the construction of ClaudeAgentOptions, including:
 """
 
 import logging
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from claude_agent_sdk import ClaudeAgentOptions
@@ -25,6 +27,17 @@ logger = logging.getLogger("OptionsBuilder")
 
 # Get settings singleton
 _settings = get_settings()
+
+
+def _get_claude_working_dir() -> str:
+    """Get a valid working directory for Claude subprocess.
+
+    Creates and returns a cross-platform temporary directory.
+    """
+    # Use system temp directory for cross-platform compatibility
+    temp_dir = Path(tempfile.gettempdir()) / "claude-empty"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return str(temp_dir)
 
 
 def build_agent_options(
@@ -85,7 +98,7 @@ def build_agent_options(
         allowed_tools=allowed_tool_names,
         tools=allowed_tool_names,
         setting_sources=[],
-        cwd="/tmp/claude-empty",
+        cwd=_get_claude_working_dir(),
         env={"CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK": "true"},
         hooks=hooks,
         include_partial_messages=True,
