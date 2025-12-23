@@ -7,6 +7,7 @@ including context building, API calls, and message broadcasting.
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 import crud
@@ -122,10 +123,8 @@ class ResponseGenerator:
             else [{"type": "text", "text": "Continue the conversation naturally."}]
         )
 
-        # Format conversation start timestamp
-        conversation_started = None
-        if room and room.created_at:
-            conversation_started = format_kst_timestamp(room.created_at, "%Y-%m-%d %H:%M:%S KST")
+        # Format current timestamp with day of week
+        conversation_started = format_kst_timestamp(datetime.now(timezone.utc), "%Y-%m-%d (%a) %H:%M:%S KST")
 
         # Build agent response context
         logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id})")
