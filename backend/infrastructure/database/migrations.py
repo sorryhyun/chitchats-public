@@ -7,10 +7,9 @@ database upgrades without requiring manual deletion of the database.
 
 import logging
 
+from database import is_sqlite
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
-
-from database import is_sqlite
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +205,11 @@ async def _add_indexes(conn):
 
 async def _sync_agents_from_filesystem(conn):
     """Sync agent data from filesystem (paths, groups, profile pics, system prompts)."""
+    import sys
     from pathlib import Path
 
     from config import get_base_system_prompt, list_available_configs, parse_agent_config
+    from core import get_settings
     from domain.agent_config import AgentConfigData
     from i18n.korean import format_with_particles
 
@@ -223,10 +224,37 @@ async def _sync_agents_from_filesystem(conn):
     if not agents:
         return
 
+    settings = get_settings()
     system_prompt_template = get_base_system_prompt()
-    agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+    agents_dir = settings.agents_dir
+    bundled_agents_dir = settings.bundled_agents_dir
+    project_root = settings.project_root
     image_extensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]
     common_names = ["profile", "avatar", "picture", "photo"]
+
+    def resolve_agent_folder(config_file: str | None, agent_name: str) -> Path | None:
+        """Resolve agent folder path, checking both user and bundled directories."""
+        # Try user agents directory first
+        if config_file:
+            folder = project_root / config_file
+            if folder.exists():
+                return folder
+        folder = agents_dir / agent_name
+        if folder.exists():
+            return folder
+
+        # In bundled mode, try bundled agents as fallback
+        if bundled_agents_dir and bundled_agents_dir.exists():
+            if config_file:
+                base_path = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else project_root  # type: ignore[attr-defined]
+                folder = base_path / config_file
+                if folder.exists():
+                    return folder
+            folder = bundled_agents_dir / agent_name
+            if folder.exists():
+                return folder
+
+        return None
 
     for agent in agents:
         updates = {}
@@ -241,12 +269,7 @@ async def _sync_agents_from_filesystem(conn):
 
         # Sync profile pic - use config_file path to find agent folder (supports group folders)
         if not (agent.profile_pic and agent.profile_pic.startswith("data:")):
-            # Use config_file path if available, otherwise fall back to direct folder
-            agent_folder = None
-            if agent.config_file:
-                agent_folder = Path(__file__).parent.parent.parent.parent / agent.config_file
-            if not agent_folder or not agent_folder.exists():
-                agent_folder = agents_dir / agent.name
+            agent_folder = resolve_agent_folder(agent.config_file, agent.name)
 
             found_pic = None
             if agent_folder and agent_folder.exists() and agent_folder.is_dir():

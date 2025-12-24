@@ -36,12 +36,20 @@ def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
     Returns:
         AgentConfigData object or None if folder doesn't exist
     """
+    import sys
+
     # Resolve path relative to project root if not absolute
     path = Path(file_path)
     if not path.is_absolute():
-        backend_dir = Path(__file__).parent.parent
-        project_root = backend_dir.parent
+        # First try user agents directory (working directory in bundled mode)
+        project_root = _settings.project_root
         path = project_root / file_path
+
+        # In bundled mode, also check bundled agents as fallback
+        if not path.exists() and getattr(sys, "frozen", False):
+            bundled_path = Path(sys._MEIPASS) / file_path  # type: ignore[attr-defined]
+            if bundled_path.exists():
+                path = bundled_path
 
     if not path.exists() or not path.is_dir():
         return None
@@ -114,45 +122,65 @@ def list_available_configs() -> Dict[str, Dict[str, Optional[str]]]:
     - agents/agent_name/ -> ungrouped agent
     - agents/group_체인소맨/agent_name/ -> agent in "체인소맨" group
 
+    In bundled mode, searches both the working directory (user agents) and
+    the bundled directory (default agents) as fallback.
+
     Returns:
         Dictionary mapping agent names to config info with keys:
         - "path": str (relative path to agent folder)
         - "group": Optional[str] (group name if in a group folder, None otherwise)
     """
-    # Get the project root directory (parent of backend/)
-    backend_dir = Path(__file__).parent.parent
-    project_root = backend_dir.parent
-    agents_dir = project_root / "agents"
-
-    if not agents_dir.exists():
-        return {}
+    agents_dir = _settings.agents_dir
+    bundled_agents_dir = _settings.bundled_agents_dir
+    project_root = _settings.project_root
 
     configs = {}
     required_files = ["in_a_nutshell.md", "characteristics.md"]
 
-    # Check for folder-based configs
-    for item in agents_dir.iterdir():
-        if not item.is_dir() or item.name.startswith("."):
-            continue
+    def scan_agents_dir(agents_path: Path, base_path: Path):
+        """Scan an agents directory and add found configs."""
+        if not agents_path.exists():
+            return
 
-        # Check if this is a group folder (starts with "group_")
-        if item.name.startswith("group_"):
-            # Extract group name (remove "group_" prefix)
-            group_name = item.name[6:]  # Remove "group_" prefix
+        for item in agents_path.iterdir():
+            if not item.is_dir() or item.name.startswith("."):
+                continue
 
-            # Scan for agent folders inside the group folder
-            for agent_item in item.iterdir():
-                if agent_item.is_dir() and not agent_item.name.startswith("."):
-                    # Verify it has at least one required config file
-                    if any((agent_item / f).exists() for f in required_files):
-                        agent_name = agent_item.name
-                        relative_path = agent_item.relative_to(project_root)
-                        configs[agent_name] = {"path": str(relative_path), "group": group_name}
-        else:
-            # Regular agent folder (not in a group)
-            if any((item / f).exists() for f in required_files):
-                agent_name = item.name
-                relative_path = item.relative_to(project_root)
-                configs[agent_name] = {"path": str(relative_path), "group": None}
+            # Check if this is a group folder (starts with "group_")
+            if item.name.startswith("group_"):
+                # Extract group name (remove "group_" prefix)
+                group_name = item.name[6:]  # Remove "group_" prefix
+
+                # Scan for agent folders inside the group folder
+                for agent_item in item.iterdir():
+                    if agent_item.is_dir() and not agent_item.name.startswith("."):
+                        # Verify it has at least one required config file
+                        if any((agent_item / f).exists() for f in required_files):
+                            agent_name = agent_item.name
+                            # Skip if already found (user agents take priority)
+                            if agent_name in configs:
+                                continue
+                            relative_path = agent_item.relative_to(base_path)
+                            configs[agent_name] = {"path": str(relative_path), "group": group_name}
+            else:
+                # Regular agent folder (not in a group)
+                if any((item / f).exists() for f in required_files):
+                    agent_name = item.name
+                    # Skip if already found (user agents take priority)
+                    if agent_name in configs:
+                        continue
+                    relative_path = item.relative_to(base_path)
+                    configs[agent_name] = {"path": str(relative_path), "group": None}
+
+    # First scan user agents directory (takes priority)
+    scan_agents_dir(agents_dir, project_root)
+
+    # In bundled mode, also scan bundled agents as fallback
+    if bundled_agents_dir and bundled_agents_dir.exists():
+        # For bundled agents, use a special prefix to indicate bundled location
+        # But we use the same relative path format for consistency
+        import sys
+        base_path = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else project_root  # type: ignore[attr-defined]
+        scan_agents_dir(bundled_agents_dir, base_path)
 
     return configs

@@ -5,11 +5,31 @@ This module provides type-safe access to environment variables with validation.
 All settings are loaded once at application startup.
 """
 
+import sys
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+def _is_frozen() -> bool:
+    """Check if running as a PyInstaller bundle."""
+    return getattr(sys, "frozen", False)
+
+
+def _get_base_path() -> Path:
+    """Get the base path for bundled resources (handles both dev and bundled modes)."""
+    if _is_frozen():
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).parent.parent.parent  # backend/core -> backend -> project_root
+
+
+def _get_work_dir() -> Path:
+    """Get the working directory for user data (agents, .env, etc.)."""
+    if _is_frozen():
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent.parent  # backend/core -> backend -> project_root
 
 # ============================================================================
 # Application Constants
@@ -174,20 +194,27 @@ class Settings(BaseSettings):
         """
         Get the project root directory (parent of backend/).
 
+        In bundled mode, returns the working directory (where the exe is located).
+        In dev mode, returns the parent of the backend directory.
+
         Returns:
             Path to the project root directory
         """
-        backend_dir = Path(__file__).parent.parent
-        return backend_dir.parent
+        return _get_work_dir()
 
     @property
     def backend_dir(self) -> Path:
         """
         Get the backend directory.
 
+        In bundled mode, this is the temp extraction directory.
+        In dev mode, this is the actual backend directory.
+
         Returns:
             Path to the backend directory
         """
+        if _is_frozen():
+            return _get_base_path()
         return Path(__file__).parent.parent
 
     @property
@@ -195,20 +222,40 @@ class Settings(BaseSettings):
         """
         Get the agents configuration directory.
 
+        In bundled mode, agents are in the working directory (copied from bundle on first run).
+        In dev mode, agents are in the project root.
+
         Returns:
             Path to the agents directory
         """
-        return self.project_root / "agents"
+        return _get_work_dir() / "agents"
+
+    @property
+    def bundled_agents_dir(self) -> Path | None:
+        """
+        Get the bundled agents directory (fallback for bundled mode).
+
+        Returns:
+            Path to bundled agents directory in frozen mode, None in dev mode
+        """
+        if _is_frozen():
+            return _get_base_path() / "agents"
+        return None
 
     @property
     def config_dir(self) -> Path:
         """
         Get the configuration files directory.
 
+        In bundled mode, config is at the base path (extraction directory).
+        In dev mode, config is in backend/config.
+
         Returns:
-            Path to backend/config directory
+            Path to config directory
         """
-        return self.backend_dir / "config"
+        if _is_frozen():
+            return _get_base_path() / "config"
+        return Path(__file__).parent.parent / "config"
 
     @property
     def tools_config_path(self) -> Path:
