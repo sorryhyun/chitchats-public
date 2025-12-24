@@ -47,7 +47,7 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.A
     transparent = agent.transparent  # Use provided value by default
 
     if agent.group:
-        from config.loaders import get_group_config
+        from sdk.config.loaders import get_group_config
 
         group_config = get_group_config(agent.group)
         # Override with group config if present
@@ -195,7 +195,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
 
     # Load group config to update interrupt_every_turn, priority, and transparent if agent belongs to a group
     if agent.group:
-        from config.loaders import get_group_config
+        from sdk.config.loaders import get_group_config
 
         group_config = get_group_config(agent.group)
         if "interrupt_every_turn" in group_config:

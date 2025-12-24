@@ -5,5 +5,16 @@
   "newAgent": "New Agent",
   "searchAgents": "Search agents...",
   "clearSearch": "Clear search",
-  "howToUse": "How to Use"
+  "howToUse": "How to Use",
+  "exportConversations": "Export Claude Code Conversations",
+  "allProjects": "All Projects",
+  "noConversationsFound": "No conversations found",
+  "retry": "Retry",
+  "raw": "Raw",
+  "simplified": "Simplified",
+  "downloadRaw": "Download raw JSONL (includes thinking signatures)",
+  "downloadSimplified": "Download simplified (thinking signatures removed)",
+  "exportDescription": "Raw format includes thinking block signatures. Simplified format removes signatures while preserving thinking content.",
+  "export": "Export",
+  "close": "Close"
 }

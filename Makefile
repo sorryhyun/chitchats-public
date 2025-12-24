@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-sqlite prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -7,7 +7,8 @@ help:
 	@echo "ChitChats - Available commands:"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev               - Run backend + frontend (local development)"
+	@echo "  make dev               - Run backend + frontend (PostgreSQL)"
+	@echo "  make dev-sqlite        - Run backend + frontend (SQLite)"
 	@echo "  make install           - Install all dependencies (backend + frontend)"
 	@echo "  make run-backend       - Run backend server only"
 	@echo "  make run-frontend      - Run frontend server only"
@@ -70,6 +71,15 @@ dev:
 	@echo "Press Ctrl+C to stop all servers"
 # 	@$(MAKE) -j3 run-backend run-frontend run-tunnel-backend
 	@$(MAKE) -j3 run-backend run-frontend
+
+dev-sqlite:
+	@mkdir -p /tmp/claude-empty
+	@echo "Starting backend and frontend with SQLite..."
+	@echo "Backend will run on http://localhost:8000"
+	@echo "Frontend will run on http://localhost:5173"
+	@echo "SQLite database: ./chitchats.db"
+	@echo "Press Ctrl+C to stop all servers"
+	USE_SQLITE=true $(MAKE) -j3 run-backend run-frontend
 
 prod:
 	@echo "Starting production deployment..."

@@ -1,6 +1,6 @@
 """FastAPI routers for modular endpoint organization."""
 
-from . import agent_management, agents, auth, debug, mcp_tools, messages, room_agents, rooms
+from . import agent_management, agents, auth, debug, exports, mcp_tools, messages, room_agents, rooms
 
 __all__ = [
     "auth",
@@ -10,5 +10,6 @@ __all__ = [
     "messages",
     "agent_management",
     "debug",
+    "exports",
     "mcp_tools",
 ]

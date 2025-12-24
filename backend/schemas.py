@@ -42,6 +42,7 @@ class AgentBase(BaseModel):
     is_critic: bool = False
     interrupt_every_turn: bool = False
     priority: int = 0
+    transparent: bool = False
 
 
 class AgentCreate(AgentBase):

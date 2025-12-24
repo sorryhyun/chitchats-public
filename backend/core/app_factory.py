@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     """
     from auth import AuthMiddleware
     from fastapi.middleware.cors import CORSMiddleware
-    from routers import agent_management, agents, auth, debug, mcp_tools, messages, room_agents, rooms
+    from routers import agent_management, agents, auth, debug, exports, mcp_tools, messages, room_agents, rooms
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
     from slowapi.util import get_remote_address
@@ -130,6 +130,7 @@ def create_app() -> FastAPI:
     app.include_router(room_agents.router, prefix="/rooms", tags=["Room-Agents"])
     app.include_router(messages.router, prefix="/rooms", tags=["Messages"])
     app.include_router(debug.router, prefix="/debug", tags=["Debug"])
+    app.include_router(exports.router, prefix="/exports", tags=["Exports"])
     app.include_router(mcp_tools.router, tags=["MCP Tools"])
 
     # Mount MCP server - exposes simplified tools for easy LLM integration

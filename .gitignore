@@ -54,3 +54,4 @@ htmlcov/
 .env*.local
 backend/chitchats.db
 /cloudflared.db
+chitchats.db

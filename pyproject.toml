@@ -38,7 +38,8 @@ dependencies = [
     "pytest>=8.3.3",
     "aiohttp",
     "Pillow>=10.0.0",
-    "fastapi-mcp>=0.3.0"
+    "fastapi-mcp>=0.3.0",
+    "aiosqlite>=0.21.0",
 ]
 
 [dependency-groups]
@@ -50,7 +51,6 @@ dev = [
     "faker>=33.1.0",
     "pre-commit>=4.0.0",
     "ruff>=0.8.4",
-    "aiosqlite>=0.21.0",  # For in-memory test database
 ]
 
 [tool.ruff]

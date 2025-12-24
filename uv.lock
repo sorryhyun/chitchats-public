@@ -350,6 +350,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "aiosqlite" },
     { name = "annotated-doc" },
     { name = "annotated-types" },
     { name = "anyio" },
@@ -388,7 +389,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "aiosqlite" },
     { name = "faker" },
     { name = "poethepoet" },
     { name = "pre-commit" },
@@ -401,6 +401,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
+    { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "annotated-doc", specifier = "==0.0.3" },
     { name = "annotated-types", specifier = "==0.7.0" },
     { name = "anyio", specifier = "==4.11.0" },
@@ -439,7 +440,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "faker", specifier = ">=33.1.0" },
     { name = "poethepoet", specifier = ">=0.29.0" },
     { name = "pre-commit", specifier = ">=4.0.0" },
