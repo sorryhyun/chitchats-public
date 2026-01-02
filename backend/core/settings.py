@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     # Model configuration
     use_haiku: bool = False
 
+    # Experimental features
+    experimental_assistant_priming: bool = False
+
     # Debug configuration
     debug_agents: bool = False
 

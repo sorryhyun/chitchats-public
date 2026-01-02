@@ -8,6 +8,7 @@ This module handles the construction of ClaudeAgentOptions, including:
 """
 
 import logging
+import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,6 +28,26 @@ logger = logging.getLogger("OptionsBuilder")
 
 # Get settings singleton
 _settings = get_settings()
+
+
+# Project root directory (for bundled CLI path)
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+# Platform detection
+_IS_WINDOWS = sys.platform == "win32"
+
+
+def _get_cli_path() -> str | None:
+    """Get the CLI path based on platform.
+
+    On Windows, returns None to use the native Claude Code CLI
+    (bundled cli.js requires Node.js which may not be available).
+
+    On Linux/macOS, returns the path to the bundled patched CLI.
+    """
+    if _IS_WINDOWS:
+        return None  # Use native Claude Code CLI
+    return str(_PROJECT_ROOT / "bundled" / "cli.js")
 
 
 def _get_claude_working_dir() -> str:
@@ -92,6 +113,7 @@ def build_agent_options(
     options = ClaudeAgentOptions(
         model="claude-opus-4-5-20251101" if not _settings.use_haiku else "claude-haiku-4-5-20251001",
         system_prompt=final_system_prompt,
+        cli_path=_get_cli_path(),
         permission_mode="default",
         max_thinking_tokens=32768,
         mcp_servers=mcp_servers,
@@ -99,7 +121,13 @@ def build_agent_options(
         tools=allowed_tool_names,
         setting_sources=[],
         cwd=_get_claude_working_dir(),
-        env={"CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK": "true"},
+        env={
+            "CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK": "true",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "true",
+            "DISABLE_TELEMETRY": "true",
+            "DISABLE_ERROR_REPORTING": "true",
+            "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "true",
+        },
         hooks=hooks,
         include_partial_messages=True,
     )
