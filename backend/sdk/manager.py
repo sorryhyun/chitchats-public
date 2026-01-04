@@ -197,9 +197,10 @@ class AgentManager:
             skip_tool_called = False
             memory_entries = []  # Track memory entries from memorize tool calls
             anthropic_calls = []  # Track anthropic tool calls (via hook)
+            skip_tool_capture = []  # Track skip tool calls (via hook)
 
-            # Build agent options with hook to capture anthropic tool calls
-            options = build_agent_options(context, final_system_prompt, anthropic_calls)
+            # Build agent options with hooks to capture tool calls
+            options = build_agent_options(context, final_system_prompt, anthropic_calls, skip_tool_capture)
 
             # Build the message content - can be string or list of content blocks
             # Content blocks may include inline images within <conversation_so_far>
@@ -378,9 +379,10 @@ class AgentManager:
                 if parsed.session_id:
                     new_session_id = parsed.session_id
 
-                # Update skip flag
-                if parsed.skip_used:
+                # Update skip flag via hook capture (MCP tools detected via PostToolUse hook)
+                if skip_tool_capture and not skip_tool_called:
                     skip_tool_called = True
+                    logger.info("⏭️  Skip tool called")
 
                 # Collect memory entries
                 memory_entries.extend(parsed.memory_entries)
@@ -393,13 +395,21 @@ class AgentManager:
                 thinking_text = parsed.thinking_text
 
                 # Update streaming state for polling access
+                # When skip is used, clear response_text and mark as skipped
+                # This prevents showing skipped content in UI and saving on interrupt
                 if task_id in self.streaming_state:
-                    self.streaming_state[task_id]["thinking_text"] = thinking_text
-                    self.streaming_state[task_id]["response_text"] = response_text
+                    if skip_tool_called:
+                        self.streaming_state[task_id]["thinking_text"] = thinking_text
+                        self.streaming_state[task_id]["response_text"] = ""
+                        self.streaming_state[task_id]["skip_used"] = True
+                    else:
+                        self.streaming_state[task_id]["thinking_text"] = thinking_text
+                        self.streaming_state[task_id]["response_text"] = response_text
 
                 # Yield delta events for content and thinking
-                if content_delta:
-                    logger.info(f"🔄 YIELDING content delta | Length: {len(content_delta)}")
+                # Don't yield content deltas after skip tool is called
+                # (content after skip is the "reason for skipping" which should be hidden)
+                if content_delta and not skip_tool_called:
                     yield {
                         "type": "content_delta",
                         "delta": content_delta,
@@ -407,7 +417,6 @@ class AgentManager:
                     }
 
                 if thinking_delta:
-                    logger.info(f"🔄 YIELDING thinking delta | Length: {len(thinking_delta)}")
                     yield {
                         "type": "thinking_delta",
                         "delta": thinking_delta,

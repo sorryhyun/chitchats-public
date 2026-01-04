@@ -134,7 +134,11 @@ class TestStreamParser:
         assert result.thinking_text == "Dictionary thinking content"
 
     def test_parse_skip_tool_call(self):
-        """Test parsing skip tool usage."""
+        """Test that skip tool is NOT detected in stream parser.
+
+        Skip detection has been moved to PostToolUse hooks for MCP tools.
+        Stream parser no longer detects skip tool calls.
+        """
         # Mock ToolUseBlock for skip
         tool_block = Mock()
         tool_block.type = "tool_use"
@@ -149,11 +153,12 @@ class TestStreamParser:
 
         result = StreamParser.parse_message(message, "", "")
 
-        assert result.skip_used is True
-        assert result.has_tool_usage is True
+        # Skip is now detected via hooks, not stream parser
+        assert result.skip_used is False
+        assert result.has_tool_usage is False
 
     def test_parse_skip_tool_call_dict_format(self):
-        """Test parsing skip tool in dict format."""
+        """Test that skip tool in dict format is NOT detected in stream parser."""
         tool_block = {"type": "tool_use", "name": "some_agent__skip"}
 
         message = Mock()
@@ -162,7 +167,8 @@ class TestStreamParser:
 
         result = StreamParser.parse_message(message, "", "")
 
-        assert result.skip_used is True
+        # Skip is now detected via hooks, not stream parser
+        assert result.skip_used is False
 
     def test_parse_memorize_tool_call(self):
         """Test parsing memorize tool usage."""
@@ -273,7 +279,7 @@ class TestStreamParser:
         if hasattr(thinking_block, "text"):
             del thinking_block.text
 
-        # Tool use block
+        # Tool use block (skip - no longer detected in stream parser)
         tool_block = Mock()
         tool_block.type = "tool_use"
         tool_block.name = "agent__skip"
@@ -288,7 +294,8 @@ class TestStreamParser:
 
         assert result.response_text == "Hello"
         assert result.thinking_text == "Processing..."
-        assert result.skip_used is True
+        # Skip is now detected via hooks, not stream parser
+        assert result.skip_used is False
 
     def test_parse_multiple_text_blocks(self):
         """Test parsing multiple text blocks accumulates content."""

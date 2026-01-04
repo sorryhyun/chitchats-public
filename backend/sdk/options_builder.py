@@ -65,6 +65,7 @@ def build_agent_options(
     context: "AgentResponseContext",
     final_system_prompt: str,
     anthropic_calls_capture: list[str] | None = None,
+    skip_tool_capture: list[bool] | None = None,
 ) -> ClaudeAgentOptions:
     """Build Claude Agent SDK options for an agent.
 
@@ -72,6 +73,7 @@ def build_agent_options(
         context: Agent response context containing agent config and metadata
         final_system_prompt: The final system prompt to use
         anthropic_calls_capture: Optional list to capture anthropic tool call situations
+        skip_tool_capture: Optional list to capture skip tool usage (append True when skip is called)
 
     Returns:
         Configured ClaudeAgentOptions ready for client creation
@@ -107,8 +109,8 @@ def build_agent_options(
         "action": action_mcp_server,
     }
 
-    # Create PostToolUse hook to capture anthropic tool calls
-    hooks = _build_anthropic_capture_hooks(anthropic_calls_capture)
+    # Create PostToolUse hooks to capture tool calls (anthropic, skip)
+    hooks = _build_tool_capture_hooks(anthropic_calls_capture, skip_tool_capture)
 
     options = ClaudeAgentOptions(
         model="claude-opus-4-5-20251101" if not _settings.use_haiku else "claude-haiku-4-5-20251001",
@@ -138,31 +140,55 @@ def build_agent_options(
     return options
 
 
-def _build_anthropic_capture_hooks(
+def _build_tool_capture_hooks(
     anthropic_calls_capture: list[str] | None,
+    skip_tool_capture: list[bool] | None,
 ) -> dict | None:
-    """Build PostToolUse hooks for capturing anthropic tool calls.
+    """Build PostToolUse hooks for capturing tool calls (anthropic, skip).
 
     Args:
         anthropic_calls_capture: List to append captured situations to, or None to skip
+        skip_tool_capture: List to append True when skip tool is called, or None to skip
 
     Returns:
         Hooks dict for ClaudeAgentOptions, or None if no capture needed
     """
-    if anthropic_calls_capture is None:
+    hook_matchers = []
+
+    # Hook for anthropic tool calls
+    if anthropic_calls_capture is not None:
+
+        async def capture_anthropic_tool(
+            input_data: PostToolUseHookInput, _tool_use_id: str | None, _ctx: dict
+        ) -> SyncHookJSONOutput:
+            """Hook to capture anthropic tool calls."""
+            tool_name = input_data.get("tool_name", "")
+            if tool_name.endswith("__anthropic"):
+                tool_input = input_data.get("tool_input", {})
+                situation = tool_input.get("situation", "")
+                if situation:
+                    anthropic_calls_capture.append(situation)
+                    logger.info(f"🔒 Captured anthropic tool call: {situation[:100]}...")
+            return {"continue_": True}
+
+        hook_matchers.append(HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool]))
+
+    # Hook for skip tool calls
+    if skip_tool_capture is not None:
+
+        async def capture_skip_tool(
+            input_data: PostToolUseHookInput, _tool_use_id: str | None, _ctx: dict
+        ) -> SyncHookJSONOutput:
+            """Hook to capture skip tool calls."""
+            tool_name = input_data.get("tool_name", "")
+            if tool_name.endswith("__skip"):
+                skip_tool_capture.append(True)
+                logger.info("⏭️  Skip tool detected via hook!")
+            return {"continue_": True}
+
+        hook_matchers.append(HookMatcher(matcher="mcp__action__skip", hooks=[capture_skip_tool]))
+
+    if not hook_matchers:
         return None
 
-    async def capture_anthropic_tool(
-        input_data: PostToolUseHookInput, _tool_use_id: str | None, _ctx: dict
-    ) -> SyncHookJSONOutput:
-        """Hook to capture anthropic tool calls."""
-        tool_name = input_data.get("tool_name", "")
-        if tool_name.endswith("__anthropic"):
-            tool_input = input_data.get("tool_input", {})
-            situation = tool_input.get("situation", "")
-            if situation:
-                anthropic_calls_capture.append(situation)
-                logger.info(f"Captured anthropic tool call: {situation[:100]}...")
-        return {"continue_": True}
-
-    return {"PostToolUse": [HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool])]}
+    return {"PostToolUse": hook_matchers}

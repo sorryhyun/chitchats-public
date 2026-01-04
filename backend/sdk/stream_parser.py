@@ -93,15 +93,14 @@ class StreamParser:
                     )
 
                     # Check for tool calls
+                    # Note: MCP tools (skip, anthropic) are detected via PostToolUse hooks
+                    # Only memorize is detected here as fallback for memory_entries
                     if block_type == "tool_use":
                         tool_name = getattr(block, "name", None) or (
                             block.get("name") if isinstance(block, dict) else None
                         )
 
-                        if tool_name and tool_name.endswith("__skip"):
-                            skip_tool_called = True
-                            logger.info("⏭️  Agent chose to skip")
-                        elif tool_name and tool_name.endswith("__memorize"):
+                        if tool_name and tool_name.endswith("__memorize"):
                             tool_input = getattr(block, "input", None) or (
                                 block.get("input") if isinstance(block, dict) else None
                             )
@@ -110,15 +109,6 @@ class StreamParser:
                                 if memory_entry:
                                     memory_entries.append(memory_entry)
                                     logger.info(f"💾 Agent recorded memory: {memory_entry}")
-                        elif tool_name and tool_name.endswith("__anthropic"):
-                            tool_input = getattr(block, "input", None) or (
-                                block.get("input") if isinstance(block, dict) else None
-                            )
-                            if tool_input and isinstance(tool_input, dict):
-                                situation = tool_input.get("situation", "")
-                                if situation:
-                                    anthropic_calls.append(situation)
-                                    logger.info(f"🔒 Agent called anthropic tool: {situation}")
 
                     # Handle thinking blocks
                     block_class_name = block.__class__.__name__ if hasattr(block, "__class__") else ""

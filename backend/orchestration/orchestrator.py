@@ -109,9 +109,10 @@ class ChatOrchestrator:
             for agent_id, state in partial_responses.items():
                 response_text = state.get("response_text", "").strip()
                 thinking_text = state.get("thinking_text", "")
+                skip_used = state.get("skip_used", False)
 
-                # Only save if there's actual response content
-                if response_text:
+                # Only save if there's actual response content and agent wasn't skipping
+                if response_text and not skip_used:
                     logger.info(
                         f"💾 Saving partial response | Room: {room_id} | Agent: {agent_id} | "
                         f"Length: {len(response_text)} chars"
@@ -123,6 +124,10 @@ class ChatOrchestrator:
                         thinking=thinking_text if thinking_text else None,
                     )
                     await crud.create_message(db, room_id, message, update_room_activity=False)
+                elif skip_used:
+                    logger.info(
+                        f"⏭️  Skipping partial response (agent used skip tool) | Room: {room_id} | Agent: {agent_id}"
+                    )
 
     async def cleanup_room_state(self, room_id: int, agent_manager: AgentManager):
         """
