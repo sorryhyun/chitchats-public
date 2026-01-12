@@ -1,43 +1,44 @@
 """
-Client pool for managing Claude SDK client lifecycle and pooling.
+Client pool for managing AI client lifecycle and pooling.
 
 This module provides the ClientPool class which manages the lifecycle of
-ClaudeSDKClient instances, implementing connection pooling to avoid spawning
-multiple CLI processes unnecessarily.
+AI client instances (Claude, Codex, etc.), implementing connection pooling
+to avoid spawning multiple CLI processes unnecessarily.
 
-SDK Best Practice: Reuse ClaudeSDKClient instances within sessions to avoid
-spawning multiple CLI processes. Each client maintains conversation context
-across queries.
+Best Practice: Reuse client instances within sessions to avoid spawning
+multiple CLI processes. Each client maintains conversation context across
+queries.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Tuple
+from typing import Any, Tuple, Union
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from domain.task_identifier import TaskIdentifier
+from providers.base import AIClient
 
 logger = logging.getLogger("ClientPool")
 
 
 class ClientPool:
     """
-    Manages pooling and lifecycle of Claude SDK clients.
+    Manages pooling and lifecycle of AI clients (Claude, Codex, etc.).
 
-    SDK Best Practice: Reuse ClaudeSDKClient instances within sessions
-    to avoid spawning multiple CLI processes. Each client maintains
-    conversation context across queries.
+    Best Practice: Reuse client instances within sessions to avoid spawning
+    multiple CLI processes. Each client maintains conversation context across
+    queries.
 
     Pool Strategy:
         - Key: TaskIdentifier(room_id, agent_id)
-        - Value: ClaudeSDKClient instance
+        - Value: AIClient instance (ClaudeSDKClient, CodexClient, etc.)
         - Cleanup: Background disconnect to avoid cancel scope issues
         - Concurrency: Semaphore allows up to MAX_CONCURRENT_CONNECTIONS simultaneous connections
     """
 
-    # Allow up to 3 concurrent connections (prevents ProcessTransport issues while allowing parallelism)
+    # Allow up to 10 concurrent connections (prevents ProcessTransport issues while allowing parallelism)
     MAX_CONCURRENT_CONNECTIONS = 10
     # Stabilization delay after each connection (seconds)
     CONNECTION_STABILIZATION_DELAY = 0.05
@@ -46,7 +47,7 @@ class ClientPool:
 
     def __init__(self):
         """Initialize the client pool."""
-        self.pool: dict[TaskIdentifier, ClaudeSDKClient] = {}
+        self.pool: dict[TaskIdentifier, Union[AIClient, ClaudeSDKClient]] = {}
         # Use semaphore instead of lock to allow limited concurrency
         self._connection_semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CONNECTIONS)
         # Per-task_id locks to prevent duplicate client creation for the same task
@@ -58,6 +59,32 @@ class ClientPool:
         if task_id not in self._task_locks:
             self._task_locks[task_id] = asyncio.Lock()
         return self._task_locks[task_id]
+
+    def _extract_session_id(self, options: Any) -> str | None:
+        """
+        Extract session ID from provider-specific options.
+
+        Supports:
+        - Claude: options.resume (session ID for resuming conversations)
+        - Codex: options.thread_id (thread ID for conversation continuity)
+        - Generic: Any options object with session_id attribute
+
+        Args:
+            options: Provider-specific options object
+
+        Returns:
+            Session ID string if found, None otherwise
+        """
+        # Try Claude-specific field first (most common)
+        if hasattr(options, "resume"):
+            return getattr(options, "resume", None)
+        # Try Codex-specific field
+        if hasattr(options, "thread_id"):
+            return getattr(options, "thread_id", None)
+        # Try generic session_id field
+        if hasattr(options, "session_id"):
+            return getattr(options, "session_id", None)
+        return None
 
     async def get_or_create(self, task_id: TaskIdentifier, options: ClaudeAgentOptions) -> Tuple[ClaudeSDKClient, bool]:
         """
@@ -78,10 +105,11 @@ class ClientPool:
         # Check if client exists outside the lock (fast path)
         if task_id in self.pool:
             existing_client = self.pool[task_id]
+            # Extract session ID using provider-agnostic method
             old_session_id = (
-                getattr(existing_client.options, "resume", None) if hasattr(existing_client, "options") else None
+                self._extract_session_id(existing_client.options) if hasattr(existing_client, "options") else None
             )
-            new_session_id = getattr(options, "resume", None)
+            new_session_id = self._extract_session_id(options)
 
             logger.debug(f"Client exists for {task_id} | Old session: {old_session_id} | New session: {new_session_id}")
 
@@ -91,7 +119,7 @@ class ClientPool:
                     f"Session changed for {task_id} (old: {old_session_id}, new: {new_session_id}), recreating client"
                 )
                 # Just remove from pool without calling disconnect()
-                # The SDK's disconnect() has internal cancel scopes that interfere with SQLAlchemy
+                # The disconnect() method has internal cancel scopes that can interfere with SQLAlchemy
                 # Let GC handle cleanup of the old client
                 self._remove_from_pool(task_id)
                 # Fall through to create new client below
@@ -107,10 +135,11 @@ class ClientPool:
             # Double-check after acquiring task lock (another coroutine might have created it)
             if task_id in self.pool:
                 existing_client = self.pool[task_id]
+                # Extract session ID using provider-agnostic method
                 old_session_id = (
-                    getattr(existing_client.options, "resume", None) if hasattr(existing_client, "options") else None
+                    self._extract_session_id(existing_client.options) if hasattr(existing_client, "options") else None
                 )
-                new_session_id = getattr(options, "resume", None)
+                new_session_id = self._extract_session_id(options)
 
                 # If session changed, remove and recreate (without calling disconnect)
                 if old_session_id != new_session_id and (old_session_id is not None or new_session_id is not None):
@@ -256,7 +285,9 @@ class ClientPool:
         """
         return self.pool.keys()
 
-    async def _disconnect_client_background(self, client: ClaudeSDKClient, task_id: TaskIdentifier):
+    async def _disconnect_client_background(
+        self, client: Union[AIClient, ClaudeSDKClient], task_id: TaskIdentifier
+    ):
         """
         Background task for client disconnection with timeout.
 
@@ -265,7 +296,7 @@ class ClientPool:
         Uses asyncio.shield() to protect from cancellation of parent tasks.
 
         Args:
-            client: The client to disconnect
+            client: The client to disconnect (any AIClient implementation)
             task_id: Identifier for logging purposes
         """
         try:
