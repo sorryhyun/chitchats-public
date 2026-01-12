@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ChitChats is a multi-Claude chat room application where multiple Claude AI agents with different personalities can interact in real-time chat rooms.
+ChitChats is a multi-agent chat room application where multiple AI agents with different personalities can interact in real-time chat rooms. The application supports multiple AI providers (Claude and Codex) with provider selection at room creation time.
 
 **Tech Stack:**
 - Backend: FastAPI + SQLAlchemy (async) + PostgreSQL
 - Frontend: React + TypeScript + Vite + Tailwind CSS
-- AI Integration: Anthropic Claude Agent SDK
+- AI Integration: Multi-provider support (Claude Agent SDK, OpenAI Codex)
 - Real-time Communication: HTTP Polling (2-second intervals)
 - Background Processing: APScheduler for autonomous agent interactions
 
@@ -35,12 +35,13 @@ uv run pytest --cov=backend --cov-report=term-missing
 
 ### Backend
 - **FastAPI** application with REST API and polling endpoints
-- **Multi-agent orchestration** with Claude SDK integration
+- **Multi-provider architecture** with abstraction layer for Claude and Codex
 - **PostgreSQL** database with async SQLAlchemy (asyncpg)
 - **Background scheduler** for autonomous agent conversations
 - **In-memory caching** for performance optimization
 - **Domain layer** with Pydantic models for type-safe business logic
 - **Key features:**
+  - **Multi-provider support** - Choose between Claude or Codex when creating rooms (immutable after creation)
   - Agents are independent entities that persist across rooms
   - Room-specific conversation sessions per agent
   - Auto-seeding agents from `agents/` directory
@@ -58,11 +59,11 @@ uv run pytest --cov=backend --cov-report=term-missing
 - Phase 5 refactored SDK integration (AgentManager, ClientPool, StreamParser)
 - Debugging guides
 
-**For Phase 5 refactoring details**, see [plan.md](plan.md) which documents:
-- AgentManager split into focused components (TaskIdentifier, ClientPool, StreamParser)
-- SDK best practices integration
-- 172 lines reduced, improved testability
-- All phases completed (0-4)
+**For multi-provider implementation details**, see [plan.md](plan.md) which documents:
+- Provider abstraction layer (`backend/providers/`)
+- Immutable provider architecture (provider set at room creation)
+- Claude and Codex provider implementations
+- Provider health check endpoints
 
 **For caching system details**, see [backend/CACHING.md](backend/CACHING.md).
 
@@ -77,6 +78,43 @@ uv run pytest --cov=backend --cov-report=term-missing
   - HTTP polling for live message updates (2-second intervals)
   - Typing indicators
   - Agent thinking process display
+
+### Multi-Provider Architecture
+
+ChitChats supports multiple AI providers with an **immutable provider** design:
+
+**Supported Providers:**
+- **Claude** (default) - Anthropic Claude via Agent SDK
+- **Codex** - OpenAI Codex via CLI
+
+**Key Design Decisions:**
+- Provider is selected at room creation and **cannot be changed** afterward
+- Each room uses a single provider for all conversations
+- Provider indicator shown in room list and header (amber for Claude, green for Codex)
+- Session management is provider-specific (Claude uses sessions, Codex uses threads)
+
+**Provider Selection:**
+```
+Create Room Dialog:
+┌─────────────────────────────┐
+│ Room Name: [____________]   │
+│                             │
+│ Provider:                   │
+│ [🟠 Claude] [🟢 Codex]      │
+│                             │
+│ [Create Room]               │
+└─────────────────────────────┘
+```
+
+**Debug Endpoints:**
+- `GET /debug/providers` - List supported providers
+- `GET /debug/providers/health` - Check provider availability
+
+**Provider Implementation:**
+- Base classes in `backend/providers/base.py`
+- Provider factory in `backend/providers/factory.py`
+- Claude implementation in `backend/providers/claude/`
+- Codex implementation in `backend/providers/codex/`
 
 ## Agent Configuration
 

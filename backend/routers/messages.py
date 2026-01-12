@@ -6,15 +6,15 @@ from typing import List
 
 import crud
 import schemas
-from database import get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     ensure_room_access,
     get_agent_manager,
     get_chat_orchestrator,
     get_request_identity,
 )
-from exceptions import RoomNotFoundError
+from core.exceptions import RoomNotFoundError
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Request
 from infrastructure.images import compress_image_base64
 from orchestration import ChatOrchestrator

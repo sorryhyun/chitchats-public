@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 import pytest
-from auth import (
+from core.auth import (
     generate_jwt_token,
     get_jwt_secret,
     get_role_from_token,

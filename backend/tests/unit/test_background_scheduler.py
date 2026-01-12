@@ -7,7 +7,7 @@ Tests background processing of autonomous agent conversations.
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from background_scheduler import BackgroundScheduler
+from infrastructure.scheduler import BackgroundScheduler
 
 
 class SessionFactory:
@@ -247,10 +247,10 @@ class TestProcessRoomAutonomousRound:
 
         with (
             patch(
-                "background_scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
+                "infrastructure.scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
             ),
-            patch("background_scheduler.TapeExecutor") as mock_executor_class,
-            patch("background_scheduler.TapeGenerator") as mock_generator_class,
+            patch("infrastructure.scheduler.TapeExecutor") as mock_executor_class,
+            patch("infrastructure.scheduler.TapeGenerator") as mock_generator_class,
         ):
             mock_executor = Mock()
             mock_executor.execute = AsyncMock(return_value=mock_execution_result)
@@ -306,7 +306,7 @@ class TestProcessRoomAutonomousRound:
         mock_room = Mock(id=1, name="Test Room", max_interactions=None)  # Set all required attributes
         mock_agent = Mock(is_critic=False)
 
-        with patch("background_scheduler.crud.get_agents_cached", return_value=[mock_agent]):  # Only 1 agent
+        with patch("infrastructure.scheduler.crud.get_agents_cached", return_value=[mock_agent]):  # Only 1 agent
             await scheduler._process_room_autonomous_round(mock_db, mock_room)
 
             # Should not process
@@ -332,10 +332,10 @@ class TestProcessRoomAutonomousRound:
 
         with (
             patch(
-                "background_scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
+                "infrastructure.scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
             ),
             patch.object(scheduler, "_count_agent_messages", new=AsyncMock(return_value=10)),
-            patch("background_scheduler.TapeExecutor") as mock_executor_class,
+            patch("infrastructure.scheduler.TapeExecutor") as mock_executor_class,
         ):
             mock_executor = Mock()
             mock_executor.execute = AsyncMock()

@@ -1,7 +1,7 @@
 """
 Core application modules.
 
-This package contains core functionality like settings and logging configuration.
+This package contains core functionality like settings, logging, auth, and dependencies.
 """
 
 from .logging import get_logger, setup_logging

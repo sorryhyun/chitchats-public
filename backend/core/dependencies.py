@@ -3,7 +3,7 @@
 from typing import NamedTuple
 
 import crud
-from exceptions import RoomNotFoundError
+from core.exceptions import RoomNotFoundError
 from fastapi import HTTPException, Request
 from orchestration import ChatOrchestrator
 from sdk import AgentManager

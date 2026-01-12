@@ -10,7 +10,7 @@ import platform
 from pathlib import Path
 from typing import Any, List
 
-from auth import require_admin
+from core.auth import require_admin
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel

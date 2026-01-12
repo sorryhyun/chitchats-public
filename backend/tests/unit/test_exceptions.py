@@ -5,7 +5,7 @@ Tests exception initialization and error messages.
 """
 
 import pytest
-from exceptions import AgentNotFoundError, ConfigurationError, RoomAlreadyExistsError, RoomNotFoundError
+from core.exceptions import AgentNotFoundError, ConfigurationError, RoomAlreadyExistsError, RoomNotFoundError
 from fastapi import status
 
 

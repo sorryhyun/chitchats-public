@@ -7,7 +7,7 @@ and other debugging information.
 
 from typing import Dict, List
 
-from auth import require_admin
+from core.auth import require_admin
 from fastapi import APIRouter, Depends
 from providers import get_available_providers, check_provider_availability
 from services.cache_service import get_cache_service

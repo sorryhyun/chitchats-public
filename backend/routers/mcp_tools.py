@@ -10,14 +10,14 @@ from typing import Optional
 import crud
 import schemas
 from core import get_settings
-from database import get_db
-from dependencies import (
+from core.dependencies import (
     RequestIdentity,
     ensure_room_access,
     get_agent_manager,
     get_chat_orchestrator,
     get_request_identity,
 )
+from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field

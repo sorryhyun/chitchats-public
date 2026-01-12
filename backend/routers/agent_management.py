@@ -5,7 +5,7 @@ from pathlib import Path
 
 import crud
 import schemas
-from auth import require_admin
+from core.auth import require_admin
 from config import list_available_configs
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException

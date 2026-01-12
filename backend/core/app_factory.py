@@ -10,8 +10,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import crud
-from background_scheduler import BackgroundScheduler
 from database import get_db, init_db
+from infrastructure.scheduler import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from orchestration import ChatOrchestrator
@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    from auth import AuthMiddleware
+    from core.auth import AuthMiddleware
     from fastapi.middleware.cors import CORSMiddleware
     from routers import agent_management, agents, auth, debug, exports, mcp_tools, messages, room_agents, rooms
     from slowapi import Limiter, _rate_limit_exceeded_handler
