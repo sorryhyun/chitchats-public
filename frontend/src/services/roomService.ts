@@ -1,4 +1,4 @@
-import type { Room, RoomSummary, RoomUpdate } from '../types';
+import type { Room, RoomSummary, RoomUpdate, RoomCreate } from '../types';
 import { API_BASE_URL, getFetchOptions } from './apiClient';
 
 export const roomService = {
@@ -14,11 +14,11 @@ export const roomService = {
     return response.json();
   },
 
-  async createRoom(name: string): Promise<Room> {
+  async createRoom(data: RoomCreate): Promise<Room> {
     const response = await fetch(`${API_BASE_URL}/rooms`, getFetchOptions({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
     }));
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'Failed to create room' }));

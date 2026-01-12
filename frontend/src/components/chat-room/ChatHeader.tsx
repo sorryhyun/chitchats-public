@@ -62,7 +62,7 @@ export const ChatHeader = ({
           {/* Info Row - Only show on larger screens */}
           <div className="hidden sm:flex items-center gap-mobile mt-1 flex-wrap">
             <ConnectionStatus isConnected={isConnected} />
-            <RoomBadges roomName={roomName} isPaused={roomData?.is_paused || false} />
+            <RoomBadges roomName={roomName} isPaused={roomData?.is_paused || false} provider={roomData?.default_provider} />
             <ConversationCopyButton roomName={roomName} messages={messages} />
           </div>
         </div>

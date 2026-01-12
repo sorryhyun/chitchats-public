@@ -26,7 +26,7 @@ async def list_room_agents(
     return await crud.get_agents(db, room_id)
 
 
-@router.post("/{room_id}/agents/{agent_id}", response_model=schemas.Room)
+@router.post("/{room_id}/agents/{agent_id}", response_model=schemas.RoomWithAgents)
 async def add_agent_to_room(
     room_id: int,
     agent_id: int,

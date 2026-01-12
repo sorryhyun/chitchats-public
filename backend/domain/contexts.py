@@ -106,6 +106,7 @@ class AgentResponseContext:
         task_id: Optional unique identifier for tracking this task (for interruption)
         conversation_started: Optional timestamp when the conversation started
         has_situation_builder: Whether the room has a situation builder participant
+        provider: AI provider to use ('claude' or 'codex'), defaults to 'claude'
     """
 
     system_prompt: str
@@ -120,3 +121,4 @@ class AgentResponseContext:
     task_id: Optional[TaskIdentifier] = None
     conversation_started: Optional[str] = None
     has_situation_builder: bool = False
+    provider: str = "claude"  # AI provider: 'claude' or 'codex'

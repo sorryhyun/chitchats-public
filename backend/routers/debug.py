@@ -1,13 +1,15 @@
 """
 Debug and monitoring endpoints.
 
-These endpoints provide access to cache statistics and other debugging information.
+These endpoints provide access to cache statistics, provider health,
+and other debugging information.
 """
 
-from typing import Dict
+from typing import Dict, List
 
 from auth import require_admin
 from fastapi import APIRouter, Depends
+from providers import get_available_providers, check_provider_availability
 from services.cache_service import get_cache_service
 
 router = APIRouter()
@@ -57,3 +59,32 @@ async def clear_cache() -> Dict[str, str]:
     cache_service = get_cache_service()
     cache_service.clear()
     return {"status": "success", "message": "Cache cleared successfully"}
+
+
+@router.get("/providers", dependencies=[Depends(require_admin)])
+async def get_providers() -> Dict[str, List[str]]:
+    """
+    Get list of supported AI providers.
+
+    Returns:
+        Dictionary containing list of provider names
+    """
+    providers = get_available_providers()
+    return {"providers": [p.value for p in providers]}
+
+
+@router.get("/providers/health", dependencies=[Depends(require_admin)])
+async def get_provider_health() -> Dict[str, Dict[str, bool]]:
+    """
+    Check availability status of all AI providers.
+
+    Returns:
+        Dictionary mapping provider names to their availability status:
+        - available: True if provider is installed and authenticated
+    """
+    providers = get_available_providers()
+    health = {}
+    for provider in providers:
+        available = await check_provider_availability(provider)
+        health[provider.value] = {"available": available}
+    return {"providers": health}

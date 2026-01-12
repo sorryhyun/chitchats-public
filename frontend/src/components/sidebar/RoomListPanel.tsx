@@ -46,6 +46,15 @@ export const RoomListPanel = ({
                 {room.has_unread && (
                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
                 )}
+                {/* Provider indicator */}
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center text-[8px] ${
+                    room.default_provider === 'codex' ? 'bg-green-500' : 'bg-amber-500'
+                  }`}
+                  title={room.default_provider === 'codex' ? 'Codex' : 'Claude'}
+                >
+                  {room.default_provider === 'codex' ? 'X' : 'C'}
+                </span>
               </div>
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className={`font-medium truncate text-sm sm:text-base ${

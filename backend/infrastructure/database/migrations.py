@@ -29,6 +29,7 @@ async def run_migrations(engine: AsyncEngine):
         await _migrate_messages_table(conn)
         await _migrate_rooms_table(conn)
         await _migrate_room_agents_table(conn)
+        await _migrate_room_agent_sessions_table(conn)
         await _add_indexes(conn)
 
         # Data migrations - sync data from filesystem
@@ -132,6 +133,7 @@ async def _migrate_messages_table(conn):
         ("image_data", "TEXT", None),
         ("image_media_type", "VARCHAR", None),
         ("anthropic_calls", "TEXT", None),
+        ("provider", "VARCHAR", None),  # AI provider: 'claude' or 'codex'
     ]
 
     for col_name, col_type, default in columns:
@@ -166,6 +168,7 @@ async def _migrate_rooms_table(conn):
     simple_columns = [
         ("last_read_at", "TIMESTAMP", None),
         ("is_finished", "BOOLEAN", "FALSE"),
+        ("default_provider", "VARCHAR", "'claude'"),  # Default AI provider for room
     ]
 
     for col_name, col_type, default in simple_columns:
@@ -182,6 +185,51 @@ async def _migrate_room_agents_table(conn):
         logger.info("  Adding joined_at column to room_agents table...")
         await conn.execute(text("ALTER TABLE room_agents ADD COLUMN joined_at TIMESTAMP"))
         logger.info("  ✓ Added joined_at column")
+
+
+async def _migrate_room_agent_sessions_table(conn):
+    """Add provider-specific session columns to room_agent_sessions table."""
+    columns = [
+        ("claude_session_id", "VARCHAR", None),  # Claude Agent SDK session ID
+        ("codex_thread_id", "VARCHAR", None),  # Codex thread ID for conversation resume
+    ]
+
+    # Check if table exists first
+    if is_sqlite():
+        result = await conn.execute(
+            text("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='room_agent_sessions'")
+        )
+    else:
+        result = await conn.execute(
+            text("""
+                SELECT COUNT(*) as count
+                FROM information_schema.tables
+                WHERE table_name = 'room_agent_sessions'
+            """)
+        )
+    if result.first().count == 0:
+        return  # Table doesn't exist yet
+
+    for col_name, col_type, default in columns:
+        if not await _column_exists(conn, "room_agent_sessions", col_name):
+            default_clause = f" DEFAULT {default}" if default else ""
+            logger.info(f"  Adding {col_name} column to room_agent_sessions table...")
+            await conn.execute(
+                text(f"ALTER TABLE room_agent_sessions ADD COLUMN {col_name} {col_type}{default_clause}")
+            )
+            logger.info(f"  ✓ Added {col_name} column")
+
+    # Migrate existing session_id to claude_session_id if not already migrated
+    if await _column_exists(conn, "room_agent_sessions", "session_id"):
+        # Copy session_id to claude_session_id where claude_session_id is NULL
+        await conn.execute(
+            text("""
+                UPDATE room_agent_sessions
+                SET claude_session_id = session_id
+                WHERE claude_session_id IS NULL AND session_id IS NOT NULL
+            """)
+        )
+        logger.info("  ✓ Migrated existing session_id values to claude_session_id")
 
 
 async def _add_indexes(conn):

@@ -74,8 +74,11 @@ class ResponseGenerator:
         # Generate unique task ID for interruption tracking
         task_id = TaskIdentifier(room_id=orch_context.room_id, agent_id=agent.id)
 
-        # Fetch room to get created_at timestamp (use cache for performance)
+        # Fetch room to get created_at timestamp and default_provider (use cache for performance)
         room = await crud.get_room_cached(orch_context.db, orch_context.room_id)
+
+        # Get the provider from room's default_provider (default to 'claude' for legacy)
+        provider = getattr(room, "default_provider", "claude") or "claude"
 
         # Fetch only the messages since this agent's last response (cache for performance)
         room_messages = await crud.get_messages_after_agent_response_cached(
@@ -113,8 +116,8 @@ class ResponseGenerator:
         # Create message context for handlers
         msg_context = MessageContext(db=orch_context.db, room_id=orch_context.room_id, agent=agent)
 
-        # Get this agent's session for this specific room
-        session_id = await crud.get_room_agent_session(orch_context.db, orch_context.room_id, agent.id)
+        # Get this agent's session for this specific room and provider
+        session_id = await crud.get_room_agent_session(orch_context.db, orch_context.room_id, agent.id, provider)
 
         # Use conversation content blocks which include messages and images inline
         message_to_agent = (
@@ -127,7 +130,7 @@ class ResponseGenerator:
         conversation_started = format_kst_timestamp(datetime.now(timezone.utc), "%Y-%m-%d (%a) %H:%M:%S KST")
 
         # Build agent response context
-        logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id})")
+        logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id}) provider: {provider}")
         response_context = AgentResponseContext(
             system_prompt=agent.system_prompt,
             user_message=message_to_agent,  # Content blocks with inline images
@@ -141,6 +144,7 @@ class ResponseGenerator:
             task_id=task_id,
             conversation_started=conversation_started,
             has_situation_builder=has_situation_builder,
+            provider=provider,
         )
 
         # Handle streaming response events
@@ -187,7 +191,9 @@ class ResponseGenerator:
 
         # Update this room-agent session_id if it changed
         if new_session_id and new_session_id != session_id:
-            await crud.update_room_agent_session(orch_context.db, orch_context.room_id, agent.id, new_session_id)
+            await crud.update_room_agent_session(
+                orch_context.db, orch_context.room_id, agent.id, new_session_id, provider
+            )
 
         # Skip if agent chose not to respond
         if skipped or not response_text:

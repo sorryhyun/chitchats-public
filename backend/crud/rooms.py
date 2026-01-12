@@ -18,8 +18,13 @@ logger = logging.getLogger("CRUD")
 
 
 async def create_room(db: AsyncSession, room: schemas.RoomCreate, owner_id: str) -> models.Room:
-    """Create a new room scoped to a specific owner."""
-    db_room = models.Room(name=room.name, max_interactions=room.max_interactions, owner_id=owner_id)
+    """Create a new room scoped to a specific owner. Provider is immutable after creation."""
+    db_room = models.Room(
+        name=room.name,
+        max_interactions=room.max_interactions,
+        owner_id=owner_id,
+        default_provider=room.default_provider or "claude",
+    )
     db.add(db_room)
     await db.commit()
     await db.refresh(db_room, attribute_names=["agents", "messages"])
@@ -66,6 +71,8 @@ async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary
             owner_id=room.owner_id,
             max_interactions=room.max_interactions,
             is_paused=bool(room.is_paused),
+            is_finished=bool(room.is_finished),
+            default_provider=room.default_provider or "claude",
             created_at=room.created_at,
             last_activity_at=room.last_activity_at,
             last_read_at=room.last_read_at,
@@ -165,8 +172,8 @@ async def get_or_create_direct_room(db: AsyncSession, agent_id: int, owner_id: s
     if room:
         return room
 
-    # Otherwise, create a new direct room
-    db_room = models.Room(name=room_name, owner_id=owner_id)
+    # Otherwise, create a new direct room (default to claude provider)
+    db_room = models.Room(name=room_name, owner_id=owner_id, default_provider="claude")
     db.add(db_room)
     await db.flush()  # Flush to get the room ID
 

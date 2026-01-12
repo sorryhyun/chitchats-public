@@ -94,21 +94,48 @@ async def remove_agent_from_room(db: AsyncSession, room_id: int, agent_id: int) 
     return False
 
 
-async def get_room_agent_session(db: AsyncSession, room_id: int, agent_id: int) -> Optional[str]:
-    """Get the session_id for a specific agent in a specific room."""
+async def get_room_agent_session(
+    db: AsyncSession, room_id: int, agent_id: int, provider: str = "claude"
+) -> Optional[str]:
+    """Get the session/thread ID for a specific agent in a specific room.
+
+    Args:
+        db: Database session
+        room_id: Room ID
+        agent_id: Agent ID
+        provider: AI provider ('claude' or 'codex')
+
+    Returns:
+        Session ID for Claude, thread ID for Codex, or None if not found
+    """
     result = await db.execute(
         select(models.RoomAgentSession).where(
             models.RoomAgentSession.room_id == room_id, models.RoomAgentSession.agent_id == agent_id
         )
     )
     session = result.scalar_one_or_none()
-    return session.session_id if session else None
+    if not session:
+        return None
+
+    # Use the model's get_session_id method for provider-specific retrieval
+    return session.get_session_id(provider)
 
 
 async def update_room_agent_session(
-    db: AsyncSession, room_id: int, agent_id: int, session_id: str
+    db: AsyncSession, room_id: int, agent_id: int, session_id: str, provider: str = "claude"
 ) -> models.RoomAgentSession:
-    """Update or create a session_id for a specific agent in a specific room."""
+    """Update or create a session/thread ID for a specific agent in a specific room.
+
+    Args:
+        db: Database session
+        room_id: Room ID
+        agent_id: Agent ID
+        session_id: The session/thread ID to store
+        provider: AI provider ('claude' or 'codex')
+
+    Returns:
+        Updated RoomAgentSession
+    """
     result = await db.execute(
         select(models.RoomAgentSession).where(
             models.RoomAgentSession.room_id == room_id, models.RoomAgentSession.agent_id == agent_id
@@ -117,12 +144,13 @@ async def update_room_agent_session(
     session = result.scalar_one_or_none()
 
     if session:
-        # Update existing session
-        session.session_id = session_id
+        # Update existing session using provider-specific method
+        session.set_session_id(session_id, provider)
         session.updated_at = datetime.utcnow()
     else:
         # Create new session
-        session = models.RoomAgentSession(room_id=room_id, agent_id=agent_id, session_id=session_id)
+        session = models.RoomAgentSession(room_id=room_id, agent_id=agent_id)
+        session.set_session_id(session_id, provider)
         db.add(session)
 
     await db.commit()

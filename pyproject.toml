@@ -40,6 +40,7 @@ dependencies = [
     "Pillow>=10.0.0",
     "fastapi-mcp>=0.3.0",
     "aiosqlite>=0.21.0",
+    "toml>=0.10.2",
 ]
 
 [dependency-groups]

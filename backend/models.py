@@ -29,6 +29,7 @@ class Room(Base):
         DateTime, default=datetime.utcnow, index=True
     )  # Track last message time (updated only when messages are created)
     last_read_at = Column(DateTime, nullable=True)  # Track when user last viewed this room
+    default_provider = Column(String, default="claude")  # Default AI provider for this room
 
     agents = relationship("Agent", secondary=room_agents, back_populates="rooms")
     messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")
@@ -133,6 +134,7 @@ class Message(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     image_data = Column(Text, nullable=True)  # Base64-encoded image data
     image_media_type = Column(String, nullable=True)  # MIME type (e.g., 'image/png', 'image/jpeg')
+    provider = Column(String, nullable=True)  # AI provider used: 'claude' or 'codex' (NULL = claude for legacy)
 
     # Indexes for frequently queried foreign keys
     __table_args__ = (
@@ -150,8 +152,41 @@ class RoomAgentSession(Base):
 
     room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
     agent_id = Column(Integer, ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
-    session_id = Column(String, nullable=False)  # Claude Agent SDK session ID for this room-agent pair
+    # Legacy session_id field - always populated for DB constraint compatibility
+    session_id = Column(String, nullable=False)  # Use provider-specific fields for reading
+    # Provider-specific session IDs
+    claude_session_id = Column(String, nullable=True)  # Claude Agent SDK session ID
+    codex_thread_id = Column(String, nullable=True)  # Codex thread ID for conversation resume
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     room = relationship("Room", back_populates="agent_sessions")
     agent = relationship("Agent", back_populates="room_sessions")
+
+    def get_session_id(self, provider: str = "claude") -> str | None:
+        """Get the session ID for a specific provider.
+
+        Args:
+            provider: Provider name ('claude' or 'codex')
+
+        Returns:
+            Session/thread ID for the provider, or None if not set
+        """
+        if provider == "codex":
+            return self.codex_thread_id
+        # Default to Claude
+        return self.claude_session_id or self.session_id
+
+    def set_session_id(self, session_id: str, provider: str = "claude") -> None:
+        """Set the session ID for a specific provider.
+
+        Args:
+            session_id: The session/thread ID to store
+            provider: Provider name ('claude' or 'codex')
+        """
+        # Always set legacy session_id field (required by DB constraint)
+        self.session_id = session_id
+
+        if provider == "codex":
+            self.codex_thread_id = session_id
+        else:
+            self.claude_session_id = session_id

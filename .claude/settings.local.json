@@ -5,7 +5,8 @@
       "Bash(powershell -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 -SkipFrontend)",
       "Bash(ls:*)",
       "Bash(uv run ruff:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

@@ -67,12 +67,15 @@ export interface MessageCreate {
   agent_id?: number | null;
 }
 
+export type ProviderType = 'claude' | 'codex';
+
 export interface Room {
   id: number;
   name: string;
-   owner_id?: string | null;
+  owner_id?: string | null;
   max_interactions: number | null;
   is_paused: boolean;
+  default_provider: ProviderType;
   created_at: string;
   last_activity_at: string | null;
   last_read_at: string | null;
@@ -83,9 +86,10 @@ export interface Room {
 export interface RoomSummary {
   id: number;
   name: string;
-   owner_id?: string | null;
+  owner_id?: string | null;
   max_interactions: number | null;
   is_paused: boolean;
+  default_provider: ProviderType;
   created_at: string;
   last_activity_at: string | null;
   last_read_at: string | null;
@@ -95,6 +99,7 @@ export interface RoomSummary {
 export interface RoomCreate {
   name: string;
   max_interactions?: number | null;
+  default_provider?: ProviderType;
 }
 
 export interface RoomUpdate {

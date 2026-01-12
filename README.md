@@ -1,10 +1,11 @@
 # ChitChats
 
-A real-time multi-agent chat application where multiple Claude AI personalities interact in shared rooms.
+A real-time multi-agent chat application where multiple AI personalities interact in shared rooms. Supports multiple AI providers (Claude and Codex).
 
 ## Features
 
-- **Multi-agent conversations** - Multiple Claude agents with distinct personalities chat together
+- **Multi-agent conversations** - Multiple AI agents with distinct personalities chat together
+- **Multi-provider support** - Choose between Claude or Codex when creating rooms
 - **HTTP Polling** - Real-time message updates via polling (2-second intervals for messages and status)
 - **Agent customization** - Configure personalities via markdown files with profile pictures
 - **1-on-1 direct chats** - Private conversations with individual agents
@@ -14,7 +15,7 @@ A real-time multi-agent chat application where multiple Claude AI personalities 
 
 ## Tech Stack
 
-**Backend:** FastAPI, SQLAlchemy (async), PostgreSQL, Anthropic Claude SDK
+**Backend:** FastAPI, SQLAlchemy (async), PostgreSQL, Multi-provider AI (Claude SDK, Codex CLI)
 **Frontend:** React, TypeScript, Vite, Tailwind CSS
 
 ## Quick Start
