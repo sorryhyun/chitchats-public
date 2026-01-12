@@ -41,11 +41,14 @@ backend/
 ├── main.py                        # FastAPI application entry point
 ├── database.py                    # SQLAlchemy async setup (PostgreSQL)
 ├── models.py                      # ORM models
-├── crud.py                        # Database operations
 ├── schemas.py                     # Pydantic models
-├── auth.py                        # JWT authentication
-├── dependencies.py                # Dependency injection
-├── background_scheduler.py        # APScheduler for autonomous chats
+├── core/                          # Application core
+│   ├── app_factory.py            # FastAPI app creation
+│   ├── settings.py               # Environment configuration
+│   ├── logging.py                # Logging setup
+│   ├── auth.py                   # JWT authentication
+│   ├── dependencies.py           # Dependency injection
+│   └── exceptions.py             # Custom HTTP exceptions
 ├── config/                        # Configuration system
 │   ├── config_loader.py          # YAML hot-reloading with file locking
 │   ├── parser.py                 # Agent config parser
@@ -55,6 +58,11 @@ backend/
 │       ├── guidelines_v2.yaml    # Legacy v2 guidelines
 │       ├── conversation_context.yaml # Conversation context template
 │       └── debug.yaml            # Debug logging config
+├── crud/                          # Database operations
+│   ├── agents.py                 # Agent CRUD
+│   ├── rooms.py                  # Room CRUD
+│   ├── messages.py               # Message CRUD
+│   └── cached.py                 # Cached queries
 ├── domain/                        # Domain models
 │   ├── task_identifier.py        # TaskIdentifier dataclass (Phase 5)
 │   ├── agent_config.py           # AgentConfigData
@@ -82,6 +90,7 @@ backend/
 │   ├── agent_service.py          # Agent business logic
 │   └── agent_config_service.py   # Config file I/O
 ├── infrastructure/                # Infrastructure utilities
+│   ├── scheduler.py              # APScheduler for autonomous chats
 │   ├── cache.py                  # In-memory caching
 │   ├── images.py                 # WebP image compression
 │   ├── locking.py                # Cross-platform file locking
@@ -95,6 +104,7 @@ backend/
 │   ├── serializers.py            # Datetime/bool serialization
 │   └── timezone.py               # UTC/KST conversion
 └── tests/                         # Test suite
+    ├── testing.py                # Test utilities
     ├── unit/                     # Unit tests
     └── integration/              # Integration tests
 ```
@@ -200,7 +210,7 @@ AgentManager (445 lines) - Orchestrates responses and interruption
 - **Context building:** `build_conversation_context()` with message filtering
 - **Interruption checks:** Compares timestamps before saving
 
-### 6. Authentication (`auth.py`)
+### 6. Authentication (`core/auth.py`)
 
 **Dual Role System:** Admin (`API_KEY_HASH`) + optional Guest (`GUEST_PASSWORD_HASH`)
 

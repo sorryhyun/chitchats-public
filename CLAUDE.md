@@ -145,7 +145,7 @@ agents/
 - Tool configurations: `backend/config/tools/*.yaml` files
 - Changes apply immediately on next agent response (hot-reloading)
 - File locking prevents concurrent write conflicts
-- See `backend/utils/file_locking.py` for implementation
+- See `backend/infrastructure/locking.py` for implementation
 
 ### Tool Configuration (YAML-Based)
 
@@ -371,9 +371,9 @@ debug:
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/tools/debug.yaml`
 
-**Add database field:** Update `models.py`, add migration in `backend/utils/migrations.py`, update `schemas.py` and `crud.py`, restart
+**Add database field:** Update `models.py`, add migration in `backend/infrastructure/database/migrations.py`, update `schemas.py` and `crud/`, restart
 
-**Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud.py`, add endpoint in `main.py`
+**Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud/`, add endpoint in `routers/`
 
 ## Automated Simulations
 
