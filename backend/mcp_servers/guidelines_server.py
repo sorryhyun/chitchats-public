@@ -49,7 +49,7 @@ def create_guidelines_server(
     """Create an MCP server with guidelines tools."""
     server = Server("chitchats_guidelines")
 
-    # Load guidelines content using the same pattern as guidelines_tools.py
+    # Load guidelines content using sdk.config
     situation_builder_note = get_situation_builder_note(has_situation_builder)
     guidelines_content = get_tool_description(
         "guidelines", agent_name=agent_name, situation_builder_note=situation_builder_note

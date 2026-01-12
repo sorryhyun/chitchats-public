@@ -2,24 +2,23 @@
 Agent options builder for Claude SDK client configuration.
 
 This module handles the construction of ClaudeAgentOptions, including:
-- MCP server creation (action tools, guidelines tools)
+- MCP server configuration (standalone stdio servers)
 - Allowed tools configuration
 - Hook setup for capturing tool calls
 """
 
 import logging
+import os
 import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from claude_agent_sdk import ClaudeAgentOptions
-from claude_agent_sdk.types import HookMatcher, PostToolUseHookInput, SyncHookJSONOutput
+from claude_agent_sdk.types import HookMatcher, McpStdioServerConfig, PostToolUseHookInput, SyncHookJSONOutput
 from core import get_settings
-
-from .action_tools import create_action_mcp_server
-from .config import get_tool_names_by_group
-from .guidelines_tools import create_guidelines_mcp_server
+# Import directly from submodule to avoid circular import through sdk/__init__.py
+from sdk.config.tool_config import get_tool_names_by_group
 
 if TYPE_CHECKING:
     from domain.contexts import AgentResponseContext
@@ -30,24 +29,24 @@ logger = logging.getLogger("OptionsBuilder")
 _settings = get_settings()
 
 
-# Project root directory (for bundled CLI path)
-_PROJECT_ROOT = Path(__file__).parent.parent.parent
+# Project root directory (backend directory)
+_BACKEND_ROOT = Path(__file__).parent.parent.parent
 
 # Platform detection
 _IS_WINDOWS = sys.platform == "win32"
 
 
 def _get_cli_path() -> str | None:
-    """Get the CLI path based on platform.
+    """Get the CLI path based on environment configuration.
 
-    On Windows, returns None to use the native Claude Code CLI
-    (bundled cli.js requires Node.js which may not be available).
-
-    On Linux/macOS, returns the path to the bundled patched CLI.
+    Returns the bundled CLI path only if experimental_custom_cli=true is set
+    and not on Windows. Otherwise returns None to use the default Claude Code CLI.
     """
     if _IS_WINDOWS:
-        return None  # Use native Claude Code CLI
-    return str(_PROJECT_ROOT / "bundled" / "cli.js")
+        return None
+    if os.environ.get("EXPERIMENTAL_CUSTOM_CLI", "").lower() == "true":
+        return str(_BACKEND_ROOT / "bundled" / "cli.js")
+    return None
 
 
 def _get_claude_working_dir() -> str:
@@ -59,6 +58,67 @@ def _get_claude_working_dir() -> str:
     temp_dir = Path(tempfile.gettempdir()) / "claude-empty"
     temp_dir.mkdir(parents=True, exist_ok=True)
     return str(temp_dir)
+
+
+def _get_python_executable() -> str:
+    """Get the Python executable path for MCP servers."""
+    return sys.executable
+
+
+def _build_mcp_server_config(
+    context: "AgentResponseContext",
+) -> dict[str, McpStdioServerConfig]:
+    """Build MCP server configurations for standalone servers.
+
+    Args:
+        context: Agent response context containing agent config and metadata
+
+    Returns:
+        Dict mapping server names to McpStdioServerConfig
+    """
+    python_exe = _get_python_executable()
+    backend_path = str(_BACKEND_ROOT)
+
+    # Base environment for all MCP servers
+    base_env = {
+        "PYTHONPATH": backend_path,
+        "AGENT_NAME": context.agent_name,
+    }
+
+    # Add optional environment variables
+    if context.group_name:
+        base_env["AGENT_GROUP"] = context.group_name
+    if context.agent_id is not None:
+        base_env["AGENT_ID"] = str(context.agent_id)
+    if context.config.config_file:
+        base_env["CONFIG_FILE"] = context.config.config_file
+
+    # Build action server config
+    action_config: McpStdioServerConfig = {
+        "command": python_exe,
+        "args": ["-m", "mcp_servers.action_server"],
+        "env": {**base_env},
+    }
+
+    # Build guidelines server config
+    guidelines_env = {
+        "PYTHONPATH": backend_path,
+        "AGENT_NAME": context.agent_name,
+        "HAS_SITUATION_BUILDER": str(context.has_situation_builder).lower(),
+    }
+    if context.group_name:
+        guidelines_env["AGENT_GROUP"] = context.group_name
+
+    guidelines_config: McpStdioServerConfig = {
+        "command": python_exe,
+        "args": ["-m", "mcp_servers.guidelines_server"],
+        "env": guidelines_env,
+    }
+
+    return {
+        "action": action_config,
+        "guidelines": guidelines_config,
+    }
 
 
 def build_agent_options(
@@ -78,36 +138,12 @@ def build_agent_options(
     Returns:
         Configured ClaudeAgentOptions ready for client creation
     """
-    # Create action MCP server with skip, memorize, and optionally recall tools
-    logger.debug(f"Creating action MCP server for agent: '{context.agent_name}'")
-    action_mcp_server = create_action_mcp_server(
-        agent_name=context.agent_name,
-        agent_id=context.agent_id,
-        config_file=context.config.config_file,
-        long_term_memory_index=context.config.long_term_memory_index,
-        group_name=context.group_name,
-    )
-
-    # Create guidelines MCP server (handles both DESCRIPTION and ACTIVE_TOOL modes)
-    # - DESCRIPTION mode: Guidelines passively injected via tool description
-    # - ACTIVE_TOOL mode: Agents call mcp__guidelines__read to retrieve guidelines
-    logger.debug(
-        f"Creating guidelines MCP server for agent: '{context.agent_name}' (mode: {_settings.read_guideline_by})"
-    )
-    guidelines_mcp_server = create_guidelines_mcp_server(
-        agent_name=context.agent_name,
-        has_situation_builder=context.has_situation_builder,
-        group_name=context.group_name,
-    )
+    # Build standalone MCP server configurations
+    logger.debug(f"Building MCP server configs for agent: '{context.agent_name}'")
+    mcp_servers = _build_mcp_server_config(context)
 
     # Build allowed tools list using group-based approach
     allowed_tool_names = [*get_tool_names_by_group("guidelines"), *get_tool_names_by_group("action")]
-
-    # Build MCP servers dict
-    mcp_servers = {
-        "guidelines": guidelines_mcp_server,
-        "action": action_mcp_server,
-    }
 
     # Create PostToolUse hooks to capture tool calls (anthropic, skip)
     hooks = _build_tool_capture_hooks(anthropic_calls_capture, skip_tool_capture)

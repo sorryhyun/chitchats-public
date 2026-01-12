@@ -74,9 +74,10 @@ backend/
 ├── sdk/                           # Claude SDK integration (Phase 5 refactored)
 │   ├── manager.py                # AgentManager (orchestration)
 │   ├── client_pool.py            # ClientPool (lifecycle management)
-│   ├── stream_parser.py          # StreamParser (message parsing)
-│   ├── action_tools.py           # skip, memorize, recall (for chat agents)
-│   └── guidelines_tools.py       # guidelines read tool
+│   └── config/                   # Tool configuration (YAML loading)
+├── mcp_servers/                   # Standalone MCP servers (used by both providers)
+│   ├── action_server.py          # skip, memorize, recall tools
+│   └── guidelines_server.py      # guidelines read tool
 ├── services/                      # Business logic layer
 │   ├── agent_service.py          # Agent business logic
 │   └── agent_config_service.py   # Config file I/O
@@ -329,7 +330,7 @@ All endpoints except `/auth/*`, `/health`, `/docs`, and profile pictures require
 4. Create router endpoint in `routers/`
 
 **Add MCP tool:**
-1. Define in `sdk/action_tools.py` or `sdk/guidelines_tools.py`
+1. Define in `mcp_servers/action_server.py` or `mcp_servers/guidelines_server.py`
 2. Add config to `config/tools/tools.yaml`
 
 **Update system prompt/guidelines:**

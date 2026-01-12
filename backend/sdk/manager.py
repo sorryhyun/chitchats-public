@@ -13,34 +13,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import uuid
 from typing import AsyncIterator, Union
 
 from claude_agent_sdk import ClaudeSDKClient
-from core import get_settings
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
-from i18n.korean import format_with_particles
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
 from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
-from providers.claude.options import build_agent_options
 from providers.claude.parser import ClaudeStreamParser
 
 from .client_pool import ClientPool
 from .config import get_debug_config
 
-# Get settings singleton
-_settings = get_settings()
-
 # Configure from settings
 DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)
-
-# Platform detection - assistant priming requires patched CLI (not available on Windows)
-_IS_WINDOWS = sys.platform == "win32"
-
-THINKING_SIGNATURE = "Er0GCkYICxgCKkBRqpTP7V63o71i5XqXREkl0GXK2gaoptTNxx8OsN0NOH3u5Us2kRco+v54R48QVcxxDKEoEk3U7dno2HxnFOXyEgx1pKgFzl5mKzLwqaAaDICB/pukxNvF4DEwOSIwAHSxwJ0rO8V05U+4w7lHm/BB6lBl4P9dPadJr7+e7OSBvjvRm3YjYMUkspOS1BU1KqQFboJ3iObQ68gem0p5XAVik/9yZGvt/uO+sH2nqjTDHVfrQf/d2X8aTva4d56IbADKi4+D4Ozv7wRsBRVikm9ZvWrR68KxjVanvS3fW9drnZINIytmwemxg9Ny+G95fGgRc48NMeoPWcEoriCM5t9zv8ebkFxlYn41sm9aml1GVYYumtt7eEoGOrl0/zR0fSj4I59CDq0vah3vrNI4pLRANYR2kbjiotkyNzTLT8wzWuB7Z+25fyMeH9ThxeJH4JqDM1gAJbUZJKF3tuuH0Y+RDiQzS9G7rBCB2Nr0PNvtcYBqNcAbzY9/zVlbGBhFrrcRdyvSDj/vG6y/cc4IYZzH6FdyEcAe3mkGCGbF/W3wBr/KTY1BkHKq0/4Gu5/oct49BgZsAH1pkxTgm4oVQjMhjMmw3jMDSkj9ndJI3TVqLJmy67I7WdQPApuYVL8LeZHmmPrcOxBN6Hk2qWxEffjsmBudVGy0cxQTIUmiQDBQ23gVrE7g6wVYkZZaG8FoDYDtVIeMZ9j3A8FsmAhlWhdF2CnjKTqODNLnNpIs6E1zIoVnUbiWOcnObb1dmI3VLKNVfTo3kV6jAvJc2n0DVEq2iFhPh8aN0VyppzK/zE3C8LSs/fWWRKhY5wMr8sKxIP1uU6Wuw4iMoNdgtXKJazPZK+mekpT1IDYysDoZ0Q08aDW0gU4whfINGDgk7FEobWnoPVc2j55MQkJv+8zVUCTNQUFSmoRD2Erq5Uc/ZEapKMOqnBxUON5vB6Z4L2IqEqZB6D6n3pMRf9zZnqD9VCkIy50GgTTpioByKVKNqj4UOQJlobYIbuo3Gek5W2F7v2jaJ2efmCh5GZIu91FUSZ7PerbOOCJAg8CKngXyNtNjOt1IBuIfPVhSi00ieMzdNPqrFTamhxgB"
 
 # Suppress apscheduler debug/info logs
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
@@ -346,6 +334,9 @@ class AgentManager:
             skip_tool_capture = []  # Track skip tool calls (via hook)
 
             # Build agent options with hooks to capture tool calls
+            # Lazy import to avoid circular dependency
+            from providers.claude.options import build_agent_options
+
             options = build_agent_options(context, final_system_prompt, anthropic_calls, skip_tool_capture)
 
             # Build the message content - can be string or list of content blocks
@@ -407,103 +398,25 @@ class AgentManager:
             )
 
             try:
-                # Check if experimental assistant priming is enabled
-                # Assistant priming requires patched CLI (not available on Windows)
-                use_priming = _settings.experimental_assistant_priming and not _IS_WINDOWS
+                # Build query content
+                if isinstance(message_to_send, list) and has_images:
+                    # SDK requires async generator for multimodal content
+                    async def multimodal_message_generator():
+                        yield {
+                            "type": "user",
+                            "message": {
+                                "role": "user",
+                                "content": message_to_send,
+                            },
+                        }
 
-                if use_priming:
-                    # Build query content with assistant priming message + user message
-                    # This uses the SDK's async iterable pattern to send multiple messages
-                    agent_name = context.agent_name
-
-                    # Build assistant priming message with Korean particles
-                    priming_message = format_with_particles(
-                        "{agent_name:은는} 어떻게 생각할까요?", agent_name=agent_name
-                    )
-
-                    if isinstance(message_to_send, list) and has_images:
-                        # SDK requires async generator for multimodal content (per example.md pattern)
-                        async def multimodal_message_generator():
-                            # First: assistant priming message
-                            yield {
-                                "type": "assistant",
-                                "message": {
-                                    "role": "assistant",
-                                    "content": [
-                                        {
-                                            "type": "thinking",
-                                            "thinking": priming_message,
-                                            "signature": THINKING_SIGNATURE,
-                                        }
-                                    ],
-                                },
-                            }
-                            # Second: user message with images
-                            yield {
-                                "type": "user",
-                                "message": {
-                                    "role": "user",
-                                    "content": message_to_send,  # Content blocks with inline images
-                                },
-                            }
-
-                        logger.info(f"📸 Sending multimodal message with inline images | Task: {context.task_id}")
-                        query_content = multimodal_message_generator()
-                    else:
-                        # Text-only message: use async generator for assistant + user messages
-                        if isinstance(message_to_send, list):
-                            # Content blocks but no images - extract text
-                            text_content = "\n".join(
-                                b.get("text", "") for b in message_to_send if b.get("type") == "text"
-                            )
-                        else:
-                            text_content = message_to_send
-
-                        async def message_generator():
-                            # First: assistant priming message
-                            yield {
-                                "type": "assistant",
-                                "message": {
-                                    "role": "assistant",
-                                    "content": [
-                                        {
-                                            "type": "thinking",
-                                            "thinking": priming_message,
-                                            "signature": THINKING_SIGNATURE,
-                                        }
-                                    ],
-                                },
-                            }
-                            # Second: user message
-                            yield {
-                                "type": "user",
-                                "message": {
-                                    "role": "user",
-                                    "content": text_content,
-                                },
-                            }
-
-                        query_content = message_generator()
+                    logger.info(f"📸 Sending multimodal message with inline images | Task: {context.task_id}")
+                    query_content = multimodal_message_generator()
+                elif isinstance(message_to_send, list):
+                    # Content blocks but no images - extract text
+                    query_content = "\n".join(b.get("text", "") for b in message_to_send if b.get("type") == "text")
                 else:
-                    # Standard mode: send message directly without priming
-                    if isinstance(message_to_send, list) and has_images:
-
-                        async def multimodal_message_generator():
-                            yield {
-                                "type": "user",
-                                "message": {
-                                    "role": "user",
-                                    "content": message_to_send,
-                                },
-                            }
-
-                        logger.info(f"📸 Sending multimodal message with inline images | Task: {context.task_id}")
-                        query_content = multimodal_message_generator()
-                    elif isinstance(message_to_send, list):
-                        # Content blocks but no images - extract text
-                        query_content = "\n".join(b.get("text", "") for b in message_to_send if b.get("type") == "text")
-                    else:
-                        query_content = message_to_send
+                    query_content = message_to_send
 
                 # Add timeout to query to prevent hanging
                 await asyncio.wait_for(client.query(query_content), timeout=10.0)
