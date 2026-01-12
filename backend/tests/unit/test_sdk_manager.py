@@ -12,9 +12,9 @@ import pytest
 from domain.agent_config import AgentConfigData
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
+from providers.claude.options import build_agent_options
 from sdk.client_pool import ClientPool
 from sdk.manager import AgentManager
-from sdk.options_builder import build_agent_options
 
 
 class TestAgentManagerInit:

@@ -25,11 +25,11 @@ from i18n.korean import format_with_particles
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
 from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
+from providers.claude.options import build_agent_options
+from providers.claude.parser import ClaudeStreamParser
 
 from .client_pool import ClientPool
 from .config import get_debug_config
-from .options_builder import build_agent_options
-from .stream_parser import StreamParser
 
 # Get settings singleton
 _settings = get_settings()
@@ -65,8 +65,8 @@ class AgentManager:
         self.active_clients: dict[TaskIdentifier, Union[ClaudeSDKClient, AIClient]] = {}
         # Client pool for managing SDK client lifecycle
         self.client_pool = ClientPool()
-        # Stream parser for SDK message parsing
-        self.stream_parser = StreamParser()
+        # Stream parser for Claude SDK message parsing
+        self.stream_parser = ClaudeStreamParser()
         # Streaming state: tracks current thinking text per task during generation
         self.streaming_state: dict[TaskIdentifier, dict] = {}
 
