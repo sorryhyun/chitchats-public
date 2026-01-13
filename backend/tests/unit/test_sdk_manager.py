@@ -12,7 +12,7 @@ import pytest
 from domain.agent_config import AgentConfigData
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
-from providers.claude.options import build_agent_options
+from providers import AIClientOptions, get_provider
 from sdk.client_pool import ClientPool
 from sdk.manager import AgentManager
 
@@ -126,46 +126,47 @@ class TestInterruptRoom:
 
 
 class TestBuildAgentOptions:
-    """Tests for build_agent_options function."""
+    """Tests for provider.build_options() abstraction."""
 
     def test_build_agent_options_basic(self):
-        """Test building basic agent options."""
-        config = AgentConfigData(in_a_nutshell="Test agent", characteristics="Friendly", recent_events="Recent event")
+        """Test building basic agent options via provider."""
+        provider = get_provider("claude")
 
-        context = Mock(agent_name="TestAgent", config=config, session_id=None, has_situation_builder=False)
+        base_options = AIClientOptions(
+            system_prompt="System prompt",
+            model="",  # Use provider default
+            agent_name="TestAgent",
+            agent_id=1,
+            has_situation_builder=False,
+        )
 
-        with (
-            patch("sdk.options_builder.create_guidelines_mcp_server") as mock_guidelines_mcp,
-            patch("sdk.options_builder.create_action_mcp_server") as mock_action_mcp,
-        ):
-            mock_guidelines_mcp.return_value = Mock()
-            mock_action_mcp.return_value = Mock()
+        options = provider.build_options(base_options)
 
-            options = build_agent_options(context, "System prompt")
-
-            # Verify options were created correctly
-            assert options.system_prompt == "System prompt"
-            # Model is hardcoded to opus in options_builder.py
-            assert "claude-opus" in options.model
-            assert options.max_thinking_tokens == 32768
-            assert "guidelines" in options.mcp_servers
-            assert "action" in options.mcp_servers
+        # Verify options were created correctly
+        assert options.system_prompt == "System prompt"
+        # Model is set to opus or haiku based on settings
+        assert "claude" in options.model.lower()
+        assert options.max_thinking_tokens == 32768
+        assert "guidelines" in options.mcp_servers
+        assert "action" in options.mcp_servers
 
     def test_build_agent_options_with_session(self):
         """Test building options with session ID."""
-        config = AgentConfigData(in_a_nutshell="Test")
-        context = Mock(
-            agent_name="TestAgent", config=config, session_id="test_session_123", has_situation_builder=False
+        provider = get_provider("claude")
+
+        base_options = AIClientOptions(
+            system_prompt="System prompt",
+            model="",
+            agent_name="TestAgent",
+            agent_id=1,
+            session_id="test_session_123",
+            has_situation_builder=False,
         )
 
-        with (
-            patch("sdk.options_builder.create_guidelines_mcp_server"),
-            patch("sdk.options_builder.create_action_mcp_server"),
-        ):
-            options = build_agent_options(context, "System prompt")
+        options = provider.build_options(base_options)
 
-            # Should include resume session
-            assert options.resume == "test_session_123"
+        # Should include resume session
+        assert options.resume == "test_session_123"
 
 
 class TestGenerateSDKResponse:

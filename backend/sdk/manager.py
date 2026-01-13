@@ -22,7 +22,6 @@ from domain.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
 from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
-from providers.claude.parser import ClaudeStreamParser
 
 from .client_pool import ClientPool
 from .config import get_debug_config
@@ -53,8 +52,6 @@ class AgentManager:
         self.active_clients: dict[TaskIdentifier, Union[ClaudeSDKClient, AIClient]] = {}
         # Client pool for managing SDK client lifecycle
         self.client_pool = ClientPool()
-        # Stream parser for Claude SDK message parsing
-        self.stream_parser = ClaudeStreamParser()
         # Streaming state: tracks current thinking text per task during generation
         self.streaming_state: dict[TaskIdentifier, dict] = {}
 
@@ -333,11 +330,20 @@ class AgentManager:
             anthropic_calls = []  # Track anthropic tool calls (via hook)
             skip_tool_capture = []  # Track skip tool calls (via hook)
 
-            # Build agent options with hooks to capture tool calls
-            # Lazy import to avoid circular dependency
-            from providers.claude.options import build_agent_options
-
-            options = build_agent_options(context, final_system_prompt, anthropic_calls, skip_tool_capture)
+            # Build provider-agnostic options, then convert via provider
+            provider = get_provider(provider_type)
+            base_options = AIClientOptions(
+                system_prompt=final_system_prompt,
+                model="",  # Use provider default
+                session_id=context.session_id,
+                agent_name=context.agent_name,
+                agent_id=context.agent_id,
+                config_file=context.config.config_file if context.config else None,
+                group_name=context.group_name,
+                has_situation_builder=context.has_situation_builder,
+            )
+            options = provider.build_options(base_options, anthropic_calls, skip_tool_capture)
+            parser = provider.get_parser()
 
             # Build the message content - can be string or list of content blocks
             # Content blocks may include inline images within <conversation_so_far>
@@ -427,8 +433,8 @@ class AgentManager:
 
             # Receive and stream the response
             async for message in client.receive_response():
-                # Parse the message using StreamParser
-                parsed = self.stream_parser.parse_message(message, response_text, thinking_text)
+                # Parse the message using provider's parser
+                parsed = parser.parse_message(message, response_text, thinking_text)
 
                 # Calculate deltas for yielding
                 content_delta = parsed.response_text[len(response_text) :]
