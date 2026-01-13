@@ -16,6 +16,7 @@ from core.settings import SKIP_MESSAGE_TEXT
 from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
 from domain.task_identifier import TaskIdentifier
 from i18n.timezone import format_kst_timestamp
+from services.prompt_builder import build_system_prompt
 
 from orchestration.conversation import detect_conversation_type
 
@@ -129,10 +130,14 @@ class ResponseGenerator:
         # Format current timestamp with day of week
         conversation_started = format_kst_timestamp(datetime.now(timezone.utc), "%Y-%m-%d (%a) %H:%M:%S KST")
 
+        # Build provider-specific system prompt at runtime
+        # This allows different providers (Claude, Codex) to use different system prompts
+        provider_system_prompt = build_system_prompt(agent.name, agent_config, provider)
+
         # Build agent response context
         logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id}) provider: {provider}")
         response_context = AgentResponseContext(
-            system_prompt=agent.system_prompt,
+            system_prompt=provider_system_prompt,
             user_message=message_to_agent,  # Content blocks with inline images
             agent_name=agent.name,
             config=agent.get_config_data(),

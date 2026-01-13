@@ -48,6 +48,7 @@ def get_tool_description(
     situation_builder_note: str = "",
     memory_subtitles: str = "",
     group_name: Optional[str] = None,
+    provider: str = "claude",
 ) -> Optional[str]:
     """
     Get a tool description with template variables substituted.
@@ -59,6 +60,7 @@ def get_tool_description(
         situation_builder_note: Situation builder note to include
         memory_subtitles: Available memory subtitles for the recall tool
         group_name: Optional group name to apply group-specific overrides
+        provider: AI provider name ('claude', 'codex'). Defaults to 'claude'.
 
     Returns:
         Tool description string with variables substituted, or None if tool not found
@@ -68,7 +70,20 @@ def get_tool_description(
     if tool_name == "guidelines":
         guidelines_config = get_guidelines_config()
         active_version = guidelines_config.get("active_version", "v1")
-        template = guidelines_config.get(active_version, {}).get("template", "")
+        version_config = guidelines_config.get(active_version, {})
+
+        # Select provider-specific template
+        # Map 'claude' to 'claudecode', 'codex' to 'codex'
+        template_key = "codex" if provider == "codex" else "claudecode"
+        template = version_config.get(template_key, "")
+
+        # Fallback to 'claudecode' if provider-specific template not found
+        if not template and template_key != "claudecode":
+            template = version_config.get("claudecode", "")
+
+        # Legacy fallback to 'template' key for older config versions
+        if not template:
+            template = version_config.get("template", "")
 
         # Substitute template variables
         description = template.format(agent_name=agent_name, situation_builder_note=situation_builder_note)

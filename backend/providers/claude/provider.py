@@ -221,6 +221,7 @@ class ClaudeProvider(AIProvider):
             "PYTHONPATH": backend_path,
             "AGENT_NAME": base_options.agent_name,
             "HAS_SITUATION_BUILDER": str(base_options.has_situation_builder).lower(),
+            "PROVIDER": "claude",
         }
         if base_options.group_name:
             guidelines_env["AGENT_GROUP"] = base_options.group_name

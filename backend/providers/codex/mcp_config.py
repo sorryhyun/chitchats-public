@@ -74,6 +74,7 @@ def build_mcp_overrides(
     overrides.append(f'{guidelines_prefix}.cwd="{backend_path}"')
     overrides.append(f'{guidelines_prefix}.env.AGENT_NAME="{agent_name}"')
     overrides.append(f'{guidelines_prefix}.env.PYTHONPATH="{backend_path}"')
+    overrides.append(f'{guidelines_prefix}.env.PROVIDER="codex"')
 
     logger.debug(f"Built {len(overrides)} MCP config overrides for agent {agent_name}")
     return overrides

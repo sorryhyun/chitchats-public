@@ -18,7 +18,7 @@ from core.settings import (
 )
 
 
-def get_base_system_prompt() -> str:
+def get_base_system_prompt(provider: str = "claude") -> str:
     """
     Load the base system prompt from guidelines.yaml.
 
@@ -27,7 +27,13 @@ def get_base_system_prompt() -> str:
     - "system_prompt_sentiment": Sentiment-aware with trait expression guidance
     - "system_prompt_minimal": Streamlined version
 
+    Provider-specific system prompts are supported via 'active_system_prompt_{provider}' field.
+    For example, 'active_system_prompt_codex' for Codex provider.
+
     Character configuration is always appended to the system prompt with markdown headings.
+
+    Args:
+        provider: The AI provider name ('claude', 'codex'). Defaults to 'claude'.
 
     Returns:
         The system prompt template with {agent_name} placeholder
@@ -37,8 +43,20 @@ def get_base_system_prompt() -> str:
 
         guidelines_config = get_guidelines_config()
 
-        # Check for active_system_prompt selector (for guidelines_v2.yaml)
-        # Falls back to "system_prompt" if not specified
+        # Check for provider-specific system prompt selector
+        # Falls back to default 'active_system_prompt' if provider-specific not found
+        if provider and provider != "claude":
+            provider_key = f"active_system_prompt_{provider}"
+            active_prompt_key = guidelines_config.get(provider_key)
+            if active_prompt_key:
+                system_prompt = guidelines_config.get(active_prompt_key, "")
+                if system_prompt:
+                    return system_prompt.strip()
+                # Provider-specific key specified but prompt not found, log and fall through
+                import logging
+                logging.warning(f"System prompt '{active_prompt_key}' for provider '{provider}' not found, falling back to default")
+
+        # Default system prompt selection
         active_prompt_key = guidelines_config.get("active_system_prompt", "system_prompt")
         system_prompt = guidelines_config.get(active_prompt_key, "")
 

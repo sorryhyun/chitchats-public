@@ -45,14 +45,18 @@ def create_guidelines_server(
     agent_name: str,
     has_situation_builder: bool = False,
     group_name: Optional[str] = None,
+    provider: str = "claude",
 ) -> Server:
     """Create an MCP server with guidelines tools."""
     server = Server("chitchats_guidelines")
 
-    # Load guidelines content using sdk.config
+    # Load guidelines content using sdk.config (provider-specific)
     situation_builder_note = get_situation_builder_note(has_situation_builder)
     guidelines_content = get_tool_description(
-        "guidelines", agent_name=agent_name, situation_builder_note=situation_builder_note
+        "guidelines",
+        agent_name=agent_name,
+        situation_builder_note=situation_builder_note,
+        provider=provider,
     ) or "Guidelines not available."
 
     # Load extreme traits for group
@@ -131,14 +135,16 @@ async def main():
     agent_name = os.environ.get("AGENT_NAME", "Agent")
     group_name = os.environ.get("AGENT_GROUP")
     has_situation_builder = os.environ.get("HAS_SITUATION_BUILDER", "").lower() == "true"
+    provider = os.environ.get("PROVIDER", "claude")
 
-    logger.info(f"Starting guidelines MCP server for agent: {agent_name}")
+    logger.info(f"Starting guidelines MCP server for agent: {agent_name} (provider: {provider})")
 
     # Create server
     server = create_guidelines_server(
         agent_name=agent_name,
         has_situation_builder=has_situation_builder,
         group_name=group_name,
+        provider=provider,
     )
 
     # Run with stdio transport
