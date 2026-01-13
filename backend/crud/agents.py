@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-import models
+from infrastructure.database import Agent
 import schemas
 from config import list_available_configs, parse_agent_config
 from domain.agent_config import AgentConfigData
@@ -18,7 +18,7 @@ from .helpers import merge_agent_configs, persist_agent_to_filesystem, save_base
 logger = logging.getLogger("CRUD")
 
 
-async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.Agent:
+async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
     """Create an agent as an independent entity (not tied to any room initially)."""
     config_file = agent.config_file
 
@@ -74,7 +74,7 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.A
         if "transparent" in group_config:
             transparent = group_config["transparent"]
 
-    db_agent = models.Agent(
+    db_agent = Agent(
         name=agent.name,
         group=agent.group,
         config_file=config_file,
@@ -94,13 +94,13 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.A
     return db_agent
 
 
-async def get_all_agents(db: AsyncSession) -> List[models.Agent]:
+async def get_all_agents(db: AsyncSession) -> List[Agent]:
     """Get all agents globally."""
-    result = await db.execute(select(models.Agent))
+    result = await db.execute(select(Agent))
     return result.scalars().all()
 
 
-async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[models.Agent]:
+async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[Agent]:
     """
     Get agents by a list of IDs.
 
@@ -115,19 +115,19 @@ async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[mode
     """
     if not agent_ids:
         return []
-    result = await db.execute(select(models.Agent).where(models.Agent.id.in_(agent_ids)))
+    result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
     return list(result.scalars().all())
 
 
-async def get_agent(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:
+async def get_agent(db: AsyncSession, agent_id: int) -> Optional[Agent]:
     """Get a specific agent by ID."""
-    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
     return result.scalar_one_or_none()
 
 
 async def delete_agent(db: AsyncSession, agent_id: int) -> bool:
     """Delete an agent permanently."""
-    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if agent:
         await db.delete(agent)
@@ -136,9 +136,9 @@ async def delete_agent(db: AsyncSession, agent_id: int) -> bool:
     return False
 
 
-async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.AgentUpdate) -> Optional[models.Agent]:
+async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.AgentUpdate) -> Optional[Agent]:
     """Update an agent's nutshell, characteristics, backgrounds, memory, or recent events and rebuild system prompt."""
-    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
@@ -180,9 +180,9 @@ async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.Ag
     return agent
 
 
-async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:
+async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[Agent]:
     """Reload an agent's data from its config file and rebuild system prompt."""
-    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
@@ -253,7 +253,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
     return agent
 
 
-async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str) -> Optional[models.Agent]:
+async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str) -> Optional[Agent]:
     """
     Append a new memory entry to an agent's recent_events file.
     FILESYSTEM-PRIMARY: Only writes to filesystem, database is cache.
@@ -269,7 +269,7 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
     from services import AgentConfigService
 
     # Get the agent
-    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
@@ -310,7 +310,7 @@ async def seed_agents_from_configs(db: AsyncSession) -> None:
         group_name = config_info["group"]
 
         # Check if agent already exists
-        result = await db.execute(select(models.Agent).where(models.Agent.name == agent_name))
+        result = await db.execute(select(Agent).where(Agent.name == agent_name))
         existing_agent = result.scalar_one_or_none()
 
         if not existing_agent:

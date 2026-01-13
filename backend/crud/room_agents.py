@@ -5,31 +5,31 @@ CRUD operations for Room-Agent relationships and sessions.
 from datetime import datetime
 from typing import List, Optional
 
-import models
+from infrastructure.database import Agent, Message, Room, RoomAgentSession, room_agents
 from sqlalchemy import func, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 
-async def get_agents(db: AsyncSession, room_id: int) -> List[models.Agent]:
+async def get_agents(db: AsyncSession, room_id: int) -> List[Agent]:
     """Get all agents in a specific room."""
     # Query agents directly via join to avoid detached instance issues with cached objects
     result = await db.execute(
-        select(models.Agent).join(models.room_agents).where(models.room_agents.c.room_id == room_id)
+        select(Agent).join(room_agents).where(room_agents.c.room_id == room_id)
     )
     return list(result.scalars().all())
 
 
-async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Optional[models.Room]:
+async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Optional[Room]:
     """Add an existing agent to a room with invitation tracking."""
     # Load room with agents only (not messages - too expensive for large conversations)
     room_result = await db.execute(
-        select(models.Room).options(selectinload(models.Room.agents)).where(models.Room.id == room_id)
+        select(Room).options(selectinload(Room.agents)).where(Room.id == room_id)
     )
     room = room_result.scalar_one_or_none()
 
-    agent_result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = agent_result.scalar_one_or_none()
 
     if room and agent:
@@ -37,14 +37,14 @@ async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Op
             # Efficient check for existing messages (O(1) instead of loading all)
             has_messages = (
                 await db.scalar(
-                    select(func.count()).select_from(models.Message).where(models.Message.room_id == room_id).limit(1)
+                    select(func.count()).select_from(Message).where(Message.room_id == room_id).limit(1)
                 )
                 > 0
             )
 
             # Insert into room_agents with joined_at timestamp
             joined_at = datetime.utcnow()
-            await db.execute(insert(models.room_agents).values(room_id=room_id, agent_id=agent_id, joined_at=joined_at))
+            await db.execute(insert(room_agents).values(room_id=room_id, agent_id=agent_id, joined_at=joined_at))
             await db.commit()
 
             # Only create system message if this is a mid-conversation addition
@@ -69,7 +69,7 @@ async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Op
 async def remove_agent_from_room(db: AsyncSession, room_id: int, agent_id: int) -> bool:
     """Remove an agent from a room (agent still exists globally)."""
     room_result = await db.execute(
-        select(models.Room).options(selectinload(models.Room.agents)).where(models.Room.id == room_id)
+        select(Room).options(selectinload(Room.agents)).where(Room.id == room_id)
     )
     room = room_result.scalar_one_or_none()
 
@@ -109,8 +109,8 @@ async def get_room_agent_session(
         Session ID for Claude, thread ID for Codex, or None if not found
     """
     result = await db.execute(
-        select(models.RoomAgentSession).where(
-            models.RoomAgentSession.room_id == room_id, models.RoomAgentSession.agent_id == agent_id
+        select(RoomAgentSession).where(
+            RoomAgentSession.room_id == room_id, RoomAgentSession.agent_id == agent_id
         )
     )
     session = result.scalar_one_or_none()
@@ -123,7 +123,7 @@ async def get_room_agent_session(
 
 async def update_room_agent_session(
     db: AsyncSession, room_id: int, agent_id: int, session_id: str, provider: str = "claude"
-) -> models.RoomAgentSession:
+) -> RoomAgentSession:
     """Update or create a session/thread ID for a specific agent in a specific room.
 
     Args:
@@ -137,8 +137,8 @@ async def update_room_agent_session(
         Updated RoomAgentSession
     """
     result = await db.execute(
-        select(models.RoomAgentSession).where(
-            models.RoomAgentSession.room_id == room_id, models.RoomAgentSession.agent_id == agent_id
+        select(RoomAgentSession).where(
+            RoomAgentSession.room_id == room_id, RoomAgentSession.agent_id == agent_id
         )
     )
     session = result.scalar_one_or_none()
@@ -149,7 +149,7 @@ async def update_room_agent_session(
         session.updated_at = datetime.utcnow()
     else:
         # Create new session
-        session = models.RoomAgentSession(room_id=room_id, agent_id=agent_id)
+        session = RoomAgentSession(room_id=room_id, agent_id=agent_id)
         session.set_session_id(session_id, provider)
         db.add(session)
 

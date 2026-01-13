@@ -7,7 +7,8 @@
       "Bash(uv run ruff:*)",
       "Bash(uv run:*)",
       "WebFetch(domain:github.com)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

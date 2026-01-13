@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-import models
+from infrastructure.database import Agent, Room
 import schemas
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -17,9 +17,9 @@ from .helpers import get_room_with_relationships
 logger = logging.getLogger("CRUD")
 
 
-async def create_room(db: AsyncSession, room: schemas.RoomCreate, owner_id: str) -> models.Room:
+async def create_room(db: AsyncSession, room: schemas.RoomCreate, owner_id: str) -> Room:
     """Create a new room scoped to a specific owner. Provider is immutable after creation."""
-    db_room = models.Room(
+    db_room = Room(
         name=room.name,
         max_interactions=room.max_interactions,
         owner_id=owner_id,
@@ -36,11 +36,11 @@ async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary
     Get all rooms with unread status computed and sorted by recency.
     Rooms with unread messages appear first, sorted by last_activity_at descending.
     """
-    query = select(models.Room).order_by(models.Room.last_activity_at.desc())
+    query = select(Room).order_by(Room.last_activity_at.desc())
 
     # Guests only see their own rooms
     if identity and getattr(identity, "role", None) != "admin":
-        query = query.where(models.Room.owner_id == getattr(identity, "user_id", None))
+        query = query.where(Room.owner_id == getattr(identity, "user_id", None))
 
     result = await db.execute(query)
     rooms = result.scalars().all()
@@ -86,12 +86,12 @@ async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary
     return room_summaries
 
 
-async def get_room(db: AsyncSession, room_id: int) -> Optional[models.Room]:
+async def get_room(db: AsyncSession, room_id: int) -> Optional[Room]:
     """Get a specific room with all relationships."""
     return await get_room_with_relationships(db, room_id)
 
 
-async def update_room(db: AsyncSession, room_id: int, room_update: schemas.RoomUpdate) -> Optional[models.Room]:
+async def update_room(db: AsyncSession, room_id: int, room_update: schemas.RoomUpdate) -> Optional[Room]:
     """Update room configuration (max_interactions, is_paused)."""
     room = await get_room_with_relationships(db, room_id)
 
@@ -119,12 +119,12 @@ async def update_room(db: AsyncSession, room_id: int, room_update: schemas.RoomU
     return room
 
 
-async def mark_room_as_read(db: AsyncSession, room_id: int) -> Optional[models.Room]:
+async def mark_room_as_read(db: AsyncSession, room_id: int) -> Optional[Room]:
     """
     Mark a room as read by updating last_read_at to current time.
     This is used to track which rooms have unread messages.
     """
-    result = await db.execute(select(models.Room).where(models.Room.id == room_id))
+    result = await db.execute(select(Room).where(Room.id == room_id))
     room = result.scalar_one_or_none()
 
     if not room:
@@ -138,7 +138,7 @@ async def mark_room_as_read(db: AsyncSession, room_id: int) -> Optional[models.R
 
 async def delete_room(db: AsyncSession, room_id: int) -> bool:
     """Delete a room permanently."""
-    result = await db.execute(select(models.Room).where(models.Room.id == room_id))
+    result = await db.execute(select(Room).where(Room.id == room_id))
     room = result.scalar_one_or_none()
     if room:
         await db.delete(room)
@@ -147,10 +147,10 @@ async def delete_room(db: AsyncSession, room_id: int) -> bool:
     return False
 
 
-async def get_or_create_direct_room(db: AsyncSession, agent_id: int, owner_id: str) -> Optional[models.Room]:
+async def get_or_create_direct_room(db: AsyncSession, agent_id: int, owner_id: str) -> Optional[Room]:
     """Get or create a direct 1-on-1 room with an agent."""
     # First, check if agent exists
-    agent_result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
+    agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = agent_result.scalar_one_or_none()
 
     if not agent:
@@ -161,10 +161,10 @@ async def get_or_create_direct_room(db: AsyncSession, agent_id: int, owner_id: s
     room_name = f"Direct: {agent.name}"
 
     result = await db.execute(
-        select(models.Room)
-        .options(selectinload(models.Room.agents), selectinload(models.Room.messages))
-        .where(models.Room.name == room_name)
-        .where(models.Room.owner_id == owner_id)
+        select(Room)
+        .options(selectinload(Room.agents), selectinload(Room.messages))
+        .where(Room.name == room_name)
+        .where(Room.owner_id == owner_id)
     )
     room = result.scalar_one_or_none()
 
@@ -173,7 +173,7 @@ async def get_or_create_direct_room(db: AsyncSession, agent_id: int, owner_id: s
         return room
 
     # Otherwise, create a new direct room (default to claude provider)
-    db_room = models.Room(name=room_name, owner_id=owner_id, default_provider="claude")
+    db_room = Room(name=room_name, owner_id=owner_id, default_provider="claude")
     db.add(db_room)
     await db.flush()  # Flush to get the room ID
 

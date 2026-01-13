@@ -40,8 +40,13 @@ See [../SETUP.md](../SETUP.md) for authentication setup.
 backend/
 ├── main.py                        # FastAPI application entry point
 ├── database.py                    # SQLAlchemy async setup (PostgreSQL)
-├── models.py                      # ORM models
-├── schemas.py                     # Pydantic models
+├── models.py                      # Re-exports from infrastructure/database/models.py
+├── schemas/                       # Pydantic request/response schemas
+│   ├── __init__.py               # Re-exports all schemas
+│   ├── base.py                   # TimestampSerializerMixin
+│   ├── agent.py                  # Agent schemas
+│   ├── message.py                # Message schemas
+│   └── room.py                   # Room schemas
 ├── core/                          # Application core
 │   ├── app_factory.py            # FastAPI app creation
 │   ├── settings.py               # Environment configuration
@@ -50,12 +55,10 @@ backend/
 │   ├── dependencies.py           # Dependency injection
 │   └── exceptions.py             # Custom HTTP exceptions
 ├── config/                        # Configuration system
-│   ├── config_loader.py          # YAML hot-reloading with file locking
 │   ├── parser.py                 # Agent config parser
 │   └── tools/                    # YAML configuration files
 │       ├── tools.yaml            # Tool definitions
 │       ├── guidelines_3rd.yaml   # System prompt template (current)
-│       ├── guidelines_v2.yaml    # Legacy v2 guidelines
 │       ├── conversation_context.yaml # Conversation context template
 │       └── debug.yaml            # Debug logging config
 ├── crud/                          # Database operations
@@ -95,7 +98,9 @@ backend/
 │   ├── images.py                 # WebP image compression
 │   ├── locking.py                # Cross-platform file locking
 │   ├── database/
-│   │   └── migrations.py         # Automatic schema migrations
+│   │   ├── models.py             # SQLAlchemy ORM models
+│   │   ├── migrations.py         # Automatic schema migrations
+│   │   └── write_queue.py        # SQLite write serialization
 │   └── logging/
 │       ├── agent_logger.py       # Agent debug logging
 │       └── formatters.py         # Debug message formatting
@@ -104,9 +109,30 @@ backend/
 │   ├── serializers.py            # Datetime/bool serialization
 │   └── timezone.py               # UTC/KST conversion
 └── tests/                         # Test suite
+    ├── conftest.py               # Pytest fixtures
     ├── testing.py                # Test utilities
     ├── unit/                     # Unit tests
     └── integration/              # Integration tests
+```
+
+### Import Patterns
+
+**Models (SQLAlchemy ORM):**
+```python
+from infrastructure.database import Room, Agent, Message
+# or (full path)
+from infrastructure.database.models import Room, Agent, Message
+```
+
+**Schemas (Pydantic):**
+```python
+# Package import
+from schemas import Room, Agent, Message
+
+# Submodule import
+from schemas.room import Room, RoomCreate, RoomUpdate
+from schemas.agent import Agent, AgentCreate
+from schemas.message import Message, MessageCreate
 ```
 
 ## Core Components
@@ -328,15 +354,15 @@ All endpoints except `/auth/*`, `/health`, `/docs`, and profile pictures require
 ### Adding Features
 
 **Add DB field:**
-1. Update `models.py`
+1. Update `infrastructure/database/models.py`
 2. Add migration in `infrastructure/database/migrations.py`
-3. Update `schemas.py` and `crud.py`
+3. Update schemas in `schemas/` and CRUD in `crud/`
 4. Restart (migration runs automatically)
 
 **Add endpoint:**
-1. Define schemas in `schemas.py`
+1. Define schemas in `schemas/` (appropriate submodule)
 2. Add business logic to `services/`
-3. Add CRUD to `crud.py` if needed
+3. Add CRUD to `crud/` if needed
 4. Create router endpoint in `routers/`
 
 **Add MCP tool:**

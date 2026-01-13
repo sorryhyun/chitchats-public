@@ -26,9 +26,10 @@ class AgentConfigService:
 
     @staticmethod
     def get_project_root() -> Path:
-        """Get the project root directory (parent of backend/)."""
-        backend_dir = Path(__file__).parent.parent
-        return backend_dir.parent
+        """Get the project root directory from settings."""
+        from core import get_settings
+
+        return get_settings().project_root
 
     @staticmethod
     def append_to_recent_events(config_file: str, memory_entry: str, timestamp: Optional[datetime] = None) -> bool:

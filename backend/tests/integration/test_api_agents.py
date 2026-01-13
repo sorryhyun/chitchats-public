@@ -70,7 +70,7 @@ class TestAgentEndpoints:
         # Create an agent to delete with unique name
         import time
 
-        from models import Agent
+        from infrastructure.database import Agent
 
         unique_name = f"agent_to_delete_{int(time.time() * 1000)}"
         agent = Agent(name=unique_name, system_prompt="Test")

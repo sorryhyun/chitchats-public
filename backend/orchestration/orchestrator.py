@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger("ChatOrchestrator")
 
 import crud
-import models
+from infrastructure.database import Agent, Message, Room
 import schemas
 from domain.contexts import OrchestrationContext
 from sdk import AgentManager
@@ -193,7 +193,7 @@ class ChatOrchestrator:
             saved_user_msg = await crud.create_message(db, room_id, user_message, update_room_activity=True)
         else:
             # Fetch the already-saved message in this session
-            saved_user_msg = await db.get(models.Message, saved_user_message_id)
+            saved_user_msg = await db.get(Message, saved_user_message_id)
 
         # Note: User message broadcasting removed - not needed with HTTP polling architecture
         # Clients poll /api/rooms/{room_id}/messages to get new messages

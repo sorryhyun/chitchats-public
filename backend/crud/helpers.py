@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Optional
 
-import models
+from infrastructure.database import Message, Room
 from core.settings import get_settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -16,17 +16,17 @@ from sqlalchemy.orm import selectinload
 logger = logging.getLogger("CRUD")
 
 
-async def get_room_with_relationships(db: AsyncSession, room_id: int) -> Optional[models.Room]:
+async def get_room_with_relationships(db: AsyncSession, room_id: int) -> Optional[Room]:
     """
     Helper to fetch a room with all relationships (agents and messages).
     Consolidates common query pattern used across multiple CRUD operations.
     """
     result = await db.execute(
-        select(models.Room)
+        select(Room)
         .options(
-            selectinload(models.Room.agents), selectinload(models.Room.messages).selectinload(models.Message.agent)
+            selectinload(Room.agents), selectinload(Room.messages).selectinload(Message.agent)
         )
-        .where(models.Room.id == room_id)
+        .where(Room.id == room_id)
     )
     return result.scalar_one_or_none()
 

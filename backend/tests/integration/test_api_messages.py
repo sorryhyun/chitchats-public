@@ -154,7 +154,7 @@ class TestCriticMessages:
     @pytest.mark.api
     async def test_get_critic_messages(self, authenticated_client, sample_room, test_db):
         """Test getting critic messages from a room."""
-        from models import Agent, Message
+        from infrastructure.database import Agent, Message
 
         # Create a critic agent
         critic = Agent(name="critic_agent", system_prompt="You are a critic.", is_critic=1)
@@ -234,7 +234,7 @@ class TestGuestMessageRestrictions:
     @pytest.mark.api
     async def test_guest_can_send_messages(self, guest_client, test_db):
         """Test that guest can send messages to their own room."""
-        from models import Room
+        from infrastructure.database import Room
 
         client, token = guest_client
 
@@ -254,7 +254,7 @@ class TestGuestMessageRestrictions:
     @pytest.mark.api
     async def test_guest_can_poll_messages(self, guest_client, test_db):
         """Test that guest can poll for messages in their own room."""
-        from models import Room
+        from infrastructure.database import Room
 
         client, token = guest_client
 

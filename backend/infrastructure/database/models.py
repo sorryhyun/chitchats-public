@@ -1,3 +1,14 @@
+"""
+SQLAlchemy ORM models for the database schema.
+
+This module defines the database tables and their relationships:
+- Room: Chat rooms
+- Agent: AI agents with configurations
+- Message: Chat messages
+- RoomAgentSession: Session tracking per room/agent
+- room_agents: Many-to-many association between rooms and agents
+"""
+
 from datetime import datetime
 
 from database import Base

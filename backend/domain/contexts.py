@@ -11,7 +11,7 @@ from .agent_config import AgentConfigData
 from .task_identifier import TaskIdentifier
 
 if TYPE_CHECKING:
-    import models
+    from infrastructure.database import Agent
     from sdk import AgentManager
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,7 @@ class MessageContext:
 
     db: "AsyncSession"
     room_id: int
-    agent: "models.Agent"
+    agent: "Agent"
 
 
 @dataclass

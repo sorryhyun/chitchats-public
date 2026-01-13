@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 import crud
-import models
+from infrastructure.database import Message, Room
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from orchestration import ChatOrchestrator
 from orchestration.agent_ordering import separate_interrupt_agents
@@ -133,7 +133,7 @@ class BackgroundScheduler:
             except Exception as e:
                 logger.error(f"Error closing database session: {e}")
 
-    async def _process_room_for_background_job(self, room: models.Room):
+    async def _process_room_for_background_job(self, room: Room):
         async with self._session_scope() as room_db:
             await self._process_room_autonomous_round(room_db, room)
 
@@ -152,14 +152,14 @@ class BackgroundScheduler:
 
         # Use the room's last_activity_at field to avoid repeated full message scans
         stmt = (
-            select(models.Room)
-            .options(selectinload(models.Room.agents))  # Eager load agents
+            select(Room)
+            .options(selectinload(Room.agents))  # Eager load agents
             .where(
-                models.Room.is_paused == False,
-                models.Room.is_finished == False,
-                models.Room.last_activity_at >= cutoff_time,
+                Room.is_paused == False,
+                Room.is_finished == False,
+                Room.last_activity_at >= cutoff_time,
             )
-            .order_by(models.Room.last_activity_at.desc())
+            .order_by(Room.last_activity_at.desc())
         )
 
         # Optionally cap the number of rooms fetched to reduce load during spikes
@@ -186,7 +186,7 @@ class BackgroundScheduler:
             del self.chat_orchestrator.active_room_tasks[room_id]
             logger.debug(f"Cleaned up completed task for room {room_id}")
 
-    async def _process_room_autonomous_round(self, db: AsyncSession, room: models.Room):
+    async def _process_room_autonomous_round(self, db: AsyncSession, room: Room):
         """
         Process one autonomous round for a room using tape-based scheduling.
 
@@ -256,9 +256,9 @@ class BackgroundScheduler:
     async def _count_agent_messages(self, db: AsyncSession, room_id: int) -> int:
         """Count the number of agent messages (role='assistant') in a room."""
         result = await db.execute(
-            select(func.count(models.Message.id)).where(
-                models.Message.room_id == room_id,
-                models.Message.role == "assistant",
+            select(func.count(Message.id)).where(
+                Message.room_id == room_id,
+                Message.role == "assistant",
             )
         )
         return result.scalar() or 0
