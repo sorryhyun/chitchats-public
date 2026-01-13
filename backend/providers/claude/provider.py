@@ -34,13 +34,22 @@ _IS_WINDOWS = sys.platform == "win32"
 
 
 def _get_cli_path() -> Optional[str]:
-    """Get the CLI path based on platform.
+    """Get the CLI path based on platform and settings.
 
-    On Windows, returns None to use the native Claude Code CLI.
-    On Linux/macOS, returns the path to the bundled patched CLI.
+    Returns None to use the native Claude Code CLI when:
+    - Running on Windows
+    - EXPERIMENTAL_CUSTOM_CLI is set to false
+
+    Returns the bundled patched CLI path when:
+    - EXPERIMENTAL_CUSTOM_CLI is set to true (on Linux/macOS)
     """
     if _IS_WINDOWS:
         return None  # Use native Claude Code CLI
+
+    # Check if custom CLI is enabled
+    if not _settings.experimental_custom_cli:
+        return None  # Use native Claude Code CLI
+
     return str(_BACKEND_ROOT / "bundled" / "cli.js")
 
 

@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     # Debug configuration
     debug_agents: bool = False
 
+    # Experimental features
+    experimental_custom_cli: bool = False
+
     # Background scheduler configuration
     max_concurrent_rooms: int = 5
 
@@ -171,6 +174,16 @@ class Settings(BaseSettings):
     @classmethod
     def validate_debug_agents(cls, v: Optional[str]) -> bool:
         """Parse debug_agents from string to bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return False
+
+    @field_validator("experimental_custom_cli", mode="before")
+    @classmethod
+    def validate_experimental_custom_cli(cls, v: Optional[str]) -> bool:
+        """Parse experimental_custom_cli from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
