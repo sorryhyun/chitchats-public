@@ -89,10 +89,6 @@ function AppContent() {
     localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
-  const handleSelectAgent = async (agentId: number) => {
-    await agentContext.selectAgent(agentId);
-  };
-
   const handleSelectRoom = (roomId: number) => {
     agentContext.clearSelection();
     roomContext.selectRoom(roomId);
@@ -189,7 +185,6 @@ function AppContent() {
       >
         <MainSidebar
           onSelectRoom={handleSelectRoom}
-          onSelectAgent={handleSelectAgent}
           onOpenDocs={() => setShowDocsModal(true)}
           onOpenExport={() => setShowExportModal(true)}
         />

@@ -10,17 +10,17 @@ import { CreateAgentForm } from './CreateAgentForm';
 import { AgentListPanel } from './AgentListPanel';
 import { koreanSearch } from '../../utils/koreanSearch';
 import { LanguageSwitcher } from '../LanguageSwitcher';
+import { agentService } from '../../services/agentService';
+import type { Agent, ProviderType } from '../../types';
 
 interface MainSidebarProps {
   onSelectRoom: (roomId: number) => void;
-  onSelectAgent: (agentId: number) => Promise<void>;
   onOpenDocs?: () => void;
   onOpenExport?: () => void;
 }
 
 export const MainSidebar = ({
   onSelectRoom,
-  onSelectAgent,
   onOpenDocs,
   onOpenExport,
 }: MainSidebarProps) => {
@@ -48,6 +48,26 @@ export const MainSidebar = ({
     .sort((a, b) =>
       a.name.localeCompare(b.name, 'ko-KR', { sensitivity: 'base' })
     );
+
+  // Quick chat handler: creates room with provider and adds agent
+  const handleQuickChat = async (agent: Agent, provider: ProviderType) => {
+    try {
+      // Create room with agent name and provider indicator
+      const providerSuffix = provider === 'claude' ? '[c]' : '[x]';
+      const newRoom = await roomContext.createRoom({
+        name: `${agent.name} ${providerSuffix}`,
+        default_provider: provider,
+      });
+      // Add agent to the room
+      await agentService.addAgentToRoom(newRoom.id, agent.id);
+      // Select the room to navigate to it
+      onSelectRoom(newRoom.id);
+      // Switch to rooms tab
+      setActiveTab('rooms');
+    } catch (error) {
+      console.error('Failed to start quick chat:', error);
+    }
+  };
 
   return (
     <div className="w-80 sm:w-80 bg-slate-100 flex flex-col h-full border-r border-slate-300 select-none">
@@ -197,9 +217,9 @@ export const MainSidebar = ({
             <AgentListPanel
               agents={filteredAndSortedAgents}
               selectedAgentId={agentContext.selectedAgentId}
-              onSelectAgent={onSelectAgent}
-              onDeleteAgent={agentContext.deleteAgent}
               onViewProfile={agentContext.viewProfile}
+              onDeleteAgent={agentContext.deleteAgent}
+              onQuickChat={handleQuickChat}
             />
 
             {/* Floating Action Button (Mobile only) */}

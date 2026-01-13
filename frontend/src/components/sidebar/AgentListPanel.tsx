@@ -1,22 +1,22 @@
 import { useState } from 'react';
-import type { Agent } from '../../types';
+import type { Agent, ProviderType } from '../../types';
 import { AgentAvatar } from '../AgentAvatar';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface AgentListPanelProps {
   agents: Agent[];
   selectedAgentId: number | null;
-  onSelectAgent: (agentId: number) => void;
-  onDeleteAgent: (agentId: number) => Promise<void>;
   onViewProfile: (agent: Agent) => void;
+  onDeleteAgent: (agentId: number) => Promise<void>;
+  onQuickChat?: (agent: Agent, provider: ProviderType) => Promise<void>;
 }
 
 export const AgentListPanel = ({
   agents,
   selectedAgentId,
-  onSelectAgent,
-  onDeleteAgent,
   onViewProfile,
+  onDeleteAgent,
+  onQuickChat,
 }: AgentListPanelProps) => {
   const { isAdmin } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -61,7 +61,7 @@ export const AgentListPanel = ({
       }`}
     >
       <div
-        onClick={() => onSelectAgent(agent.id)}
+        onClick={() => onViewProfile(agent)}
         className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0"
       >
         <AgentAvatar
@@ -81,24 +81,32 @@ export const AgentListPanel = ({
           {agent.name}
         </span>
       </div>
-      <div className="flex gap-1 opacity-0 sm:group-hover:opacity-100 group-active:opacity-100 transition-opacity">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onViewProfile(agent);
-          }}
-          className="p-2 hover:bg-slate-200 active:bg-slate-300 rounded text-slate-500 hover:text-slate-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
-          title="View profile"
-        >
-          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        </button>
+      {/* Quick Chat Buttons - always visible */}
+      <div className="flex gap-0.5 flex-shrink-0">
+        {onQuickChat && (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickChat(agent, 'claude');
+              }}
+              className="p-1.5 hover:bg-amber-100 active:bg-amber-200 rounded text-amber-600 hover:text-amber-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-sm"
+              title="Chat with Claude"
+            >
+              c
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickChat(agent, 'codex');
+              }}
+              className="p-1.5 hover:bg-green-100 active:bg-green-200 rounded text-green-600 hover:text-green-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-sm"
+              title="Chat with Codex"
+            >
+              x
+            </button>
+          </>
+        )}
         {isAdmin && (
           <button
             onClick={(e) => {
@@ -107,10 +115,10 @@ export const AgentListPanel = ({
                 onDeleteAgent(agent.id);
               }
             }}
-            className="p-2 hover:bg-red-100 active:bg-red-200 rounded text-red-500 hover:text-red-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
+            className="p-1.5 hover:bg-red-100 active:bg-red-200 rounded text-red-500 hover:text-red-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation opacity-0 group-hover:opacity-100 transition-opacity"
             title="Delete agent"
           >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

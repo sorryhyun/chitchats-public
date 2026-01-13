@@ -128,17 +128,14 @@ def build_conversation_context(
         # Get message content (use rendered whiteboard content if available)
         content = whiteboard_rendered.get(msg.id, msg.content)
 
-        # Convert spaces to underscores for valid XML tags
-        tag_name = speaker.replace(" ", "_")
-
         # Check if message has an image for native multimodal support
         has_image = (
             hasattr(msg, "image_data") and msg.image_data and hasattr(msg, "image_media_type") and msg.image_media_type
         )
 
         if has_image:
-            # Add accumulated text as a block, then image inline within the XML tag
-            current_text += f"<{tag_name}>"
+            # Add accumulated text as a block, then image inline
+            current_text += f"{speaker}: "
             if current_text.strip():
                 content_blocks.append({"type": "text", "text": current_text})
 
@@ -154,14 +151,14 @@ def build_conversation_context(
                 }
             )
 
-            # Continue with content and closing tag
+            # Continue with content after image
             if content:
-                current_text = f"\n{content}</{tag_name}>\n"
+                current_text = f"\n{content}\n"
             else:
-                current_text = f"</{tag_name}>\n"
+                current_text = "\n"
         else:
-            # No image - just add text
-            current_text += f"<{tag_name}>{content}</{tag_name}>\n"
+            # No image - just add text with colon format
+            current_text += f"{speaker}: {content}\n"
 
     # Add footer (closing tag) after conversation messages
     footer = config.get("footer", "")
