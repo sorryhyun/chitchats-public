@@ -22,8 +22,12 @@ logger = logging.getLogger("CodexProvider")
 
 
 def _get_codex_working_dir() -> str:
-    """Get a valid working directory for Codex subprocess."""
-    temp_dir = Path(tempfile.gettempdir()) / "codex-work"
+    """Get a valid working directory for Codex subprocess.
+
+    Uses /tmp/codex-empty to provide an isolated, empty workspace
+    similar to Claude Code's behavior.
+    """
+    temp_dir = Path(tempfile.gettempdir()) / "codex-empty"
     temp_dir.mkdir(parents=True, exist_ok=True)
     return str(temp_dir)
 
@@ -81,6 +85,12 @@ class CodexProvider(AIProvider):
         mcp_overrides = []
         if base_options.mcp_tools:
             mcp_overrides = self._build_mcp_overrides(base_options.mcp_tools)
+
+        # Disable shell/bash tool for security (similar to Claude Code's isolated mode)
+        mcp_overrides.append('features.shell_tool=false')
+
+        # Prevent Codex from reading project instruction files (AGENTS.md, etc.)
+        mcp_overrides.append('project_doc_max_bytes=1')
 
         options = CodexOptions(
             system_prompt=base_options.system_prompt,

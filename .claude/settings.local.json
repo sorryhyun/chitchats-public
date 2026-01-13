@@ -9,7 +9,8 @@
       "WebFetch(domain:github.com)",
       "Bash(tree:*)",
       "Bash(grep:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "WebFetch(domain:developers.openai.com)"
     ],
     "deny": [],
     "ask": []

@@ -71,6 +71,8 @@ class CodexStreamParser(AIStreamParser):
         event_type = message.get("type", "")
         data = message.get("data", {})
 
+        logger.info(f"[CodexParser] Event type: {event_type}")
+
         content_delta = ""
         thinking_delta = ""
         new_session_id = None
@@ -81,21 +83,46 @@ class CodexStreamParser(AIStreamParser):
         # Handle different event types
         if event_type == "thread.started":
             # Extract thread_id for session resume
-            new_session_id = data.get("thread_id") or data.get("id")
-            logger.debug(f"Codex thread started: {new_session_id}")
+            # Try multiple locations: message root, item, payload, data
+            new_session_id = (
+                message.get("thread_id") or
+                message.get("id") or
+                message.get("item", {}).get("thread_id") or
+                message.get("item", {}).get("id") or
+                message.get("payload", {}).get("thread_id") or
+                message.get("payload", {}).get("id") or
+                data.get("thread_id") or
+                data.get("id")
+            )
+            logger.info(f"[CodexParser] thread.started: session_id={new_session_id}, message_keys={list(message.keys())}")
 
         elif event_type == "item.completed":
             # Completed response item - extract content
-            item = data.get("item", data)
+            # Codex uses message["item"] directly (not data or payload)
+            item = message.get("item", {})
             item_type = item.get("type", "")
 
-            if item_type == "message":
-                # Extract message content
+            logger.info(f"[CodexParser] item.completed: item_type={item_type}, keys={list(item.keys())}")
+
+            if item_type == "agent_message":
+                # Direct text in item["text"]
+                text = item.get("text", "")
+                if text:
+                    content_delta = text
+                    logger.info(f"[CodexParser] Extracted agent_message: {len(text)} chars")
+
+            elif item_type == "message":
+                # Content array format (fallback for other structures)
                 content_list = item.get("content", [])
+                logger.info(f"[CodexParser] item.completed message: {len(content_list)} content blocks")
                 for content_block in content_list:
                     block_type = content_block.get("type", "")
                     if block_type == "text":
-                        content_delta += content_block.get("text", "")
+                        text = content_block.get("text", "")
+                        content_delta += text
+                    elif block_type == "output_text":
+                        text = content_block.get("text", "")
+                        content_delta += text
                     elif block_type == "thinking":
                         thinking_delta += content_block.get("text", "")
                         thinking_delta += content_block.get("thinking", "")
@@ -149,6 +176,29 @@ class CodexStreamParser(AIStreamParser):
             error_msg = data.get("message", data.get("error", str(data)))
             logger.error(f"Codex error: {error_msg}")
             content_delta = f"Error: {error_msg}"
+
+        elif event_type == "response_item":
+            # Response item - extract from payload.content array
+            payload = message.get("payload", {})
+            payload_type = payload.get("type", "")
+            logger.info(f"[CodexParser] response_item payload_type={payload_type}")
+            if payload_type == "message":
+                content_list = payload.get("content", [])
+                logger.info(f"[CodexParser] content_list has {len(content_list)} blocks")
+                for content_block in content_list:
+                    block_type = content_block.get("type", "")
+                    logger.info(f"[CodexParser] block_type={block_type}")
+                    if block_type == "output_text":
+                        text = content_block.get("text", "")
+                        content_delta += text
+                        logger.info(f"[CodexParser] Extracted output_text: {len(text)} chars")
+                    elif block_type == "text":
+                        text = content_block.get("text", "")
+                        content_delta += text
+                        logger.info(f"[CodexParser] Extracted text: {len(text)} chars")
+                    elif block_type == "thinking":
+                        thinking_delta += content_block.get("text", "")
+                        thinking_delta += content_block.get("thinking", "")
 
         # Return accumulated text with deltas applied
         return ParsedStreamMessage(

@@ -12,6 +12,7 @@ CLI Commands:
 import asyncio
 import json
 import logging
+import os
 import shutil
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
@@ -35,6 +36,7 @@ class CodexOptions:
         mcp_config_overrides: List of -c overrides for MCP servers (e.g., 'mcp_servers.name.command="python"')
         timeout: Timeout for subprocess operations (seconds)
         extra_args: Additional CLI arguments
+        env: Environment variables for the subprocess (merged with current env)
     """
 
     system_prompt: str = ""
@@ -46,6 +48,7 @@ class CodexOptions:
     mcp_config_overrides: List[str] = field(default_factory=list)
     timeout: float = 300.0  # 5 minutes default
     extra_args: List[str] = field(default_factory=list)
+    env: Dict[str, str] = field(default_factory=dict)
 
 
 class CodexClient(AIClient):
@@ -174,13 +177,18 @@ class CodexClient(AIClient):
 
         logger.info(f"Running Codex: {' '.join(cmd)}")
 
-        # Start subprocess
+        # Start subprocess with merged environment
+        subprocess_env = None
+        if self._options.env:
+            subprocess_env = {**os.environ, **self._options.env}
+
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self._options.working_dir,
+                env=subprocess_env,
             )
         except Exception as e:
             logger.error(f"Failed to start Codex process: {e}")
@@ -246,8 +254,8 @@ class CodexClient(AIClient):
         cmd = ["codex", "exec"]
 
         # Handle thread resume
-        if self._options.thread_id or self._thread_id:
-            thread_id = self._options.thread_id or self._thread_id
+        thread_id = self._options.thread_id or self._thread_id
+        if thread_id:
             cmd.extend(["resume", thread_id])
 
         # Add flags
@@ -267,17 +275,17 @@ class CodexClient(AIClient):
             for override in self._options.mcp_config_overrides:
                 cmd.extend(["-c", override])
 
+        # Add system prompt as developer_instructions (only for new conversations)
+        if self._options.system_prompt and not self._thread_id:
+            # Escape the system prompt for TOML string value
+            escaped_prompt = self._options.system_prompt.replace("\\", "\\\\").replace('"', '\\"')
+            cmd.extend(["-c", f'developer_instructions="{escaped_prompt}"'])
+
         # Add extra args
         if self._options.extra_args:
             cmd.extend([arg for arg in self._options.extra_args if arg])
 
-        # Build prompt with system prompt if provided
-        prompt = message
-        if self._options.system_prompt and not self._thread_id:
-            # Only prepend system prompt for new conversations
-            prompt = f"{self._options.system_prompt}\n\n---\n\n{message}"
-
-        cmd.append(prompt)
+        cmd.append(message)
 
         return cmd
 
