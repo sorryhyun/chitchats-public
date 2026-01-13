@@ -12,7 +12,7 @@ from .task_identifier import TaskIdentifier
 
 if TYPE_CHECKING:
     from infrastructure.database import Agent
-    from sdk import AgentManager
+    from core import AgentManager
     from sqlalchemy.ext.asyncio import AsyncSession
 
 

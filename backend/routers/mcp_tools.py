@@ -21,7 +21,7 @@ from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field
-from sdk import AgentManager
+from core import AgentManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/mcp-tools", tags=["MCP Tools"])

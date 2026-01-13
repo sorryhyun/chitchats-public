@@ -14,7 +14,7 @@ from database import get_db, init_db
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from orchestration import ChatOrchestrator
-from sdk import AgentManager
+from core import AgentManager
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

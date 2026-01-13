@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 from claude_agent_sdk import ClaudeAgentOptions
-from sdk.config import get_debug_config
+from core.config import get_debug_config
 
 logger = logging.getLogger("DebugLogger")
 

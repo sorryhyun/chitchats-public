@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from orchestration import ChatOrchestrator
-    from sdk import AgentManager
+    from core import AgentManager
 
 
 async def delete_agent_with_cleanup(db: AsyncSession, agent_id: int, agent_manager: "AgentManager") -> bool:

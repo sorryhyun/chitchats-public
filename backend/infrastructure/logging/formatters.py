@@ -8,7 +8,7 @@ Formatting options are loaded from YAML configuration.
 
 import json
 
-from sdk.config import get_debug_config
+from core.config import get_debug_config
 
 
 def format_message_for_debug(message) -> str:

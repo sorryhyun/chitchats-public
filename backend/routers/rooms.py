@@ -16,7 +16,7 @@ from core.exceptions import RoomAlreadyExistsError
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from orchestration import ChatOrchestrator
-from sdk import AgentManager
+from core import AgentManager
 from services.agent_service import clear_room_messages_with_cleanup, delete_room_with_cleanup
 from sqlalchemy.ext.asyncio import AsyncSession
 

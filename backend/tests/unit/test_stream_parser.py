@@ -4,7 +4,8 @@ Unit tests for StreamParser - SDK message parsing logic.
 
 from unittest.mock import Mock
 
-from sdk.stream_parser import ParsedStreamMessage, StreamParser
+from providers.base import ParsedStreamMessage
+from providers.claude.parser import ClaudeStreamParser as StreamParser
 
 
 class TestParsedStreamMessage:

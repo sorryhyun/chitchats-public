@@ -11,7 +11,7 @@ from typing import Dict, Optional
 
 from core import get_settings
 from domain.agent_config import AgentConfigData
-from sdk.memory.parser import parse_long_term_memory
+from core.memory.parser import parse_long_term_memory
 
 logger = logging.getLogger("ConfigParser")
 

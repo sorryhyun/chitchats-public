@@ -215,6 +215,88 @@ class AIClient(ABC):
         ...
 
 
+class ClientPoolInterface(ABC):
+    """Abstract interface for AI client pooling.
+
+    Each provider can implement this interface to manage client lifecycle
+    with provider-specific connection logic. The interface defines common
+    pooling operations that work across all providers.
+    """
+
+    @abstractmethod
+    async def get_or_create(
+        self,
+        task_id: Any,
+        options: Any,
+    ) -> tuple[AIClient, bool]:
+        """Get existing client or create new one.
+
+        Args:
+            task_id: Identifier for this agent task (provider-agnostic)
+            options: Provider-specific client options
+
+        Returns:
+            (client, is_new) tuple:
+            - client: AIClient implementation
+            - is_new: True if newly created, False if reused from pool
+        """
+        ...
+
+    @abstractmethod
+    async def cleanup(self, task_id: Any) -> None:
+        """Remove and cleanup a specific client.
+
+        Args:
+            task_id: Identifier for the client to cleanup
+        """
+        ...
+
+    @abstractmethod
+    async def cleanup_room(self, room_id: int) -> None:
+        """Cleanup all clients for a specific room.
+
+        Args:
+            room_id: Room ID to cleanup
+        """
+        ...
+
+    @abstractmethod
+    async def shutdown_all(self) -> None:
+        """Graceful shutdown of all clients."""
+        ...
+
+    @abstractmethod
+    def get_keys_for_agent(self, agent_id: int) -> list[Any]:
+        """Get all pool keys for a specific agent.
+
+        Args:
+            agent_id: Agent ID to filter
+
+        Returns:
+            List of task identifiers for this agent
+        """
+        ...
+
+    @abstractmethod
+    def keys(self) -> Any:
+        """Get all pool keys.
+
+        Returns:
+            Iterable of all task identifiers in the pool
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def pool(self) -> dict:
+        """Get the underlying pool dictionary.
+
+        Returns:
+            Dict mapping task identifiers to clients
+        """
+        ...
+
+
 class AIProvider(ABC):
     """Abstract provider interface - factory for clients and configuration.
 

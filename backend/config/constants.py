@@ -33,7 +33,7 @@ def get_base_system_prompt() -> str:
         The system prompt template with {agent_name} placeholder
     """
     try:
-        from sdk.config import get_guidelines_config
+        from core.config import get_guidelines_config
 
         guidelines_config = get_guidelines_config()
 

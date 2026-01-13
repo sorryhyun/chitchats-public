@@ -16,7 +16,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from orchestration import ChatOrchestrator
 from orchestration.agent_ordering import separate_interrupt_agents
 from orchestration.tape import TapeExecutor, TapeGenerator
-from sdk import AgentManager
+from core import AgentManager
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload

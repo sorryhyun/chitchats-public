@@ -23,7 +23,7 @@ from database import Base, get_db
 from infrastructure.database.models import Agent, Message, Room
 from main import app
 from orchestration import ChatOrchestrator
-from sdk import AgentManager
+from core import AgentManager
 
 
 # Configure pytest-asyncio
@@ -125,7 +125,7 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 def _setup_app_state():
     """Set up app state with mock instances for testing."""
     if not hasattr(app.state, "agent_manager") or app.state.agent_manager is None:
-        from sdk.client_pool import ClientPool
+        from core.client_pool import ClientPool
 
         app.state.agent_manager = MagicMock(spec=AgentManager)
         app.state.agent_manager.shutdown = AsyncMock()

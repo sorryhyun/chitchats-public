@@ -30,7 +30,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
-from sdk.config import (
+from core.config import (
     get_extreme_traits,
     get_situation_builder_note,
     get_tool_description,

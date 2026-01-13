@@ -15,7 +15,7 @@ from infrastructure.scheduler import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from orchestration import ChatOrchestrator
-from sdk import AgentManager
+from core import AgentManager
 
 from core import get_logger, get_settings
 
@@ -46,7 +46,7 @@ def create_app() -> FastAPI:
         logger.info("🚀 Application startup...")
 
         # Validate configuration files
-        from sdk.config import log_config_validation
+        from core.config import log_config_validation
 
         log_config_validation()
 

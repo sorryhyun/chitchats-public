@@ -32,7 +32,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from domain.action_models import MemorizeInput, RecallInput, SkipInput
-from sdk.config import clear_cache, get_tool_response, get_tools_config, is_tool_enabled
+from core.config import clear_cache, get_tool_response, get_tools_config, is_tool_enabled
 
 logger = logging.getLogger("ActionMCPServer")
 

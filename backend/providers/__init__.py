@@ -31,6 +31,7 @@ from .base import (
     AIProvider,
     AIStreamEvent,
     AIStreamParser,
+    ClientPoolInterface,
     ParsedStreamMessage,
     ProviderType,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "AIProvider",
     "AIStreamEvent",
     "AIStreamParser",
+    "ClientPoolInterface",
     "ParsedStreamMessage",
     "ProviderType",
     # Factory functions

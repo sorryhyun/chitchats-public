@@ -8,7 +8,7 @@ from core.auth import require_admin
 from core.dependencies import RequestIdentity, ensure_room_access, get_agent_manager, get_request_identity
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from sdk import AgentManager
+from core import AgentManager
 from services.agent_service import remove_agent_from_room_with_cleanup
 from sqlalchemy.ext.asyncio import AsyncSession
 

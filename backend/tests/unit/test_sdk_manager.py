@@ -13,8 +13,8 @@ from domain.agent_config import AgentConfigData
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
 from providers import AIClientOptions, get_provider
-from sdk.client_pool import ClientPool
-from sdk.manager import AgentManager
+from providers.claude import ClaudeClientPool
+from core.manager import AgentManager
 
 
 class TestAgentManagerInit:
@@ -25,7 +25,7 @@ class TestAgentManagerInit:
         manager = AgentManager()
 
         assert manager.active_clients == {}
-        assert isinstance(manager.client_pool, ClientPool)
+        assert isinstance(manager.client_pool, ClaudeClientPool)
         assert manager.client_pool.pool == {}
 
 
@@ -214,8 +214,8 @@ class TestGenerateSDKResponse:
 
         with (
             patch.object(manager.client_pool, "get_or_create", return_value=(mock_client, True)),
-            patch("sdk.manager.write_debug_log"),
-            patch("sdk.manager.append_response_to_debug_log"),
+            patch("core.manager.write_debug_log"),
+            patch("core.manager.append_response_to_debug_log"),
         ):
             events = []
             async for event in manager.generate_sdk_response(context):
@@ -257,8 +257,8 @@ class TestGenerateSDKResponse:
 
         with (
             patch.object(manager.client_pool, "get_or_create", return_value=(mock_client, True)),
-            patch("sdk.manager.write_debug_log"),
-            patch("sdk.manager.append_response_to_debug_log"),
+            patch("core.manager.write_debug_log"),
+            patch("core.manager.append_response_to_debug_log"),
         ):
             events = []
             async for event in manager.generate_sdk_response(context):
@@ -291,8 +291,8 @@ class TestGenerateSDKResponse:
 
         with (
             patch.object(manager.client_pool, "get_or_create", return_value=(mock_client, True)),
-            patch("sdk.manager.write_debug_log"),
-            patch("sdk.manager.append_response_to_debug_log"),
+            patch("core.manager.write_debug_log"),
+            patch("core.manager.append_response_to_debug_log"),
         ):
             events = []
             async for event in manager.generate_sdk_response(context):

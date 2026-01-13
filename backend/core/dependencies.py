@@ -6,7 +6,7 @@ import crud
 from core.exceptions import RoomNotFoundError
 from fastapi import HTTPException, Request
 from orchestration import ChatOrchestrator
-from sdk import AgentManager
+from core import AgentManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

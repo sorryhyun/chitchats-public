@@ -1,9 +1,12 @@
 """
-Client pool for managing AI client lifecycle and pooling.
+Client pool base class for managing AI client lifecycle and pooling.
 
-This module provides the ClientPool class which manages the lifecycle of
+This module provides the BaseClientPool abstract class which manages the lifecycle of
 AI client instances (Claude, Codex, etc.), implementing connection pooling
 to avoid spawning multiple CLI processes unnecessarily.
+
+Each provider implements their own pool by extending BaseClientPool and implementing
+the _create_client() method.
 
 Best Practice: Reuse client instances within sessions to avoid spawning
 multiple CLI processes. Each client maintains conversation context across
@@ -14,26 +17,31 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Tuple, Union
+from abc import ABC, abstractmethod
+from typing import Any, Tuple
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from domain.task_identifier import TaskIdentifier
-from providers.base import AIClient
+from providers.base import AIClient, ClientPoolInterface
 
 logger = logging.getLogger("ClientPool")
 
 
-class ClientPool:
+class BaseClientPool(ClientPoolInterface, ABC):
     """
-    Manages pooling and lifecycle of AI clients (Claude, Codex, etc.).
+    Abstract base class for AI client pooling.
 
-    Best Practice: Reuse client instances within sessions to avoid spawning
-    multiple CLI processes. Each client maintains conversation context across
-    queries.
+    Manages pooling and lifecycle of AI clients with shared logic for:
+    - Concurrent connection management (semaphore)
+    - Per-task locking to prevent duplicate client creation
+    - Background cleanup of disconnected clients
+    - Session ID extraction for client reuse decisions
+
+    Provider-specific pools (ClaudeClientPool, CodexClientPool) extend this
+    and implement _create_client() for their specific client creation logic.
 
     Pool Strategy:
         - Key: TaskIdentifier(room_id, agent_id)
-        - Value: AIClient instance (ClaudeSDKClient, CodexClient, etc.)
+        - Value: AIClient instance
         - Cleanup: Background disconnect to avoid cancel scope issues
         - Concurrency: Semaphore allows up to MAX_CONCURRENT_CONNECTIONS simultaneous connections
     """
@@ -47,12 +55,17 @@ class ClientPool:
 
     def __init__(self):
         """Initialize the client pool."""
-        self.pool: dict[TaskIdentifier, Union[AIClient, ClaudeSDKClient]] = {}
+        self._pool: dict[TaskIdentifier, AIClient] = {}
         # Use semaphore instead of lock to allow limited concurrency
         self._connection_semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CONNECTIONS)
         # Per-task_id locks to prevent duplicate client creation for the same task
         self._task_locks: dict[TaskIdentifier, asyncio.Lock] = {}
         self._cleanup_tasks: set[asyncio.Task] = set()
+
+    @property
+    def pool(self) -> dict[TaskIdentifier, AIClient]:
+        """Get the underlying pool dictionary."""
+        return self._pool
 
     def _get_task_lock(self, task_id: TaskIdentifier) -> asyncio.Lock:
         """Get or create a per-task_id lock."""
@@ -86,25 +99,40 @@ class ClientPool:
             return getattr(options, "session_id", None)
         return None
 
-    async def get_or_create(self, task_id: TaskIdentifier, options: ClaudeAgentOptions) -> Tuple[ClaudeSDKClient, bool]:
+    @abstractmethod
+    async def _create_client(self, options: Any) -> AIClient:
+        """
+        Create a new AI client with the given options.
+
+        This method must be implemented by provider-specific pools.
+
+        Args:
+            options: Provider-specific client options
+
+        Returns:
+            Connected AIClient instance ready for use
+        """
+        ...
+
+    async def get_or_create(self, task_id: TaskIdentifier, options: Any) -> Tuple[AIClient, bool]:
         """
         Get existing client or create new one.
 
         Args:
             task_id: Identifier for this agent task
-            options: SDK client configuration
+            options: Provider-specific client configuration
 
         Returns:
             (client, is_new) tuple
-            - client: ClaudeSDKClient instance
+            - client: AIClient instance
             - is_new: True if newly created, False if reused from pool
 
-        SDK Best Practice: Use lock to prevent ProcessTransport race
-        conditions when creating multiple clients concurrently.
+        Best Practice: Use lock to prevent race conditions when creating
+        multiple clients concurrently.
         """
         # Check if client exists outside the lock (fast path)
-        if task_id in self.pool:
-            existing_client = self.pool[task_id]
+        if task_id in self._pool:
+            existing_client = self._pool[task_id]
             # Extract session ID using provider-agnostic method
             old_session_id = (
                 self._extract_session_id(existing_client.options) if hasattr(existing_client, "options") else None
@@ -126,15 +154,15 @@ class ClientPool:
             else:
                 logger.debug(f"Reusing existing client for {task_id}")
                 # Update options for the existing client (in case system prompt changed)
-                self.pool[task_id].options = options
-                return self.pool[task_id], False
+                self._pool[task_id].options = options
+                return self._pool[task_id], False
 
         # Use per-task_id lock to prevent duplicate client creation for the same task
         task_lock = self._get_task_lock(task_id)
         async with task_lock:
             # Double-check after acquiring task lock (another coroutine might have created it)
-            if task_id in self.pool:
-                existing_client = self.pool[task_id]
+            if task_id in self._pool:
+                existing_client = self._pool[task_id]
                 # Extract session ID using provider-agnostic method
                 old_session_id = (
                     self._extract_session_id(existing_client.options) if hasattr(existing_client, "options") else None
@@ -148,28 +176,28 @@ class ClientPool:
                     # Continue to create new client below
                 else:
                     logger.debug(f"Client for {task_id} was created while waiting for lock")
-                    self.pool[task_id].options = options
-                    return self.pool[task_id], False
+                    self._pool[task_id].options = options
+                    return self._pool[task_id], False
 
-            # Use semaphore to limit overall connection concurrency (prevents ProcessTransport issues)
+            # Use semaphore to limit overall connection concurrency
             async with self._connection_semaphore:
                 logger.debug(f"Creating new client for {task_id}")
 
-                # Retry connection with exponential backoff to handle ProcessTransport race conditions
+                # Retry connection with exponential backoff
                 max_retries = 3
                 for attempt in range(max_retries):
                     try:
-                        client = ClaudeSDKClient(options=options)
-                        # Connect without a prompt - messages are sent via query() instead
-                        await client.connect()
-                        self.pool[task_id] = client
+                        client = await self._create_client(options)
+                        self._pool[task_id] = client
 
-                        # Brief delay to let ProcessTransport stabilize before next connection
+                        # Brief delay to let connection stabilize before next connection
                         await asyncio.sleep(self.CONNECTION_STABILIZATION_DELAY)
 
                         return client, True
                     except Exception as e:
-                        if "ProcessTransport is not ready" in str(e) and attempt < max_retries - 1:
+                        error_str = str(e)
+                        # Retry on transport-related errors
+                        if ("ProcessTransport is not ready" in error_str or "transport" in error_str.lower()) and attempt < max_retries - 1:
                             delay = 0.3 * (2**attempt)  # Exponential backoff: 0.3s, 0.6s
                             logger.warning(
                                 f"Connection failed for {task_id}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
@@ -178,6 +206,9 @@ class ClientPool:
                         else:
                             # Re-raise on final attempt or non-transport errors
                             raise
+
+                # This should never be reached (loop always returns or raises)
+                raise RuntimeError(f"Failed to create client for {task_id} after {max_retries} retries")
 
     def _remove_from_pool(self, task_id: TaskIdentifier):
         """
@@ -190,11 +221,11 @@ class ClientPool:
         Args:
             task_id: Identifier for the client to remove
         """
-        if task_id not in self.pool:
+        if task_id not in self._pool:
             return
 
         logger.info(f"🗑️  Removing client from pool for {task_id} (no disconnect)")
-        del self.pool[task_id]
+        del self._pool[task_id]
 
     async def cleanup(self, task_id: TaskIdentifier):
         """
@@ -203,21 +234,21 @@ class ClientPool:
         Args:
             task_id: Identifier for the client to cleanup
 
-        SDK Best Practice: Disconnect in background task to avoid
+        Best Practice: Disconnect in background task to avoid
         cancel scope issues. The cleanup happens outside the current
         async context to prevent premature cancellation.
 
         Note: For session changes, use _remove_from_pool() instead to avoid
         cancel scope interference with SQLAlchemy.
         """
-        if task_id not in self.pool:
+        if task_id not in self._pool:
             return
 
         logger.info(f"🧹 Cleaning up client for {task_id}")
-        client = self.pool[task_id]
+        client = self._pool[task_id]
 
         # Remove from pool immediately
-        del self.pool[task_id]
+        del self._pool[task_id]
 
         # Schedule disconnect in a background task (separate from HTTP request task)
         # This ensures disconnect runs in its own async context, avoiding cancel scope violations
@@ -237,7 +268,7 @@ class ClientPool:
         Args:
             room_id: Room ID to cleanup
         """
-        tasks_to_cleanup = [task_id for task_id in self.pool.keys() if task_id.room_id == room_id]
+        tasks_to_cleanup = [task_id for task_id in self._pool.keys() if task_id.room_id == room_id]
         for task_id in tasks_to_cleanup:
             await self.cleanup(task_id)
 
@@ -245,13 +276,13 @@ class ClientPool:
         """
         Graceful shutdown of all clients.
 
-        SDK Best Practice: Wait for all cleanup tasks to complete
+        Best Practice: Wait for all cleanup tasks to complete
         before final shutdown to prevent resource leaks.
         """
-        logger.info(f"🛑 Shutting down ClientPool with {len(self.pool)} pooled clients")
+        logger.info(f"🛑 Shutting down ClientPool with {len(self._pool)} pooled clients")
 
         # Cleanup all clients
-        task_ids = list(self.pool.keys())
+        task_ids = list(self._pool.keys())
         for task_id in task_ids:
             await self.cleanup(task_id)
 
@@ -274,7 +305,7 @@ class ClientPool:
 
         Used by agent_service.py for agent cleanup.
         """
-        return [task_id for task_id in self.pool.keys() if task_id.agent_id == agent_id]
+        return [task_id for task_id in self._pool.keys() if task_id.agent_id == agent_id]
 
     def keys(self):
         """
@@ -283,10 +314,10 @@ class ClientPool:
         Returns:
             Dict keys view of all TaskIdentifiers in the pool
         """
-        return self.pool.keys()
+        return self._pool.keys()
 
     async def _disconnect_client_background(
-        self, client: Union[AIClient, ClaudeSDKClient], task_id: TaskIdentifier
+        self, client: AIClient, task_id: TaskIdentifier
     ):
         """
         Background task for client disconnection with timeout.
@@ -330,3 +361,8 @@ class ClientPool:
                 and "no active connection" not in error_msg
             ):
                 logger.warning(f"Error disconnecting client {task_id}: {e}")
+
+
+# Backwards compatibility: alias for existing code
+# TODO: Remove after manager.py is updated to use provider-specific pools
+ClientPool = BaseClientPool

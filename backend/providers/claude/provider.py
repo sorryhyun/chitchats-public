@@ -95,7 +95,7 @@ class ClaudeProvider(AIProvider):
             ClaudeAgentOptions ready for client creation
         """
         # Import here to avoid circular imports
-        from sdk.config.tool_config import get_tool_names_by_group
+        from core.config.tool_config import get_tool_names_by_group
 
         # Build standalone MCP server configurations
         mcp_servers = self._build_mcp_server_config(base_options)

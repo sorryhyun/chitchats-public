@@ -14,16 +14,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import AsyncIterator, Union
+from typing import AsyncIterator
 
-from claude_agent_sdk import ClaudeSDKClient
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
 from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
+from providers.claude import ClaudeClientPool
 
-from .client_pool import ClientPool
 from .config import get_debug_config
 
 # Configure from settings
@@ -49,9 +48,10 @@ class AgentManager:
         # 2. Use Claude Code web authentication (when running through Claude Code with subscription)
         # If CLAUDE_API_KEY is not set, the SDK will use Claude Code authentication.
         # For Codex: Uses Codex CLI with existing authentication
-        self.active_clients: dict[TaskIdentifier, Union[ClaudeSDKClient, AIClient]] = {}
-        # Client pool for managing SDK client lifecycle
-        self.client_pool = ClientPool()
+        self.active_clients: dict[TaskIdentifier, AIClient] = {}
+        # Client pool for managing SDK client lifecycle (Claude-specific)
+        # TODO: Phase 3 will add per-provider pool management
+        self.client_pool = ClaudeClientPool()
         # Streaming state: tracks current thinking text per task during generation
         self.streaming_state: dict[TaskIdentifier, dict] = {}
 

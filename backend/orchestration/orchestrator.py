@@ -18,7 +18,7 @@ import crud
 from infrastructure.database import Agent, Message, Room
 import schemas
 from domain.contexts import OrchestrationContext
-from sdk import AgentManager
+from core import AgentManager
 
 from .agent_ordering import separate_interrupt_agents
 from .critic import process_critic_feedback
