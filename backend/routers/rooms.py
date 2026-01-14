@@ -17,7 +17,7 @@ from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from orchestration import ChatOrchestrator
 from core import AgentManager
-from services.agent_service import clear_room_messages_with_cleanup, delete_room_with_cleanup
+from crud import clear_room_messages_with_cleanup, delete_room_with_cleanup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()

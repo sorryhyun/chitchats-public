@@ -16,7 +16,7 @@ from core.settings import SKIP_MESSAGE_TEXT
 from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
 from domain.task_identifier import TaskIdentifier
 from i18n.timezone import format_kst_timestamp
-from services.prompt_builder import build_system_prompt
+from config import build_system_prompt
 
 from orchestration.conversation import detect_conversation_type
 

@@ -312,13 +312,14 @@ class TestMemoryOperations:
     async def test_append_agent_memory(self, temp_agent_config, test_db, monkeypatch):
         """Test appending to agent memory."""
         # Mock get_project_root to return temp_agent_config parent
-        from services.agent_config_service import AgentConfigService
+        from config import AgentConfigIO
 
-        monkeypatch.setattr(AgentConfigService, "get_project_root", lambda: temp_agent_config.parent.parent)
+        monkeypatch.setattr(AgentConfigIO, "get_project_root", lambda: temp_agent_config.parent.parent)
 
         # Create agent with config file (relative path from mocked project root)
-        relative_config_path = "agents/test_agent"
-        agent = models.Agent(
+        # Use actual directory name from fixture (may be "agents0", "agents1", etc. in pytest)
+        relative_config_path = f"{temp_agent_config.parent.name}/test_agent"
+        agent = Agent(
             name="test_agent",
             group="test_group",
             config_file=relative_config_path,
@@ -349,13 +350,14 @@ class TestMemoryOperations:
     async def test_append_agent_memory_empty(self, temp_agent_config, test_db, monkeypatch):
         """Test appending to empty memory."""
         # Mock get_project_root to return temp_agent_config parent
-        from services.agent_config_service import AgentConfigService
+        from config import AgentConfigIO
 
-        monkeypatch.setattr(AgentConfigService, "get_project_root", lambda: temp_agent_config.parent.parent)
+        monkeypatch.setattr(AgentConfigIO, "get_project_root", lambda: temp_agent_config.parent.parent)
 
         # Create agent with config file (relative path from mocked project root)
-        relative_config_path = "agents/test_agent"
-        agent = models.Agent(
+        # Use actual directory name from fixture (may be "agents0", "agents1", etc. in pytest)
+        relative_config_path = f"{temp_agent_config.parent.name}/test_agent"
+        agent = Agent(
             name="test_agent",
             group="test_group",
             config_file=relative_config_path,

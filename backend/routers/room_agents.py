@@ -9,7 +9,7 @@ from core.dependencies import RequestIdentity, ensure_room_access, get_agent_man
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from core import AgentManager
-from services.agent_service import remove_agent_from_room_with_cleanup
+from crud import remove_agent_from_room_with_cleanup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()

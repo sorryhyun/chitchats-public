@@ -1,8 +1,8 @@
 """
-Service for handling agent configuration file operations.
+Agent configuration file I/O operations.
 
-This service separates file I/O operations from database CRUD operations,
-providing a cleaner separation of concerns and making the code more testable.
+This module handles file I/O operations for agent configuration files,
+separating filesystem operations from database CRUD operations.
 """
 
 import logging
@@ -15,10 +15,10 @@ from infrastructure.locking import file_lock
 if TYPE_CHECKING:
     from domain.agent_config import AgentConfigData
 
-logger = logging.getLogger("AgentConfigService")
+logger = logging.getLogger("AgentConfigIO")
 
 
-class AgentConfigService:
+class AgentConfigIO:
     """
     Handles all agent configuration file operations.
     Keeps file I/O separate from database operations in CRUD layer.
@@ -53,7 +53,7 @@ class AgentConfigService:
         # Format the memory entry with bullet point and timestamp
         formatted_entry = f"- [{timestamp.strftime('%Y-%m-%d')}] {memory_entry}"
 
-        project_root = AgentConfigService.get_project_root()
+        project_root = AgentConfigIO.get_project_root()
         config_path = project_root / config_file
 
         # Check if it's a folder-based config
@@ -103,7 +103,7 @@ class AgentConfigService:
             return None
 
         try:
-            from config import parse_agent_config
+            from .parser import parse_agent_config
 
             # parse_agent_config now returns AgentConfigData directly
             return parse_agent_config(config_file)

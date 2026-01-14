@@ -9,8 +9,8 @@ from typing import Dict, List
 
 from core.auth import require_admin
 from fastapi import APIRouter, Depends
+from infrastructure.cache import get_cache
 from providers import get_available_providers, check_provider_availability
-from services.cache_service import get_cache_service
 
 router = APIRouter()
 
@@ -29,8 +29,8 @@ async def get_cache_stats() -> Dict[str, int]:
         - size: Number of entries in cache
         - invalidations: Number of cache invalidations
     """
-    cache_service = get_cache_service()
-    return cache_service.get_stats()
+    cache = get_cache()
+    return cache.get_stats()
 
 
 @router.post("/cache/cleanup", dependencies=[Depends(require_admin)])
@@ -41,8 +41,8 @@ async def cleanup_cache() -> Dict[str, str]:
     Returns:
         Success message
     """
-    cache_service = get_cache_service()
-    cache_service.cleanup_expired()
+    cache = get_cache()
+    cache.cleanup_expired()
     return {"status": "success", "message": "Cache cleanup completed"}
 
 
@@ -56,8 +56,8 @@ async def clear_cache() -> Dict[str, str]:
     Returns:
         Success message
     """
-    cache_service = get_cache_service()
-    cache_service.clear()
+    cache = get_cache()
+    cache.clear()
     return {"status": "success", "message": "Cache cleared successfully"}
 
 

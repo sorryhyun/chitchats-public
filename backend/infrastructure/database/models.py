@@ -95,10 +95,10 @@ class Agent(Base):
         config_data = None
         if self.config_file:
             try:
-                from services import AgentConfigService
+                from config import AgentConfigIO
 
                 # load_agent_config now returns AgentConfigData directly
-                config_data = AgentConfigService.load_agent_config(self.config_file)
+                config_data = AgentConfigIO.load_agent_config(self.config_file)
             except Exception as e:
                 # Log error but fallback to database
                 import logging

@@ -9,7 +9,7 @@ from core.dependencies import RequestIdentity, get_agent_manager, get_request_id
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from core import AgentManager
-from services.agent_service import delete_agent_with_cleanup
+from crud import delete_agent_with_cleanup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()

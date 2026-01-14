@@ -1,5 +1,5 @@
 """
-Prompt builder service for constructing agent system prompts.
+Prompt builder for constructing agent system prompts.
 
 This module provides centralized prompt building logic to avoid duplication
 across CRUD operations.
@@ -7,9 +7,10 @@ across CRUD operations.
 
 import logging
 
-from config import get_base_system_prompt
 from domain.agent_config import AgentConfigData
 from i18n.korean import format_with_particles
+
+from .constants import get_base_system_prompt
 
 logger = logging.getLogger(__name__)
 

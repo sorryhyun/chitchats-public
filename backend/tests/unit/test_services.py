@@ -1,20 +1,21 @@
 """
-Unit tests for service layer functions.
+Unit tests for cleanup operations and config I/O.
 
-Tests agent service functions that coordinate between CRUD and other components.
+Tests cleanup functions that coordinate between CRUD and other components,
+and agent configuration I/O operations.
 """
 
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from domain.task_identifier import TaskIdentifier
-from services.agent_config_service import AgentConfigService
-from services.agent_service import (
+from config import AgentConfigIO
+from crud import (
     clear_room_messages_with_cleanup,
     delete_agent_with_cleanup,
     delete_room_with_cleanup,
     remove_agent_from_room_with_cleanup,
 )
+from domain.task_identifier import TaskIdentifier
 
 
 class TestAgentService:
@@ -124,13 +125,13 @@ class TestAgentService:
         agent_manager.client_pool.cleanup.assert_called_once()
 
 
-class TestAgentConfigService:
+class TestAgentConfigIO:
     """Tests for agent configuration service."""
 
     @pytest.mark.unit
     def test_load_agent_config_folder_structure(self, temp_agent_config):
         """Test loading agent config from folder structure."""
-        config = AgentConfigService.load_agent_config(str(temp_agent_config))
+        config = AgentConfigIO.load_agent_config(str(temp_agent_config))
 
         assert config is not None
         assert config.in_a_nutshell == "Test agent nutshell"
@@ -144,6 +145,6 @@ class TestAgentConfigService:
     @pytest.mark.unit
     def test_load_agent_config_nonexistent(self):
         """Test loading non-existent agent config."""
-        config = AgentConfigService.load_agent_config("nonexistent/path")
+        config = AgentConfigIO.load_agent_config("nonexistent/path")
 
         assert config is None

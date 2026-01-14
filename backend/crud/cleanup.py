@@ -1,19 +1,27 @@
 """
-Service layer for agent operations.
+Cleanup operations that coordinate CRUD with resource cleanup.
 
-This module handles high-level agent operations that require coordination
+This module handles high-level operations that require coordination
 between CRUD operations and other services (like agent manager cleanup).
 """
 
+import logging
 from typing import TYPE_CHECKING
 
-import crud
 from domain.task_identifier import TaskIdentifier
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Import from specific modules to avoid circular import with crud/__init__.py
+from .agents import delete_agent
+from .messages import delete_room_messages
+from .room_agents import get_agents, remove_agent_from_room
+from .rooms import delete_room
+
 if TYPE_CHECKING:
-    from orchestration import ChatOrchestrator
     from core import AgentManager
+    from orchestration import ChatOrchestrator
+
+logger = logging.getLogger("CrudCleanup")
 
 
 async def delete_agent_with_cleanup(db: AsyncSession, agent_id: int, agent_manager: "AgentManager") -> bool:
@@ -29,7 +37,7 @@ async def delete_agent_with_cleanup(db: AsyncSession, agent_id: int, agent_manag
         True if agent was deleted, False if agent not found
     """
     # Delete from database
-    success = await crud.delete_agent(db, agent_id)
+    success = await delete_agent(db, agent_id)
     if not success:
         return False
 
@@ -58,7 +66,7 @@ async def remove_agent_from_room_with_cleanup(
         True if agent was removed, False if room or agent not found
     """
     # Remove from database
-    success = await crud.remove_agent_from_room(db, room_id, agent_id)
+    success = await remove_agent_from_room(db, room_id, agent_id)
     if not success:
         return False
 
@@ -84,26 +92,22 @@ async def delete_room_with_cleanup(
     Returns:
         True if room was deleted, False if room not found
     """
-    import logging
-
-    logger = logging.getLogger("AgentService")
-
     # Get all agents in the room before deletion for cleanup
-    agents = await crud.get_agents(db, room_id)
+    agents = await get_agents(db, room_id)
 
     # Clean up orchestrator state FIRST (interrupts any active processing)
     if chat_orchestrator:
         try:
-            logger.info(f"🧹 Cleaning up orchestrator state for room {room_id}")
+            logger.info(f"Cleaning up orchestrator state for room {room_id}")
             await chat_orchestrator.cleanup_room_state(room_id, agent_manager)
         except Exception as e:
-            logger.error(f"❌ Error cleaning orchestrator state for room {room_id}: {e}")
+            logger.error(f"Error cleaning orchestrator state for room {room_id}: {e}")
             # Continue with deletion even if orchestrator cleanup fails
     else:
-        logger.warning(f"⚠️  No chat_orchestrator provided for room {room_id} deletion - state may leak")
+        logger.warning(f"No chat_orchestrator provided for room {room_id} deletion - state may leak")
 
     # Delete from database
-    success = await crud.delete_room(db, room_id)
+    success = await delete_room(db, room_id)
     if not success:
         return False
 
@@ -112,12 +116,12 @@ async def delete_room_with_cleanup(
         try:
             pool_key = TaskIdentifier(room_id=room_id, agent_id=agent.id)
             await agent_manager.client_pool.cleanup(pool_key)
-            logger.info(f"✅ Cleaned up client for agent {agent.id} in room {room_id}")
+            logger.info(f"Cleaned up client for agent {agent.id} in room {room_id}")
         except Exception as e:
-            logger.error(f"❌ Error cleaning up client for agent {agent.id} in room {room_id}: {e}")
+            logger.error(f"Error cleaning up client for agent {agent.id} in room {room_id}: {e}")
             # Continue cleaning up other agents even if one fails
 
-    logger.info(f"✅ Room {room_id} deleted successfully")
+    logger.info(f"Room {room_id} deleted successfully")
     return True
 
 
@@ -141,28 +145,24 @@ async def clear_room_messages_with_cleanup(
     Returns:
         True if messages were cleared, False if room not found
     """
-    import logging
-
-    logger = logging.getLogger("AgentService")
-
     # Get all agents in the room for cleanup
-    agents = await crud.get_agents(db, room_id)
-    logger.info(f"🗑️  Clearing room {room_id} messages | Agents: {len(agents)}")
+    agents = await get_agents(db, room_id)
+    logger.info(f"Clearing room {room_id} messages | Agents: {len(agents)}")
 
     # Interrupt any active processing FIRST (don't save partial responses since we're clearing all)
     if chat_orchestrator:
         try:
-            logger.info(f"🛑 Interrupting room {room_id} processing before clearing messages")
+            logger.info(f"Interrupting room {room_id} processing before clearing messages")
             await chat_orchestrator.interrupt_room_processing(room_id, agent_manager, save_partial_responses=False)
         except Exception as e:
-            logger.error(f"❌ Error interrupting room {room_id}: {e}")
+            logger.error(f"Error interrupting room {room_id}: {e}")
             # Continue with cleanup even if interruption fails
 
     # Delete all messages
-    success = await crud.delete_room_messages(db, room_id)
+    success = await delete_room_messages(db, room_id)
     if not success:
         return False
-    logger.info(f"✅ Deleted all messages from room {room_id}")
+    logger.info(f"Deleted all messages from room {room_id}")
 
     # Clear all session IDs for this room (fresh start)
     # This is done by deleting the RoomAgentSession records
@@ -173,21 +173,23 @@ async def clear_room_messages_with_cleanup(
     async with serialized_write():
         await db.execute(delete(RoomAgentSession).where(RoomAgentSession.room_id == room_id))
         await db.commit()
-    logger.info(f"✅ Cleared all session IDs for room {room_id}")
+    logger.info(f"Cleared all session IDs for room {room_id}")
 
     # Cleanup all clients for this room (they may have stale session references)
     for agent in agents:
         try:
             pool_key = TaskIdentifier(room_id=room_id, agent_id=agent.id)
-            logger.info(f"🧹 Calling client_pool.cleanup for {pool_key}")
+            logger.info(f"Calling client_pool.cleanup for {pool_key}")
             await agent_manager.client_pool.cleanup(pool_key)
         except Exception as e:
-            logger.error(f"❌ Error cleaning up client for agent {agent.id}: {e}")
+            logger.error(f"Error cleaning up client for agent {agent.id}: {e}")
             # Continue with other agents
 
     # Invalidate caches so subsequent polls don't return stale messages
-    crud.invalidate_room_cache(room_id)
-    logger.info(f"🧽 Invalidated room {room_id} cache after clearing messages")
+    from .cached import invalidate_room_cache
 
-    logger.info(f"✅ Room {room_id} cleared successfully")
+    invalidate_room_cache(room_id)
+    logger.info(f"Invalidated room {room_id} cache after clearing messages")
+
+    logger.info(f"Room {room_id} cleared successfully")
     return True

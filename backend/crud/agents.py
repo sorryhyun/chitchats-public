@@ -53,7 +53,7 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
         profile_pic = file_config.profile_pic
 
     # Build system prompt using centralized helper
-    from services.prompt_builder import build_system_prompt
+    from config import build_system_prompt
 
     system_prompt = build_system_prompt(agent.name, final_config)
 
@@ -162,7 +162,7 @@ async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.Ag
         agent.recent_events = agent_update.recent_events
 
     # Rebuild system prompt using centralized helper
-    from services.prompt_builder import build_system_prompt
+    from config import build_system_prompt
 
     config_data = agent.get_config_data(use_cache=False)  # Don't use cache during update
     agent.system_prompt = build_system_prompt(agent.name, config_data)
@@ -193,9 +193,9 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
         raise ValueError(f"Agent {agent.name} does not have a config file to reload from")
 
     # Load config using service
-    from services import AgentConfigService
+    from config import AgentConfigIO
 
-    config_data = AgentConfigService.load_agent_config(agent.config_file)
+    config_data = AgentConfigIO.load_agent_config(agent.config_file)
 
     if not config_data:
         raise ValueError(f"Failed to load config from {agent.config_file}")
@@ -235,7 +235,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
         agent.transparent = False
 
     # Rebuild system prompt from updated values using centralized helper
-    from services.prompt_builder import build_system_prompt
+    from config import build_system_prompt
 
     config_obj = agent.get_config_data(use_cache=False)  # Don't use cache during reload
     agent.system_prompt = build_system_prompt(agent.name, config_obj)
@@ -266,7 +266,7 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
     Returns:
         Agent object (unchanged) or None if agent not found
     """
-    from services import AgentConfigService
+    from config import AgentConfigIO
 
     # Get the agent
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
@@ -279,7 +279,7 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
     # Database will be loaded fresh from filesystem on next read via get_config_data()
     if agent.config_file:
         timestamp = datetime.utcnow()
-        success = AgentConfigService.append_to_recent_events(
+        success = AgentConfigIO.append_to_recent_events(
             config_file=agent.config_file, memory_entry=memory_entry, timestamp=timestamp
         )
         if success:
