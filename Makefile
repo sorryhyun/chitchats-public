@@ -66,7 +66,6 @@ run-tunnel-frontend:
 	cloudflared tunnel --url http://localhost:5173
 
 dev:
-	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend and frontend..."
 	@echo "Backend will run on http://localhost:8000"
 	@echo "Frontend will run on http://localhost:5173"
@@ -76,7 +75,6 @@ dev:
 	@$(MAKE) -j3 run-backend run-frontend
 
 dev-sqlite:
-	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend and frontend with SQLite..."
 	@echo "Backend will run on http://localhost:8000"
 	@echo "Frontend will run on http://localhost:5173"
