@@ -2,34 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-ChitChats is a multi-agent chat room application where multiple AI agents with different personalities can interact in real-time chat rooms. The application supports multiple AI providers (Claude and Codex) with provider selection at room creation time.
-
-**Tech Stack:**
-- Backend: FastAPI + SQLAlchemy (async) + PostgreSQL
-- Frontend: React + TypeScript + Vite + Tailwind CSS
-- AI Integration: Multi-provider support (Claude Agent SDK, OpenAI Codex)
-- Real-time Communication: HTTP Polling (2-second intervals)
-- Background Processing: APScheduler for autonomous agent interactions
-
-## Development Commands
-
-```bash
-make dev           # Run both backend and frontend
-make install       # Install all dependencies
-make stop          # Stop all servers
-make clean         # Clean build artifacts
-
-# Backend only
-cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Frontend only
-cd frontend && npm run dev
-
-# Run tests
-uv run pytest --cov=backend --cov-report=term-missing
-```
+See [README.md](README.md) for quick start and [backend/README.md](backend/README.md) for configuration.
 
 ## Architecture Overview
 
@@ -141,21 +114,38 @@ agents/
 
 **Agent configs**, **system prompt**, and **tool configurations** use filesystem as single source of truth:
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
-- System prompt: `backend/config/tools/guidelines_3rd.yaml` (`system_prompt` field)
-- Tool configurations: `backend/config/tools/*.yaml` files
+- System prompt: `backend/config/guidelines_3rd.yaml` (`system_prompt` field)
+- Tool configurations: `backend/config/*.yaml` files
 - Changes apply immediately on next agent response (hot-reloading)
 - File locking prevents concurrent write conflicts
 - See `backend/infrastructure/locking.py` for implementation
 
 ### Tool Configuration (YAML-Based)
 
-Tool descriptions and debug settings are configured via YAML files in `backend/config/tools/`:
+Tool descriptions and debug settings are configured via YAML files in `backend/config/`:
 
 **`tools.yaml`** - Tool definitions and descriptions
 - Defines available tools (skip, memorize, guidelines, configuration)
 - Tool descriptions support template variables (`{agent_name}`, `{config_sections}`)
 - Enable/disable tools individually
 - Changes apply immediately (no restart required)
+
+### Provider-Specific Tool Overrides
+
+Tool configurations can be overridden per AI provider using `claude_tools.yaml` and `codex_tools.yaml`:
+
+```
+backend/config/
+├── tools.yaml           # Base tool definitions
+├── claude_tools.yaml    # Claude-specific overrides
+└── codex_tools.yaml     # Codex-specific overrides
+```
+
+**Merge order:** `tools.yaml` → provider config → group config
+
+**Example:** Different moderation tools per provider:
+- Claude uses `mcp__guidelines__anthropic`
+- Codex uses `mcp__guidelines__openai`
 
 ### Group-Specific Tool Overrides
 
@@ -259,148 +249,20 @@ ChitChats uses a **third-person perspective** approach for agent configurations,
 - **Proper Korean grammar** with automatic particle selection (은/는, 이/가, etc.)
 - **Better roleplay quality** by reinforcing character identity throughout guidelines
 
-**Example: Enabling debug logging**
-```yaml
-# backend/config/tools/debug.yaml
-debug:
-  enabled: true  # Or set DEBUG_AGENTS=true in .env
-  output_file: "debug.txt"
-```
-
-## Quick Start
-
-1. **Setup environment:**
-   ```bash
-   # Install uv (if not already installed)
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-
-   # Install all dependencies
-   make install
-   ```
-
-2. **Setup PostgreSQL:**
-   ```bash
-   # Install PostgreSQL (if not already installed)
-   # macOS: brew install postgresql@15
-   # Ubuntu: sudo apt install postgresql
-
-   # Create database
-   createdb chitchats
-
-   # Or with custom credentials:
-   # psql -c "CREATE DATABASE chitchats;"
-   ```
-
-3. **Configure authentication:**
-   ```bash
-   # Generate password hash
-   make generate-hash
-   # Enter your desired password when prompted
-
-   # Generate JWT secret
-   python -c "import secrets; print(secrets.token_hex(32))"
-
-   # Copy and configure .env in project root
-   cp .env.example .env
-   # Edit .env and add API_KEY_HASH and JWT_SECRET
-   ```
-
-   See [SETUP.md](SETUP.md) for detailed instructions.
-
-4. **Run development servers:**
-   ```bash
-   make dev
-   ```
-
-5. **Access application:**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
-
-   Login with the password you used to generate the hash.
-
-## Configuration
-
-### Backend Environment Variables (`.env`)
-
-**Required:**
-- `DATABASE_URL` - PostgreSQL connection string (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats`)
-- `API_KEY_HASH` - Bcrypt hash of your password (generate with `make generate-hash`)
-- `JWT_SECRET` - Secret key for signing JWT tokens (generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
-
-**Optional:**
-- `USER_NAME` - Display name for user messages in chat (default: "User")
-- `DEBUG_AGENTS` - Set to "true" for verbose agent logging
-- `RECALL_MEMORY_FILE` - Memory file for recall tool: `consolidated_memory` (default) or `long_term_memory`
-- `READ_GUIDELINE_BY` - Guideline delivery mode: `active_tool` (default) or `description`
-- `USE_HAIKU` - Set to "true" to use Haiku model instead of Opus (default: false)
-- `PRIORITY_AGENTS` - Comma-separated agent names for priority responding
-- `MAX_CONCURRENT_ROOMS` - Max rooms for background scheduler (default: 5)
-- `ENABLE_GUEST_LOGIN` - Enable/disable guest login (default: true)
-- `FRONTEND_URL` - CORS allowed origin for production (e.g., `https://your-app.vercel.app`)
-- `VERCEL_URL` - Auto-detected on Vercel deployments
-
-**Claude Agent SDK:**
-- Authentication is handled by the Claude Agent SDK when running through Claude Code with an active subscription
-- No ANTHROPIC_API_KEY configuration is needed for the SDK
-
-### Database (PostgreSQL)
-- **Connection:** Configure via `DATABASE_URL` environment variable
-- **Format:** `postgresql+asyncpg://user:password@host:port/database`
-- **Default:** `postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats`
-- **Migrations:** Automatic schema updates via `backend/infrastructure/database/migrations.py`
-- **Setup:** Create database with `createdb chitchats` before first run
-
-### CORS Configuration
-- CORS is configured in `main.py` using environment variables
-- Default allowed origins: `localhost:5173`, `localhost:5174`, and local network IPs
-- Add custom origins via `FRONTEND_URL` or `VERCEL_URL` environment variables
-- Backend logs CORS configuration on startup for visibility
-
 ## Common Tasks
 
 **Create agent:** Add folder in `agents/` with required `.md` files using third-person perspective (e.g., "Alice is..." not "You are..."), restart backend
 
 **Update agent:** Edit `.md` files directly (changes apply immediately)
 
-**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
+**Update system prompt:** Edit `system_prompt` section in `backend/config/guidelines_3rd.yaml` (changes apply immediately)
 
-**Update tool descriptions:** Edit YAML files in `backend/config/tools/` (changes apply immediately)
+**Update tool descriptions:** Edit YAML files in `backend/config/` (changes apply immediately)
 
-**Update guidelines:** Edit `v1/v2/v3.template` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
+**Update guidelines:** Edit `v1/v2/v3.template` section in `backend/config/guidelines_3rd.yaml` (changes apply immediately)
 
-**Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/tools/debug.yaml`
+**Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/debug.yaml`
 
 **Add database field:** Update `models.py`, add migration in `backend/infrastructure/database/migrations.py`, update `schemas.py` and `crud/`, restart
 
 **Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud/`, add endpoint in `routers/`
-
-## Automated Simulations
-
-ChitChats includes bash scripts for running automated multi-agent chatroom simulations via curl API calls. This is useful for testing agent behaviors, creating conversation datasets, or running batch simulations.
-
-**Quick Example:**
-```bash
-make simulate ARGS='--password "your_password" --scenario "Discuss the ethics of AI development" --agents "alice,bob,charlie"'
-```
-
-Or use the script directly:
-```bash
-./scripts/simulation/simulate_chatroom.sh \
-  --password "your_password" \
-  --scenario "Discuss the ethics of AI development" \
-  --agents "alice,bob,charlie"
-```
-
-**Output:** Generates `chatroom_1.txt`, `chatroom_2.txt`, etc. with formatted conversation transcripts.
-
-**Features:**
-- Authenticates and creates rooms via API
-- Sends scenarios as `situation_builder` participant type
-- Polls for messages and saves formatted transcripts
-- Auto-detects conversation completion
-- Supports custom room names, max interactions, and output files
-
-**Scripts Location:** `scripts/simulation/` and `scripts/testing/`
-
-**See [SIMULATIONS.md](SIMULATIONS.md) for complete guide.**

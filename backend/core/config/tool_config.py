@@ -11,6 +11,7 @@ from .loaders import (
     get_conversation_context_config,
     get_group_config,
     get_guidelines_config,
+    get_provider_tools_config,
     get_tools_config,
     merge_tool_configs,
 )
@@ -18,27 +19,40 @@ from .loaders import (
 logger = logging.getLogger(__name__)
 
 
-def _get_tools_config_for_group(group_name: Optional[str] = None) -> Dict[str, Any]:
+def _get_tools_config_for_group(
+    group_name: Optional[str] = None,
+    provider: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Get tools configuration with group-specific overrides applied.
+    Get tools configuration with provider and group-specific overrides applied.
+
+    Merge order (later overrides earlier):
+    1. Base tools.yaml
+    2. Provider-specific config (claude_tools.yaml or codex_tools.yaml)
+    3. Group-specific config (group_config.yaml)
 
     Args:
         group_name: Optional group name to apply group-specific overrides
+        provider: Optional provider name ('claude' or 'codex') for provider overrides
 
     Returns:
-        Tools configuration dictionary (merged with group config if applicable)
+        Tools configuration dictionary with all overrides merged
     """
-    base_config = get_tools_config()
+    config = get_tools_config()
 
-    if not group_name:
-        return base_config
+    # Apply provider-specific overrides
+    if provider:
+        provider_config = get_provider_tools_config(provider)
+        if provider_config:
+            config = merge_tool_configs(config, provider_config)
 
-    # Load and merge group config
-    group_config = get_group_config(group_name)
-    if group_config:
-        return merge_tool_configs(base_config, group_config)
+    # Apply group-specific overrides (takes precedence over provider)
+    if group_name:
+        group_config = get_group_config(group_name)
+        if group_config:
+            config = merge_tool_configs(config, group_config)
 
-    return base_config
+    return config
 
 
 def get_tool_description(
@@ -89,8 +103,8 @@ def get_tool_description(
         description = template.format(agent_name=agent_name, situation_builder_note=situation_builder_note)
         return description
 
-    # For other tools, load from tools.yaml (with optional group overrides)
-    tools_config = _get_tools_config_for_group(group_name)
+    # For other tools, load from tools.yaml (with optional provider/group overrides)
+    tools_config = _get_tools_config_for_group(group_name, provider)
 
     if "tools" not in tools_config or tool_name not in tools_config["tools"]:
         logger.warning(f"Tool '{tool_name}' not found in configuration")
@@ -117,19 +131,25 @@ def get_tool_description(
     return description
 
 
-def get_tool_response(tool_name: str, group_name: Optional[str] = None, **kwargs) -> str:
+def get_tool_response(
+    tool_name: str,
+    group_name: Optional[str] = None,
+    provider: Optional[str] = None,
+    **kwargs,
+) -> str:
     """
     Get the response message for a tool with variables substituted.
 
     Args:
         tool_name: Name of the tool
         group_name: Optional group name to apply group-specific overrides
+        provider: Optional provider name for provider-specific overrides
         **kwargs: Variables to substitute in the response template
 
     Returns:
         Response string with variables substituted
     """
-    tools_config = _get_tools_config_for_group(group_name)
+    tools_config = _get_tools_config_for_group(group_name, provider)
 
     if "tools" not in tools_config or tool_name not in tools_config["tools"]:
         return "Tool response not configured."
@@ -169,17 +189,23 @@ def get_situation_builder_note(has_situation_builder: bool) -> str:
     return sb_config.get("template", "")
 
 
-def is_tool_enabled(tool_name: str) -> bool:
+def is_tool_enabled(
+    tool_name: str,
+    group_name: Optional[str] = None,
+    provider: Optional[str] = None,
+) -> bool:
     """
     Check if a tool is enabled in configuration.
 
     Args:
         tool_name: Name of the tool
+        group_name: Optional group name for group-specific overrides
+        provider: Optional provider name for provider-specific overrides
 
     Returns:
         True if tool is enabled, False otherwise
     """
-    tools_config = get_tools_config()
+    tools_config = _get_tools_config_for_group(group_name, provider)
 
     if "tools" not in tools_config or tool_name not in tools_config["tools"]:
         return False

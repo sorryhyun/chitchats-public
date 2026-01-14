@@ -1,8 +1,12 @@
 """
-Standalone MCP server for guidelines tools (read, anthropic).
+Standalone MCP server for guidelines tools (read, anthropic/openai).
 
 This server runs as a separate process for Codex CLI integration,
 communicating via stdio using the MCP protocol.
+
+Tools exposed depend on provider:
+- Claude: read, anthropic
+- Codex: read, openai
 
 Usage:
     python -m mcp_servers.guidelines_server
@@ -11,6 +15,7 @@ Environment Variables:
     AGENT_NAME: Name of the agent (required)
     AGENT_GROUP: Group name for config overrides (optional)
     HAS_SITUATION_BUILDER: Whether room has situation builder (optional)
+    PROVIDER: AI provider name ('claude' or 'codex') for provider-specific configs (optional)
 """
 
 import asyncio
@@ -34,7 +39,6 @@ from core.config import (
     get_extreme_traits,
     get_situation_builder_note,
     get_tool_description,
-    get_tools_config,
     is_tool_enabled,
 )
 
@@ -66,31 +70,44 @@ def create_guidelines_server(
     async def handle_list_tools() -> list[types.Tool]:
         """Return list of available tools."""
         tools = []
-        config = get_tools_config()
-        tool_configs = config.get("tools", {})
 
         # Read guidelines tool
-        if is_tool_enabled("read"):
-            read_config = tool_configs.get("read", {})
+        if is_tool_enabled("read", group_name=group_name, provider=provider):
             tools.append(types.Tool(
                 name="read",
-                description=read_config.get(
-                    "description",
-                    "Retrieve behavioral guidelines and character information."
-                ),
+                description=get_tool_description(
+                    "read",
+                    agent_name=agent_name,
+                    group_name=group_name,
+                    provider=provider,
+                ) or "Retrieve behavioral guidelines and character information.",
                 inputSchema=GuidelinesReadInput.model_json_schema(),
             ))
 
-        # Anthropic classification tool
-        if is_tool_enabled("anthropic"):
-            anthropic_config = tool_configs.get("anthropic", {})
+        # Anthropic classification tool (for Claude provider)
+        if is_tool_enabled("anthropic", group_name=group_name, provider=provider):
             tools.append(types.Tool(
                 name="anthropic",
-                description=anthropic_config.get(
-                    "description",
-                    "Classify a situation against public guidelines."
-                ),
+                description=get_tool_description(
+                    "anthropic",
+                    agent_name=agent_name,
+                    group_name=group_name,
+                    provider=provider,
+                ) or "Classify a situation against Anthropic guidelines.",
                 inputSchema=GuidelinesAnthropicInput.model_json_schema(),
+            ))
+
+        # OpenAI classification tool (for Codex provider)
+        if is_tool_enabled("openai", group_name=group_name, provider=provider):
+            tools.append(types.Tool(
+                name="openai",
+                description=get_tool_description(
+                    "openai",
+                    agent_name=agent_name,
+                    group_name=group_name,
+                    provider=provider,
+                ) or "Classify a situation against OpenAI guidelines.",
+                inputSchema=GuidelinesAnthropicInput.model_json_schema(),  # Same schema
             ))
 
         return tools
@@ -101,7 +118,8 @@ def create_guidelines_server(
         if name == "read":
             return [types.TextContent(type="text", text=guidelines_content)]
 
-        elif name == "anthropic":
+        elif name in ("anthropic", "openai"):
+            # Both tools have the same behavior, just different names per provider
             validated = GuidelinesAnthropicInput(**arguments)
             situation = validated.situation
 

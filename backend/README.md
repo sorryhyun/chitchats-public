@@ -48,12 +48,21 @@ backend/
 ## Configuration
 
 **Environment variables** (`.env`):
-- `API_KEY_HASH` - Bcrypt hash of admin password (required)
-- `JWT_SECRET` - JWT signing secret
-- `DATABASE_URL` - PostgreSQL connection string
-- `DEBUG_AGENTS` - Enable verbose logging
 
-See [../CLAUDE.md](../CLAUDE.md) for full configuration reference.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `API_KEY_HASH` | Yes | Bcrypt hash of admin password (`make generate-hash`) |
+| `JWT_SECRET` | Yes | JWT signing secret |
+| `DATABASE_URL` | No | PostgreSQL connection (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats`) |
+| `USER_NAME` | No | Display name for user messages (default: "User") |
+| `DEBUG_AGENTS` | No | Enable verbose agent logging |
+| `USE_HAIKU` | No | Use Haiku model instead of Opus |
+| `PRIORITY_AGENTS` | No | Comma-separated agent names for priority responding |
+| `MAX_CONCURRENT_ROOMS` | No | Max rooms for background scheduler (default: 5) |
+| `ENABLE_GUEST_LOGIN` | No | Enable/disable guest login (default: true) |
+| `FRONTEND_URL` | No | CORS allowed origin for production |
+
+See [../SETUP.md](../SETUP.md) for authentication setup.
 
 ## Development
 

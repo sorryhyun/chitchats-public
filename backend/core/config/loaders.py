@@ -72,6 +72,36 @@ def get_tools_config() -> Dict[str, Any]:
     return get_cached_config(get_settings().tools_config_path)
 
 
+def get_provider_tools_config(provider: str) -> Dict[str, Any]:
+    """
+    Load provider-specific tools configuration.
+
+    Args:
+        provider: Provider name ('claude' or 'codex')
+
+    Returns:
+        Dictionary containing provider-specific tool overrides, or empty dict if not found
+    """
+    if not provider:
+        return {}
+
+    from core import get_settings
+
+    provider_config_path = get_settings().get_provider_tools_config_path(provider)
+
+    if not provider_config_path.exists():
+        logger.debug(f"No provider config found for '{provider}' at {provider_config_path}")
+        return {}
+
+    try:
+        config = get_cached_config(provider_config_path)
+        logger.debug(f"Loaded provider config for '{provider}': {list(config.keys())}")
+        return config
+    except Exception as e:
+        logger.warning(f"Error loading provider config for '{provider}': {e}")
+        return {}
+
+
 def get_guidelines_config() -> Dict[str, Any]:
     """
     Load the guidelines configuration from guidelines.yaml.

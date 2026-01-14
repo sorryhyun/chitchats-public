@@ -280,6 +280,18 @@ class Settings(BaseSettings):
         """
         return self.config_dir / "tools.yaml"
 
+    def get_provider_tools_config_path(self, provider: str) -> Path:
+        """
+        Get the path to provider-specific tools configuration file.
+
+        Args:
+            provider: Provider name ('claude' or 'codex')
+
+        Returns:
+            Path to provider-specific tools.yaml (e.g., claude_tools.yaml)
+        """
+        return self.config_dir / f"{provider}_tools.yaml"
+
     @property
     def debug_config_path(self) -> Path:
         """

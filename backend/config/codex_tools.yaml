@@ -1,0 +1,12 @@
+# Codex Provider Tool Configuration
+# Overrides for tools.yaml when using Codex provider
+# Only include fields that differ from the base tools.yaml
+
+tools:
+  # Disable anthropic tool for Codex
+  anthropic:
+    enabled: false
+
+  # Codex uses openai tool
+  openai:
+    enabled: true

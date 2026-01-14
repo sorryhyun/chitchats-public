@@ -1,0 +1,12 @@
+# Claude Provider Tool Configuration
+# Overrides for tools.yaml when using Claude provider
+# Only include fields that differ from the base tools.yaml
+
+tools:
+  # Claude uses anthropic tool
+  anthropic:
+    enabled: true
+
+  # Disable openai tool for Claude
+  openai:
+    enabled: false

@@ -28,6 +28,7 @@ from .loaders import (
     get_guidelines_config,
     get_guidelines_config_path,
     get_guidelines_file,
+    get_provider_tools_config,
     get_tools_config,
     merge_tool_configs,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "get_cached_config",
     # Loaders
     "get_tools_config",
+    "get_provider_tools_config",
     "get_guidelines_config",
     "get_guidelines_config_path",
     "get_guidelines_file",
