@@ -27,6 +27,7 @@ def build_conversation_context(
     agent_count: Optional[int] = None,
     user_name: Optional[str] = None,
     include_response_instruction: bool = True,
+    provider: Optional[str] = None,
 ) -> List[dict]:
     """
     Build conversation context from recent room messages for multi-agent awareness.
@@ -42,6 +43,7 @@ def build_conversation_context(
         agent_count: Number of agents in the room (for detecting 1-on-1 conversations)
         user_name: Name of the user/character participant (for 1-on-1 conversations)
         include_response_instruction: If True, append response instruction; if False, only include conversation history
+        provider: AI provider ('claude' or 'codex') for provider-specific instructions
 
     Returns:
         List of content blocks: [{"type": "text", "text": "..."}, {"type": "image", "source": {...}}, ...]
@@ -173,7 +175,12 @@ def build_conversation_context(
 
     # Add response instruction (if requested)
     if include_response_instruction and agent_name:
-        instruction = config.get("response_instruction", "")
+        # Try provider-specific instruction first, fall back to generic
+        instruction = ""
+        if provider:
+            instruction = config.get(f"response_instruction_{provider}", "")
+        if not instruction:
+            instruction = config.get("response_instruction", "")
         if instruction:
             current_text += format_with_particles(instruction, agent_name=agent_name, user_name=user_name or "")
 

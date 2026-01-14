@@ -276,7 +276,7 @@ class CodexClient(AIClient):
                 cmd.extend(["-c", override])
 
         # Add system prompt as developer_instructions (only for new conversations)
-        if self._options.system_prompt and not self._thread_id:
+        if self._options.system_prompt and not thread_id:
             # Escape the system prompt for TOML string value
             escaped_prompt = self._options.system_prompt.replace("\\", "\\\\").replace('"', '\\"')
             cmd.extend(["-c", f'developer_instructions="{escaped_prompt}"'])

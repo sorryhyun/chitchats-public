@@ -107,6 +107,7 @@ class ResponseGenerator:
             agent_name=agent.name,
             agent_count=agent_count,
             user_name=user_name,
+            provider=provider,
         )
 
         # For follow-up rounds, skip if there are no new messages since this agent's last response
