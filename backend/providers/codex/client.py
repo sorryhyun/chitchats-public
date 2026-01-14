@@ -14,8 +14,12 @@ import json
 import logging
 import os
 import shutil
+import sys
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
+
+# Windows detection for subprocess handling
+IS_WINDOWS = sys.platform == "win32"
 
 from providers.base import AIClient
 
@@ -183,13 +187,30 @@ class CodexClient(AIClient):
             subprocess_env = {**os.environ, **self._options.env}
 
         try:
-            self._process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=self._options.working_dir,
-                env=subprocess_env,
-            )
+            if IS_WINDOWS:
+                # On Windows, npm-installed CLIs are .cmd batch scripts
+                # Use shell=True with joined command string for proper execution
+                def quote_win(s: str) -> str:
+                    """Quote a string for Windows cmd.exe."""
+                    if ' ' in s or '"' in s:
+                        return '"' + s.replace('"', '\\"') + '"'
+                    return s
+                cmd_str = ' '.join(quote_win(c) for c in cmd)
+                self._process = await asyncio.create_subprocess_shell(
+                    cmd_str,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=self._options.working_dir,
+                    env=subprocess_env,
+                )
+            else:
+                self._process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=self._options.working_dir,
+                    env=subprocess_env,
+                )
         except Exception as e:
             logger.error(f"Failed to start Codex process: {e}")
             yield {"type": "error", "data": {"message": str(e)}}

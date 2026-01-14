@@ -110,6 +110,18 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     return () => window.removeEventListener('keydown', handleEscape);
   }, [showAgentManager]);
 
+  // Handle F5 key to reset conversation
+  useEffect(() => {
+    const handleF5 = (e: KeyboardEvent) => {
+      if (e.key === 'F5' && roomId) {
+        e.preventDefault(); // Prevent browser refresh
+        setShowClearConfirm(true);
+      }
+    };
+    window.addEventListener('keydown', handleF5);
+    return () => window.removeEventListener('keydown', handleF5);
+  }, [roomId]);
+
   const fetchRoomDetails = async () => {
     if (!roomId) return;
 

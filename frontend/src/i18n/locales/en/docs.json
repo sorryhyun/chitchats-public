@@ -92,7 +92,8 @@
     "shortcuts": {
       "escape": "Escape - Close modals and sidebars",
       "enter": "Enter - Send message",
-      "shiftEnter": "Shift + Enter - New line in message"
+      "shiftEnter": "Shift + Enter - New line in message",
+      "f5": "F5 - Reset conversation (with confirmation)"
     }
   }
 }

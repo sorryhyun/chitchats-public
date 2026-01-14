@@ -92,7 +92,8 @@
     "shortcuts": {
       "escape": "Escape - 모달 및 사이드바 닫기",
       "enter": "Enter - 메시지 보내기",
-      "shiftEnter": "Shift + Enter - 메시지에서 줄 바꿈"
+      "shiftEnter": "Shift + Enter - 메시지에서 줄 바꿈",
+      "f5": "F5 - 대화 초기화 (확인 필요)"
     }
   }
 }

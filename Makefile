@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-sqlite prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-sqlite prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -12,6 +12,9 @@ help:
 	@echo "  make install           - Install all dependencies (backend + frontend)"
 	@echo "  make run-backend       - Run backend server only"
 	@echo "  make run-frontend      - Run frontend server only"
+	@echo ""
+	@echo "Build:"
+	@echo "  make build-exe         - Build Windows executable (requires PowerShell)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make generate-hash     - Generate password hash for authentication"
@@ -244,3 +247,30 @@ evaluate-jane-full:
 	@echo ""
 	@echo "Comparing results..."
 	@uv run python scripts/evaluation/analyze_results.py --compare results/evaluations/*.json 2>/dev/null || echo "Run individual analyses with: uv run python scripts/evaluation/analyze_results.py results/evaluations/<file>.json"
+
+# Windows executable build
+# Requires PowerShell (pwsh on Linux/macOS, powershell.exe on Windows)
+build-exe:
+	@echo "Building Windows executable..."
+	@if command -v pwsh >/dev/null 2>&1; then \
+		echo "Using PowerShell Core (pwsh)..."; \
+		pwsh -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
+	elif command -v powershell.exe >/dev/null 2>&1; then \
+		echo "Using Windows PowerShell via WSL..."; \
+		powershell.exe -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
+	else \
+		echo ""; \
+		echo "PowerShell not found. To build the Windows executable:"; \
+		echo ""; \
+		echo "  Option 1: Install PowerShell Core"; \
+		echo "    Ubuntu/Debian: sudo apt install powershell"; \
+		echo "    macOS: brew install powershell"; \
+		echo ""; \
+		echo "  Option 2: Run directly on Windows"; \
+		echo "    .\\scripts\\windows\\build_exe.ps1"; \
+		echo ""; \
+		echo "  Options:"; \
+		echo "    -Clean         Clean build artifacts first"; \
+		echo "    -SkipFrontend  Skip frontend build (use existing dist)"; \
+		exit 1; \
+	fi

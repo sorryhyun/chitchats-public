@@ -8,9 +8,13 @@ for the Codex CLI backend.
 import asyncio
 import logging
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, List, Optional
+
+# Windows detection for subprocess handling
+IS_WINDOWS = sys.platform == "win32"
 
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
@@ -123,13 +127,21 @@ class CodexProvider(AIProvider):
 
         # Check if authenticated
         try:
-            process = await asyncio.create_subprocess_exec(
-                "codex",
-                "auth",
-                "status",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            if IS_WINDOWS:
+                # On Windows, use shell=True for .cmd batch scripts
+                process = await asyncio.create_subprocess_shell(
+                    "codex auth status",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            else:
+                process = await asyncio.create_subprocess_exec(
+                    "codex",
+                    "auth",
+                    "status",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=10.0
             )
