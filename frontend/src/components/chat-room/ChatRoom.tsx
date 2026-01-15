@@ -122,6 +122,20 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     return () => window.removeEventListener('keydown', handleF5);
   }, [roomId]);
 
+  // Handle Enter key to confirm reset when modal is shown
+  useEffect(() => {
+    if (!showClearConfirm) return;
+
+    const handleEnter = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleClearMessages();
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [showClearConfirm]);
+
   const fetchRoomDetails = async () => {
     if (!roomId) return;
 

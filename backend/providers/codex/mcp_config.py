@@ -24,6 +24,7 @@ def build_mcp_overrides(
     backend_path: str,
     room_id: Optional[int] = None,
     agent_id: Optional[int] = None,
+    config_file: Optional[str] = None,
 ) -> List[str]:
     """Build Codex -c override arguments for MCP server configuration.
 
@@ -36,6 +37,7 @@ def build_mcp_overrides(
         backend_path: Absolute path to the backend directory
         room_id: Optional room ID for context
         agent_id: Optional agent ID for context
+        config_file: Optional path to agent config directory (for loading memories)
 
     Returns:
         List of -c override strings for Codex CLI
@@ -61,11 +63,14 @@ def build_mcp_overrides(
     overrides.append(f'{action_prefix}.env.AGENT_NAME="{agent_name}"')
     overrides.append(f'{action_prefix}.env.AGENT_GROUP="{agent_group}"')
     overrides.append(f'{action_prefix}.env.PYTHONPATH="{backend_path}"')
+    overrides.append(f'{action_prefix}.env.PROVIDER="codex"')
 
     if room_id is not None:
         overrides.append(f'{action_prefix}.env.ROOM_ID="{room_id}"')
     if agent_id is not None:
         overrides.append(f'{action_prefix}.env.AGENT_ID="{agent_id}"')
+    if config_file is not None:
+        overrides.append(f'{action_prefix}.env.CONFIG_FILE="{config_file}"')
 
     # Build guidelines server overrides
     guidelines_prefix = "mcp_servers.chitchats_guidelines"

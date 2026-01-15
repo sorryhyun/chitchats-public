@@ -612,6 +612,7 @@ class AgentManager:
                     "agent_name": context.agent_name,
                     "agent_group": context.group_name or "default",
                     "agent_id": context.agent_id,
+                    "config_file": context.config.config_file if context.config else None,
                 },
                 agent_name=context.agent_name,
                 agent_id=context.agent_id,

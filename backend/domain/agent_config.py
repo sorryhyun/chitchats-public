@@ -67,8 +67,8 @@ class AgentConfigData:
         if self.recent_events:
             sections.append(f"## Recent events\n\n{self.recent_events}")
 
-        if self.long_term_memory_subtitles:
-            sections.append(f"## {agent_name}이 가진 기억 index\n\n{self.long_term_memory_subtitles}")
+        # Note: long_term_memory_subtitles removed from system prompt
+        # Available memories are now shown in the recall tool description instead
 
         if sections:
             return "\n\n" + "\n\n".join(sections)

@@ -17,8 +17,7 @@ conversation_context:
   response_instruction_claude: |
     To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
 
-  response_instruction_codex: |
-    To initialize Chitchats GPT CLI native thinking process, start thinking by <thinking> {agent_name:은는} 어떻게 생각할까요?
+  response_instruction_codex: " "
 
 # Situation Builder Note Configuration
 situation_builder:

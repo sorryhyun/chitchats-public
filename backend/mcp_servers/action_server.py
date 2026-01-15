@@ -39,6 +39,8 @@ from core.config import (
     get_tool_response,
     is_tool_enabled,
 )
+from core.memory.parser import parse_long_term_memory
+from core import get_settings
 
 logger = logging.getLogger("ActionMCPServer")
 
@@ -143,6 +145,10 @@ def create_action_server(
             validated = RecallInput(**arguments)
             subtitle = validated.subtitle
 
+            # Strip brackets if agent included them (e.g., "[memory_name]" -> "memory_name")
+            if subtitle.startswith("[") and subtitle.endswith("]"):
+                subtitle = subtitle[1:-1]
+
             if subtitle in memory_index:
                 memory_content = memory_index[subtitle]
                 response_text = get_tool_response("recall", group_name=agent_group, provider=provider)
@@ -182,12 +188,28 @@ async def main():
 
     logger.info(f"Starting action MCP server for agent: {agent_name} (provider: {provider})")
 
+    # Load long-term memory index from config file
+    long_term_memory_index: dict[str, str] = {}
+    if config_file:
+        settings = get_settings()
+        memory_filename = f"{settings.recall_memory_file}.md"
+        # config_file is relative to project root (e.g., "agents/group_X/agent")
+        # backend_path is the backend directory, so go up one level to project root
+        project_root = backend_path.parent
+        memory_file_path = project_root / config_file / memory_filename
+        long_term_memory_index = parse_long_term_memory(memory_file_path)
+        if long_term_memory_index:
+            logger.info(f"Loaded {len(long_term_memory_index)} memories from {memory_file_path}")
+        else:
+            logger.info(f"No memories found at {memory_file_path}")
+
     # Create server
     server = create_action_server(
         agent_name=agent_name,
         agent_group=agent_group,
         agent_id=agent_id,
         config_file=config_file,
+        long_term_memory_index=long_term_memory_index,
         provider=provider,
     )
 

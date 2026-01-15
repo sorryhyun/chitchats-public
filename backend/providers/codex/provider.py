@@ -183,6 +183,7 @@ class CodexProvider(AIProvider):
         agent_group = mcp_tools.get("agent_group", "default")
         agent_id = mcp_tools.get("agent_id")
         room_id = mcp_tools.get("room_id")
+        config_file = mcp_tools.get("config_file")
 
         # Get backend path (parent of providers directory)
         backend_path = str(Path(__file__).parent.parent.parent)
@@ -194,6 +195,7 @@ class CodexProvider(AIProvider):
                 backend_path=backend_path,
                 room_id=room_id,
                 agent_id=agent_id,
+                config_file=config_file,
             )
         except Exception as e:
             logger.warning(f"Failed to build MCP overrides: {e}")
