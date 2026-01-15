@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-sqlite prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full build-exe
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-sqlite prod stop clean env generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -17,6 +17,7 @@ help:
 	@echo "  make build-exe         - Build Windows executable (requires PowerShell)"
 	@echo ""
 	@echo "Setup:"
+	@echo "  make env               - Create .env file (prompts for password)"
 	@echo "  make generate-hash     - Generate password hash for authentication"
 	@echo ""
 	@echo "Testing & Simulation:"
@@ -113,6 +114,10 @@ clean:
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules/.vite
 	@echo "Clean complete!"
+
+env:
+	@echo "Creating .env file..."
+	@uv run python scripts/setup/create_env.py
 
 generate-hash:
 	@echo "Generating password hash..."

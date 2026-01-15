@@ -16,14 +16,30 @@ import os
 import shutil
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 # Windows detection for subprocess handling
 IS_WINDOWS = sys.platform == "win32"
 
+# Project root directory (backend's parent)
+_BACKEND_ROOT = Path(__file__).parent.parent.parent
+_BUNDLED_CODEX_WINDOWS = _BACKEND_ROOT / "bundled" / "codex-x86_64-pc-windows-msvc.exe"
+
 from providers.base import AIClient
 
 logger = logging.getLogger("CodexClient")
+
+
+def _get_codex_executable() -> str:
+    """Get the Codex executable path based on platform.
+
+    Returns the bundled Windows executable on Windows,
+    or 'codex' (npm-installed) on other platforms.
+    """
+    if IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists():
+        return str(_BUNDLED_CODEX_WINDOWS)
+    return "codex"
 
 
 @dataclass
@@ -88,12 +104,20 @@ class CodexClient(AIClient):
         For Codex, this is a no-op since we spawn a new subprocess per query.
         The "connection" state is just tracking readiness.
         """
+        # Get the codex executable (bundled on Windows, npm-installed otherwise)
+        codex_exe = _get_codex_executable()
+
         # Verify codex CLI is available
-        codex_path = shutil.which("codex")
-        if not codex_path:
-            raise RuntimeError(
-                "Codex CLI not found. Install it with: npm install -g @openai/codex"
-            )
+        if IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists():
+            # Using bundled Windows executable
+            logger.debug(f"Using bundled Codex executable: {codex_exe}")
+        else:
+            # Check if codex is in PATH
+            codex_path = shutil.which("codex")
+            if not codex_path:
+                raise RuntimeError(
+                    "Codex CLI not found. Install it with: npm install -g @openai/codex"
+                )
 
         self._connected = True
         logger.debug("Codex client ready")
@@ -187,8 +211,12 @@ class CodexClient(AIClient):
             subprocess_env = {**os.environ, **self._options.env}
 
         try:
-            if IS_WINDOWS:
-                # On Windows, npm-installed CLIs are .cmd batch scripts
+            # Determine if we're using the bundled executable (native .exe)
+            # or npm-installed CLI (.cmd batch script on Windows)
+            using_bundled = IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists()
+
+            if IS_WINDOWS and not using_bundled:
+                # On Windows with npm-installed CLI, it's a .cmd batch script
                 # Use shell=True with joined command string for proper execution
                 def quote_win(s: str) -> str:
                     """Quote a string for Windows cmd.exe."""
@@ -204,6 +232,7 @@ class CodexClient(AIClient):
                     env=subprocess_env,
                 )
             else:
+                # Native executable (bundled on Windows, or Unix)
                 self._process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -272,7 +301,8 @@ class CodexClient(AIClient):
         Returns:
             List of command parts for subprocess
         """
-        cmd = ["codex", "exec"]
+        codex_exe = _get_codex_executable()
+        cmd = [codex_exe, "exec"]
 
         # Handle thread resume
         thread_id = self._options.thread_id or self._thread_id

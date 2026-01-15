@@ -11,10 +11,14 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import List, Optional
 
 # Windows detection for subprocess handling
 IS_WINDOWS = sys.platform == "win32"
+
+# Project root directory (backend's parent)
+_BACKEND_ROOT = Path(__file__).parent.parent.parent
+_BUNDLED_CODEX_WINDOWS = _BACKEND_ROOT / "bundled" / "codex-x86_64-pc-windows-msvc.exe"
 
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
@@ -119,42 +123,51 @@ class CodexProvider(AIProvider):
         Returns:
             True if Codex CLI is installed and authenticated
         """
-        # Check if codex is installed
-        codex_path = shutil.which("codex")
-        if not codex_path:
-            logger.warning("Codex CLI not found in PATH")
-            return False
+        # Determine if we're using bundled executable or npm-installed
+        using_bundled = IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists()
 
-        # Check if authenticated
+        if using_bundled:
+            codex_exe = str(_BUNDLED_CODEX_WINDOWS)
+            logger.debug(f"Using bundled Codex executable: {codex_exe}")
+        else:
+            # Check if codex is installed via npm
+            codex_path = shutil.which("codex")
+            if not codex_path:
+                logger.warning("Codex CLI not found in PATH")
+                return False
+            codex_exe = "codex"
+
+        # Check if authenticated using "codex login status"
         try:
-            if IS_WINDOWS:
-                # On Windows, use shell=True for .cmd batch scripts
+            if IS_WINDOWS and not using_bundled:
+                # On Windows with npm-installed CLI, use shell=True for .cmd batch scripts
                 process = await asyncio.create_subprocess_shell(
-                    "codex auth status",
+                    "codex login status",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
             else:
+                # Native executable (bundled on Windows, or Unix)
                 process = await asyncio.create_subprocess_exec(
-                    "codex",
-                    "auth",
+                    codex_exe,
+                    "login",
                     "status",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-            stdout, stderr = await asyncio.wait_for(
+            stdout, _ = await asyncio.wait_for(
                 process.communicate(), timeout=10.0
             )
 
+            # Exit code 0 = logged in, non-zero = not logged in
             if process.returncode == 0:
                 output = stdout.decode("utf-8").lower()
-                # Check for authenticated status
-                if "authenticated" in output or "logged in" in output:
+                if "logged in" in output:
                     return True
-                logger.warning(f"Codex not authenticated: {output}")
+                logger.warning(f"Codex login status unclear: {output}")
                 return False
 
-            logger.warning(f"Codex auth check failed: {stderr.decode('utf-8')}")
+            logger.info("Codex not logged in")
             return False
 
         except asyncio.TimeoutError:
@@ -162,6 +175,54 @@ class CodexProvider(AIProvider):
             return False
         except Exception as e:
             logger.warning(f"Codex availability check failed: {e}")
+            return False
+
+    async def trigger_login(self) -> bool:
+        """Trigger interactive Codex login (opens browser for OAuth).
+
+        This is used for Windows onboarding when user runs the app for the first time.
+        The login process opens a browser window for OAuth authentication.
+
+        Returns:
+            True if login was successful, False otherwise
+        """
+        # Only use bundled executable on Windows
+        if not IS_WINDOWS:
+            logger.warning("trigger_login() is only supported on Windows")
+            return False
+
+        if not _BUNDLED_CODEX_WINDOWS.exists():
+            logger.warning(f"Bundled Codex executable not found: {_BUNDLED_CODEX_WINDOWS}")
+            return False
+
+        codex_exe = str(_BUNDLED_CODEX_WINDOWS)
+        logger.info(f"Triggering Codex login with: {codex_exe}")
+
+        try:
+            # Run login interactively (this will open a browser)
+            # We don't capture stdout/stderr since it's interactive
+            process = await asyncio.create_subprocess_exec(
+                codex_exe,
+                "login",
+                # Don't pipe stdout/stderr - let it be interactive
+            )
+
+            # Wait for the login process to complete (user interaction required)
+            # Use a longer timeout since user needs to complete OAuth in browser
+            await asyncio.wait_for(process.wait(), timeout=300.0)  # 5 minutes
+
+            if process.returncode == 0:
+                logger.info("Codex login successful")
+                return True
+            else:
+                logger.warning(f"Codex login failed with exit code: {process.returncode}")
+                return False
+
+        except asyncio.TimeoutError:
+            logger.warning("Codex login timed out (user did not complete OAuth in time)")
+            return False
+        except Exception as e:
+            logger.error(f"Codex login failed: {e}")
             return False
 
     def _build_mcp_overrides(self, mcp_tools: dict) -> List[str]:
