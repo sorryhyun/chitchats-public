@@ -16,13 +16,9 @@ from typing import List, Optional
 # Windows detection for subprocess handling
 IS_WINDOWS = sys.platform == "win32"
 
-# Project root directory (backend's parent)
-_BACKEND_ROOT = Path(__file__).parent.parent.parent
-_BUNDLED_CODEX_WINDOWS = _BACKEND_ROOT / "bundled" / "codex-x86_64-pc-windows-msvc.exe"
-
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
-from .client import CodexClient, CodexOptions
+from .client import CodexClient, CodexOptions, _get_bundled_codex_path, _get_codex_executable
 from .mcp_config import build_mcp_overrides
 from .parser import CodexStreamParser
 
@@ -124,10 +120,10 @@ class CodexProvider(AIProvider):
             True if Codex CLI is installed and authenticated
         """
         # Determine if we're using bundled executable or npm-installed
-        using_bundled = IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists()
+        bundled_path = _get_bundled_codex_path()
+        codex_exe = _get_codex_executable()
 
-        if using_bundled:
-            codex_exe = str(_BUNDLED_CODEX_WINDOWS)
+        if bundled_path:
             logger.debug(f"Using bundled Codex executable: {codex_exe}")
         else:
             # Check if codex is installed via npm
@@ -135,11 +131,10 @@ class CodexProvider(AIProvider):
             if not codex_path:
                 logger.warning("Codex CLI not found in PATH")
                 return False
-            codex_exe = "codex"
 
         # Check if authenticated using "codex login status"
         try:
-            if IS_WINDOWS and not using_bundled:
+            if IS_WINDOWS and not bundled_path:
                 # On Windows with npm-installed CLI, use shell=True for .cmd batch scripts
                 process = await asyncio.create_subprocess_shell(
                     "codex login status",
@@ -191,11 +186,12 @@ class CodexProvider(AIProvider):
             logger.warning("trigger_login() is only supported on Windows")
             return False
 
-        if not _BUNDLED_CODEX_WINDOWS.exists():
-            logger.warning(f"Bundled Codex executable not found: {_BUNDLED_CODEX_WINDOWS}")
+        bundled_path = _get_bundled_codex_path()
+        if not bundled_path:
+            logger.warning("Bundled Codex executable not found")
             return False
 
-        codex_exe = str(_BUNDLED_CODEX_WINDOWS)
+        codex_exe = str(bundled_path)
         logger.info(f"Triggering Codex login with: {codex_exe}")
 
         try:

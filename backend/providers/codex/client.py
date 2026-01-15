@@ -22,23 +22,54 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 # Windows detection for subprocess handling
 IS_WINDOWS = sys.platform == "win32"
 
-# Project root directory (backend's parent)
+# Codex Windows executable name
+_CODEX_WINDOWS_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
+
+# Project root directory (backend's parent) - for development
 _BACKEND_ROOT = Path(__file__).parent.parent.parent
-_BUNDLED_CODEX_WINDOWS = _BACKEND_ROOT / "bundled" / "codex-x86_64-pc-windows-msvc.exe"
+_BUNDLED_CODEX_DEV = _BACKEND_ROOT / "bundled" / _CODEX_WINDOWS_EXE_NAME
+
+# Next to the main executable - for packaged Windows builds (e.g., chitchat.exe)
+_BUNDLED_CODEX_PACKAGED = Path(sys.executable).parent / _CODEX_WINDOWS_EXE_NAME
 
 from providers.base import AIClient
 
 logger = logging.getLogger("CodexClient")
 
 
+def _get_bundled_codex_path() -> Optional[Path]:
+    """Get the bundled Codex executable path on Windows.
+
+    Checks two locations:
+    1. Next to the main executable (for packaged builds: chitchat.exe + codex-...exe)
+    2. In bundled/ folder (for development)
+
+    Returns:
+        Path to the bundled executable if found, None otherwise.
+    """
+    if not IS_WINDOWS:
+        return None
+
+    # First check next to the executable (packaged builds)
+    if _BUNDLED_CODEX_PACKAGED.exists():
+        return _BUNDLED_CODEX_PACKAGED
+
+    # Fall back to bundled/ folder (development)
+    if _BUNDLED_CODEX_DEV.exists():
+        return _BUNDLED_CODEX_DEV
+
+    return None
+
+
 def _get_codex_executable() -> str:
     """Get the Codex executable path based on platform.
 
-    Returns the bundled Windows executable on Windows,
+    Returns the bundled Windows executable on Windows (if found),
     or 'codex' (npm-installed) on other platforms.
     """
-    if IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists():
-        return str(_BUNDLED_CODEX_WINDOWS)
+    bundled_path = _get_bundled_codex_path()
+    if bundled_path:
+        return str(bundled_path)
     return "codex"
 
 
@@ -106,9 +137,10 @@ class CodexClient(AIClient):
         """
         # Get the codex executable (bundled on Windows, npm-installed otherwise)
         codex_exe = _get_codex_executable()
+        bundled_path = _get_bundled_codex_path()
 
         # Verify codex CLI is available
-        if IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists():
+        if bundled_path:
             # Using bundled Windows executable
             logger.debug(f"Using bundled Codex executable: {codex_exe}")
         else:
@@ -213,7 +245,7 @@ class CodexClient(AIClient):
         try:
             # Determine if we're using the bundled executable (native .exe)
             # or npm-installed CLI (.cmd batch script on Windows)
-            using_bundled = IS_WINDOWS and _BUNDLED_CODEX_WINDOWS.exists()
+            using_bundled = _get_bundled_codex_path() is not None
 
             if IS_WINDOWS and not using_bundled:
                 # On Windows with npm-installed CLI, it's a .cmd batch script
