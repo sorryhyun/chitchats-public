@@ -6,8 +6,16 @@ This is the entry point for the PyInstaller bundle. It:
 2. Runs first-time setup wizard if needed
 3. Starts the uvicorn server
 4. Opens the browser to the application
+
+MCP Server Mode:
+When launched with --mcp <server>, runs as an MCP server instead of web server.
+This allows the bundled exe to spawn itself as MCP tool servers.
+- ClaudeCodeRP.exe --mcp action      → runs action MCP server (skip, memorize, recall)
+- ClaudeCodeRP.exe --mcp guidelines  → runs guidelines MCP server (read, anthropic/openai)
 """
 
+import argparse
+import asyncio
 import getpass
 import os
 import secrets
@@ -292,8 +300,56 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 
+def run_mcp_server(server_type: str):
+    """Run an MCP server (action or guidelines).
+
+    This is called when the exe is launched with --mcp <server_type>.
+    The MCP server communicates via stdio with the parent process.
+    """
+    # Set up paths for imports (but don't change working directory)
+    base_path = get_base_path()
+    backend_path = base_path / "backend"
+    if backend_path.exists():
+        sys.path.insert(0, str(backend_path))
+    else:
+        sys.path.insert(0, str(Path(__file__).parent))
+
+    if server_type == "action":
+        from mcp_servers.action_server import main as action_main
+
+        asyncio.run(action_main())
+    elif server_type == "guidelines":
+        from mcp_servers.guidelines_server import main as guidelines_main
+
+        asyncio.run(guidelines_main())
+    else:
+        print(f"Unknown MCP server type: {server_type}", file=sys.stderr)
+        sys.exit(1)
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Claude Code Role Play",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--mcp",
+        choices=["action", "guidelines"],
+        help="Run as MCP server instead of web server (used internally)",
+    )
+    return parser.parse_args()
+
+
 def main():
     """Main entry point."""
+    args = parse_args()
+
+    # If --mcp is specified, run as MCP server instead of web server
+    if args.mcp:
+        run_mcp_server(args.mcp)
+        return
+
     # Set up paths first
     setup_paths()
 

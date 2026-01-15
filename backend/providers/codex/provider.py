@@ -245,11 +245,21 @@ class CodexProvider(AIProvider):
         # Get backend path (parent of providers directory)
         backend_path = str(Path(__file__).parent.parent.parent)
 
+        # Get work_dir (where agents folder lives)
+        # In bundled mode: next to the exe
+        # In dev mode: project root (parent of backend)
+        is_bundled = getattr(sys, "frozen", False)
+        if is_bundled:
+            work_dir = str(Path(sys.executable).parent)
+        else:
+            work_dir = str(Path(__file__).parent.parent.parent.parent)
+
         try:
             return build_mcp_overrides(
                 agent_name=agent_name,
                 agent_group=agent_group,
                 backend_path=backend_path,
+                work_dir=work_dir,
                 room_id=room_id,
                 agent_id=agent_id,
                 config_file=config_file,

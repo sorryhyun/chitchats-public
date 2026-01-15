@@ -192,13 +192,35 @@ class ClaudeProvider(AIProvider):
         Returns:
             Dict mapping server names to McpStdioServerConfig
         """
-        python_exe = sys.executable
+        # Check if running as bundled PyInstaller exe
+        is_bundled = getattr(sys, "frozen", False)
+
+        if is_bundled:
+            # In bundled mode, spawn the exe itself with --mcp flag
+            command = sys.executable
+            action_args = ["--mcp", "action"]
+            guidelines_args = ["--mcp", "guidelines"]
+        else:
+            # In development mode, use Python module execution
+            command = sys.executable
+            action_args = ["-m", "mcp_servers.action_server"]
+            guidelines_args = ["-m", "mcp_servers.guidelines_server"]
+
         backend_path = str(_BACKEND_ROOT)
+
+        # Get work_dir (where agents folder lives)
+        # In bundled mode: next to the exe
+        # In dev mode: project root (parent of backend)
+        if is_bundled:
+            work_dir = str(Path(sys.executable).parent)
+        else:
+            work_dir = str(_BACKEND_ROOT.parent)
 
         # Base environment for all MCP servers
         base_env = {
             "PYTHONPATH": backend_path,
             "AGENT_NAME": base_options.agent_name,
+            "WORK_DIR": work_dir,
         }
 
         # Add optional environment variables
@@ -211,8 +233,8 @@ class ClaudeProvider(AIProvider):
 
         # Build action server config
         action_config: McpStdioServerConfig = {
-            "command": python_exe,
-            "args": ["-m", "mcp_servers.action_server"],
+            "command": command,
+            "args": action_args,
             "env": {**base_env},
         }
 
@@ -227,8 +249,8 @@ class ClaudeProvider(AIProvider):
             guidelines_env["AGENT_GROUP"] = base_options.group_name
 
         guidelines_config: McpStdioServerConfig = {
-            "command": python_exe,
-            "args": ["-m", "mcp_servers.guidelines_server"],
+            "command": command,
+            "args": guidelines_args,
             "env": guidelines_env,
         }
 

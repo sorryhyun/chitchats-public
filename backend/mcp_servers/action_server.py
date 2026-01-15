@@ -11,7 +11,8 @@ Environment Variables:
     AGENT_NAME: Name of the agent (required)
     AGENT_GROUP: Group name for config overrides (optional)
     AGENT_ID: Agent ID for context (optional)
-    CONFIG_FILE: Path to agent config directory (optional)
+    CONFIG_FILE: Path to agent config directory (optional, relative to WORK_DIR)
+    WORK_DIR: Working directory for resolving relative paths (optional, defaults to cwd)
     PROVIDER: AI provider name ('claude' or 'codex') for provider-specific configs (optional)
 """
 
@@ -54,7 +55,7 @@ def create_action_server(
     provider: str = "claude",
 ) -> Server:
     """Create an MCP server with action tools."""
-    server = Server("chitchats_action")
+    server = Server("action")
     memory_index = long_term_memory_index or {}
 
     @server.list_tools()
@@ -124,9 +125,9 @@ def create_action_server(
 
                 try:
                     if not recent_events_path.exists():
-                        recent_events_path.write_text(f"# Recent Events\n{new_entry}\n")
+                        recent_events_path.write_text(f"# Recent Events\n{new_entry}\n", encoding="utf-8")
                     else:
-                        with open(recent_events_path, "a") as f:
+                        with open(recent_events_path, "a", encoding="utf-8") as f:
                             f.write(new_entry + "\n")
 
                     # Clear config cache so changes are picked up
@@ -182,21 +183,29 @@ async def main():
     agent_group = os.environ.get("AGENT_GROUP")
     agent_id_str = os.environ.get("AGENT_ID")
     config_file = os.environ.get("CONFIG_FILE")
+    work_dir = os.environ.get("WORK_DIR")
     provider = os.environ.get("PROVIDER", "claude")
 
     agent_id = int(agent_id_str) if agent_id_str else None
 
+    # Resolve config_file to absolute path using WORK_DIR
+    # In bundled mode, WORK_DIR is where the exe is located (where agents folder lives)
+    if config_file and work_dir:
+        config_file = str(Path(work_dir) / config_file)
+    elif config_file and not Path(config_file).is_absolute():
+        # Fallback: use backend_path.parent (works in dev mode)
+        config_file = str(backend_path.parent / config_file)
+
     logger.info(f"Starting action MCP server for agent: {agent_name} (provider: {provider})")
+    if config_file:
+        logger.info(f"Config file path: {config_file}")
 
     # Load long-term memory index from config file
     long_term_memory_index: dict[str, str] = {}
     if config_file:
         settings = get_settings()
         memory_filename = f"{settings.recall_memory_file}.md"
-        # config_file is relative to project root (e.g., "agents/group_X/agent")
-        # backend_path is the backend directory, so go up one level to project root
-        project_root = backend_path.parent
-        memory_file_path = project_root / config_file / memory_filename
+        memory_file_path = Path(config_file) / memory_filename
         long_term_memory_index = parse_long_term_memory(memory_file_path)
         if long_term_memory_index:
             logger.info(f"Loaded {len(long_term_memory_index)} memories from {memory_file_path}")

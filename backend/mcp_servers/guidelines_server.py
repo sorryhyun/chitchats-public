@@ -52,7 +52,7 @@ def create_guidelines_server(
     provider: str = "claude",
 ) -> Server:
     """Create an MCP server with guidelines tools."""
-    server = Server("chitchats_guidelines")
+    server = Server("guidelines")
 
     # Load guidelines content using sdk.config (provider-specific)
     situation_builder_note = get_situation_builder_note(has_situation_builder)
