@@ -11,10 +11,17 @@ This is the entry point for the PyInstaller bundle. It:
 import getpass
 import os
 import secrets
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
 from threading import Timer
+
+# Windows detection
+IS_WINDOWS = sys.platform == "win32"
+
+# Codex Windows executable name
+_CODEX_WINDOWS_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
 
 
 def get_base_path() -> Path:
@@ -67,6 +74,92 @@ def copy_default_agents():
 
         shutil.copytree(agents_src, agents_dest)
         print(f"기본 에이전트를 복사했습니다: {agents_dest}")
+
+
+def _get_bundled_codex_path() -> Path | None:
+    """Get the bundled Codex executable path on Windows.
+
+    Checks two locations:
+    1. Next to the main executable (for packaged builds)
+    2. In bundled/ folder (for development)
+    """
+    if not IS_WINDOWS:
+        return None
+
+    # Packaged builds: next to the executable
+    packaged_path = Path(sys.executable).parent / _CODEX_WINDOWS_EXE_NAME
+    if packaged_path.exists():
+        return packaged_path
+
+    # Development: bundled/ folder
+    dev_path = Path(__file__).parent.parent / "bundled" / _CODEX_WINDOWS_EXE_NAME
+    if dev_path.exists():
+        return dev_path
+
+    return None
+
+
+def check_codex_logged_in() -> bool:
+    """Check if Codex is logged in (synchronous version for launcher)."""
+    if not IS_WINDOWS:
+        return True  # Skip on non-Windows
+
+    codex_exe = _get_bundled_codex_path()
+    if not codex_exe:
+        print("Codex 실행 파일을 찾을 수 없습니다.")
+        return False
+
+    try:
+        result = subprocess.run(
+            [str(codex_exe), "login", "status"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and "logged in" in result.stdout.lower():
+            return True
+        return False
+    except subprocess.TimeoutExpired:
+        print("Codex 인증 확인 시간 초과")
+        return False
+    except Exception as e:
+        print(f"Codex 인증 확인 실패: {e}")
+        return False
+
+
+def run_codex_login() -> bool:
+    """Run Codex login interactively (opens browser for OAuth)."""
+    if not IS_WINDOWS:
+        return True  # Skip on non-Windows
+
+    codex_exe = _get_bundled_codex_path()
+    if not codex_exe:
+        print("Codex 실행 파일을 찾을 수 없습니다.")
+        return False
+
+    print()
+    print("Codex 로그인을 시작합니다...")
+    print("브라우저에서 인증을 완료해주세요.")
+    print()
+
+    try:
+        # Run login interactively (don't capture output)
+        result = subprocess.run(
+            [str(codex_exe), "login"],
+            timeout=300,  # 5 minutes for OAuth
+        )
+        if result.returncode == 0:
+            print("Codex 로그인 성공!")
+            return True
+        else:
+            print(f"Codex 로그인 실패 (종료 코드: {result.returncode})")
+            return False
+    except subprocess.TimeoutExpired:
+        print("Codex 로그인 시간 초과 (5분)")
+        return False
+    except Exception as e:
+        print(f"Codex 로그인 실패: {e}")
+        return False
 
 
 def is_env_configured(env_file: Path) -> bool:
@@ -168,6 +261,21 @@ def setup_environment() -> bool:
     try:
         config = run_first_time_setup()
         create_env_file(env_file, config)
+
+        # Check and run Codex login if needed (Windows only)
+        if IS_WINDOWS and _get_bundled_codex_path():
+            print()
+            print("-" * 60)
+            print("Codex 인증 확인 중...")
+            if not check_codex_logged_in():
+                print("Codex 로그인이 필요합니다.")
+                if not run_codex_login():
+                    print()
+                    print("경고: Codex 로그인에 실패했습니다.")
+                    print("Codex 프로바이더를 사용하려면 나중에 로그인이 필요합니다.")
+            else:
+                print("Codex 이미 로그인되어 있습니다.")
+
         print()
         print("=" * 60)
         print("설정 완료! 애플리케이션을 시작합니다...")
