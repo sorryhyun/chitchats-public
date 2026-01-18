@@ -137,6 +137,38 @@ def create_guidelines_server(
         else:
             raise ValueError(f"Unknown tool: {name}")
 
+    @server.list_resources()
+    async def handle_list_resources() -> list[types.Resource]:
+        """Return list of available resources."""
+        from pydantic import AnyUrl
+
+        resources = []
+
+        # Expose guidelines as a resource
+        resources.append(types.Resource(
+            uri=AnyUrl(f"guidelines://{agent_name}/roleplay"),  # type: ignore[arg-type]
+            name=f"{agent_name}'s Roleplay Guidelines",
+            description="Behavioral guidelines and character information for roleplay",
+            mimeType="text/markdown",
+        ))
+
+        return resources
+
+    @server.read_resource()
+    async def handle_read_resource(uri) -> str:  # type: ignore[type-arg]
+        """Read resource content by URI."""
+        # Convert AnyUrl to string for easier parsing
+        uri_str = str(uri)
+        # Parse the URI to determine which resource to read
+        # Format: guidelines://{agent_name}/{resource_type}
+        if uri_str.startswith(f"guidelines://{agent_name}/"):
+            resource_type = uri_str.split("/")[-1]
+
+            if resource_type == "roleplay":
+                return guidelines_content
+
+        raise ValueError(f"Unknown resource URI: {uri_str}")
+
     return server
 
 

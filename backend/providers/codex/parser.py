@@ -127,8 +127,36 @@ class CodexStreamParser(AIStreamParser):
                         thinking_delta += content_block.get("text", "")
                         thinking_delta += content_block.get("thinking", "")
 
+            elif item_type == "reasoning":
+                # Reasoning content from MCP response
+                text = item.get("text", "")
+                if text:
+                    thinking_delta = text
+                    logger.info(f"[CodexParser] Extracted reasoning: {len(text)} chars")
+
+            elif item_type == "mcp_tool_call":
+                # Handle MCP tool calls (uses "tool" key instead of "name")
+                tool_name = item.get("tool", "")
+                tool_args = item.get("arguments", {})
+
+                if tool_name.endswith("skip") or tool_name == "skip":
+                    skip_tool_called = True
+                    logger.info("Codex MCP skip tool called")
+
+                elif tool_name.endswith("memorize") or tool_name == "memorize":
+                    memory_entry = tool_args.get("memory_entry", "")
+                    if memory_entry:
+                        memory_entries.append(memory_entry)
+                        logger.info(f"Codex MCP memorize: {memory_entry}")
+
+                elif tool_name.endswith("anthropic") or tool_name == "anthropic":
+                    situation = tool_args.get("situation", "")
+                    if situation:
+                        anthropic_calls.append(situation)
+                        logger.info(f"Codex MCP anthropic call: {situation[:50]}...")
+
             elif item_type == "function_call":
-                # Handle tool calls
+                # Handle tool calls (CLI mode)
                 tool_name = item.get("name", "")
                 tool_args = item.get("arguments", {})
 
@@ -199,6 +227,16 @@ class CodexStreamParser(AIStreamParser):
                     elif block_type == "thinking":
                         thinking_delta += content_block.get("text", "")
                         thinking_delta += content_block.get("thinking", "")
+            elif payload_type == "reasoning":
+                # Reasoning/thinking content - extract from summary array
+                summary_list = payload.get("summary", [])
+                logger.info(f"[CodexParser] reasoning summary has {len(summary_list)} blocks")
+                for summary_block in summary_list:
+                    block_type = summary_block.get("type", "")
+                    if block_type == "summary_text":
+                        text = summary_block.get("text", "")
+                        thinking_delta += text
+                        logger.info(f"[CodexParser] Extracted reasoning: {len(text)} chars")
 
         # Return accumulated text with deltas applied
         return ParsedStreamMessage(

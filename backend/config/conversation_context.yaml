@@ -17,7 +17,7 @@ conversation_context:
   response_instruction_claude: |
     To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
 
-  response_instruction_codex: " "
+  response_instruction_codex: "IMPORTANT: Always follow the guideline which can be fetched by invoking tool, to understand behavioral boundary."
 
 # Situation Builder Note Configuration
 situation_builder:

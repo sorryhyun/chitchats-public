@@ -166,6 +166,68 @@ def create_action_server(
         else:
             raise ValueError(f"Unknown tool: {name}")
 
+    @server.list_resources()
+    async def handle_list_resources() -> list[types.Resource]:
+        """Return list of available resources."""
+        from pydantic import AnyUrl
+
+        resources = []
+
+        # Expose consolidated memory sections as a resource
+        if memory_index:
+            subtitles = list(memory_index.keys())
+            resources.append(types.Resource(
+                uri=AnyUrl(f"memory://{agent_name}/consolidated"),  # type: ignore[arg-type]
+                name=f"{agent_name}'s Long-Term Memories",
+                description=f"Consolidated memories with sections: {', '.join(subtitles)}",
+                mimeType="text/markdown",
+            ))
+
+        # Expose recent events if available
+        if config_file:
+            config_path = Path(config_file)
+            recent_events_path = config_path / "recent_events.md"
+            if recent_events_path.exists():
+                resources.append(types.Resource(
+                    uri=AnyUrl(f"memory://{agent_name}/recent_events"),  # type: ignore[arg-type]
+                    name=f"{agent_name}'s Recent Events",
+                    description="Recent events and observations recorded by the agent",
+                    mimeType="text/markdown",
+                ))
+
+        return resources
+
+    @server.read_resource()
+    async def handle_read_resource(uri) -> str:  # type: ignore[type-arg]
+        """Read resource content by URI."""
+        # Convert AnyUrl to string for easier parsing
+        uri_str = str(uri)
+        # Parse the URI to determine which resource to read
+        # Format: memory://{agent_name}/{resource_type}
+        if uri_str.startswith(f"memory://{agent_name}/"):
+            resource_type = uri_str.split("/")[-1]
+
+            if resource_type == "consolidated":
+                # Return all memory sections formatted as markdown
+                if not memory_index:
+                    return "No consolidated memories available."
+
+                sections = []
+                for subtitle, content in memory_index.items():
+                    sections.append(f"## [{subtitle}]\n{content}")
+                return "\n\n".join(sections)
+
+            elif resource_type == "recent_events":
+                # Read recent events file
+                if config_file:
+                    config_path = Path(config_file)
+                    recent_events_path = config_path / "recent_events.md"
+                    if recent_events_path.exists():
+                        return recent_events_path.read_text(encoding="utf-8")
+                return "No recent events recorded."
+
+        raise ValueError(f"Unknown resource URI: {uri_str}")
+
     return server
 
 

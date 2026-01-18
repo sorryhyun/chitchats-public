@@ -41,6 +41,7 @@ dependencies = [
     "fastapi-mcp>=0.3.0",
     "aiosqlite>=0.21.0",
     "toml>=0.10.2",
+    "mcp>=1.0.0",
 ]
 
 [dependency-groups]

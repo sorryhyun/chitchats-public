@@ -99,6 +99,7 @@ def build_mcp_overrides(
     overrides.append(f'{guidelines_prefix}.args={guidelines_args}')
     overrides.append(f'{guidelines_prefix}.cwd="{backend_path}"')
     overrides.append(f'{guidelines_prefix}.env.AGENT_NAME="{agent_name}"')
+    overrides.append(f'{guidelines_prefix}.env.AGENT_GROUP="{agent_group}"')
     overrides.append(f'{guidelines_prefix}.env.PYTHONPATH="{backend_path}"')
     overrides.append(f'{guidelines_prefix}.env.WORK_DIR="{work_dir}"')
     overrides.append(f'{guidelines_prefix}.env.PROVIDER="codex"')

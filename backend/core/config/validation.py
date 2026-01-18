@@ -71,8 +71,11 @@ def validate_config_schema() -> list[str]:
                 errors.append(f"{guidelines_filename} missing version section: {active_version}")
             else:
                 version_config = guidelines_config[active_version]
-                if "template" not in version_config:
-                    errors.append(f"{guidelines_filename} version '{active_version}' missing 'template' field")
+                # Accept either 'template' (legacy) or provider-specific keys ('claudecode', 'codex')
+                has_template = "template" in version_config
+                has_provider_keys = "claudecode" in version_config or "codex" in version_config
+                if not has_template and not has_provider_keys:
+                    errors.append(f"{guidelines_filename} version '{active_version}' missing 'template' or provider keys")
 
         # Check for system_prompt
         active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
