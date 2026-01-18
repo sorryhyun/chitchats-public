@@ -162,5 +162,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add icon path here if desired
+    icon=str(project_root / 'chitchats.ico'),
 )
