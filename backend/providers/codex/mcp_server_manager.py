@@ -15,16 +15,64 @@ import asyncio
 import logging
 import os
 import shutil
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# Import bundled executable detection from client module
-from .client import _get_bundled_codex_path, _get_codex_executable
-
 logger = logging.getLogger("CodexMCPServerManager")
+
+# Windows detection for subprocess handling
+IS_WINDOWS = sys.platform == "win32"
+
+# Codex Windows executable name
+_CODEX_WINDOWS_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
+
+# Project root directory (backend's parent) - for development
+_BACKEND_ROOT = Path(__file__).parent.parent.parent
+_BUNDLED_CODEX_DEV = _BACKEND_ROOT / "bundled" / _CODEX_WINDOWS_EXE_NAME
+
+# Next to the main executable - for packaged Windows builds (e.g., chitchat.exe)
+_BUNDLED_CODEX_PACKAGED = Path(sys.executable).parent / _CODEX_WINDOWS_EXE_NAME
+
+
+def _get_bundled_codex_path() -> Optional[Path]:
+    """Get the bundled Codex executable path on Windows.
+
+    Checks two locations:
+    1. Next to the main executable (for packaged builds: chitchat.exe + codex-...exe)
+    2. In bundled/ folder (for development)
+
+    Returns:
+        Path to the bundled executable if found, None otherwise.
+    """
+    if not IS_WINDOWS:
+        return None
+
+    # First check next to the executable (packaged builds)
+    if _BUNDLED_CODEX_PACKAGED.exists():
+        return _BUNDLED_CODEX_PACKAGED
+
+    # Fall back to bundled/ folder (development)
+    if _BUNDLED_CODEX_DEV.exists():
+        return _BUNDLED_CODEX_DEV
+
+    return None
+
+
+def _get_codex_executable() -> str:
+    """Get the Codex executable path based on platform.
+
+    Returns the bundled Windows executable on Windows (if found),
+    or 'codex' (npm-installed) on other platforms.
+    """
+    bundled_path = _get_bundled_codex_path()
+    if bundled_path:
+        return str(bundled_path)
+    return "codex"
 
 
 class _MCPNotificationFilter(logging.Filter):

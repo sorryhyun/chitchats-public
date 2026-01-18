@@ -84,17 +84,17 @@ def create_app() -> FastAPI:
         # Start background scheduler
         background_scheduler.start()
 
-        # Initialize Codex MCP server if enabled
+        # Always start Codex MCP server (MCP is the only mode now)
         codex_mcp_manager = None
-        if settings.codex_use_mcp:
-            try:
-                from providers.codex import CodexMCPServerManager
-                logger.info("🔌 Starting Codex MCP server (CODEX_USE_MCP=true)...")
-                codex_mcp_manager = await CodexMCPServerManager.get_instance()
-                await codex_mcp_manager.ensure_started()
-                logger.info("✅ Codex MCP server started")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to start Codex MCP server: {e}")
+        try:
+            from providers.codex import CodexMCPServerManager
+            logger.info("🔌 Starting Codex MCP server...")
+            codex_mcp_manager = await CodexMCPServerManager.get_instance()
+            await codex_mcp_manager.ensure_started()
+            logger.info("✅ Codex MCP server started")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to start Codex MCP server: {e}")
+            logger.warning("⚠️ Codex provider will not be available")
 
         logger.info("✅ Application startup complete")
 

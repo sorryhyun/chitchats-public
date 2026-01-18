@@ -11,7 +11,8 @@
       "Bash(grep:*)",
       "Bash(git mv:*)",
       "WebFetch(domain:developers.openai.com)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

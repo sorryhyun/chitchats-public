@@ -36,7 +36,7 @@ class BaseClientPool(ClientPoolInterface, ABC):
     - Background cleanup of disconnected clients
     - Session ID extraction for client reuse decisions
 
-    Provider-specific pools (ClaudeClientPool, CodexClientPool) extend this
+    Provider-specific pools (ClaudeClientPool, CodexMCPClientPool) extend this
     and implement _create_client() for their specific client creation logic.
 
     Pool Strategy:
