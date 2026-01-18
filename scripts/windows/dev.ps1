@@ -13,20 +13,27 @@ $codexSkillsPath = Join-Path $env:USERPROFILE ".codex\skills"
 $skillsWasLocked = $false
 
 function Lock-CodexSkills {
-    # Remove ALL permissions from ~/.codex/skills (equivalent to chmod 000)
+    # Remove ALL permissions from ~/.codex/skills using icacls (more reliable than PowerShell ACL)
     if (Test-Path $codexSkillsPath) {
         try {
-            # Save current ACL for restoration
-            $script:savedAcl = Get-Acl $codexSkillsPath
+            $aclBackup = "$codexSkillsPath.acl.txt"
 
-            # Create new ACL with no permissions
-            $acl = Get-Acl $codexSkillsPath
-            $acl.SetAccessRuleProtection($true, $false)  # Remove inheritance, don't copy
-            $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
-            Set-Acl $codexSkillsPath $acl
+            # Save current ACL
+            $saveResult = icacls $codexSkillsPath /save $aclBackup /q 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Warning: Could not save Codex skills ACL" -ForegroundColor Yellow
+                return
+            }
 
-            $script:skillsWasLocked = $true
-            Write-Host "Locked Codex skills folder" -ForegroundColor DarkGray
+            # Deny all access (remove inheritance, deny Everyone full control)
+            $lockResult = icacls $codexSkillsPath /inheritance:r /deny "*S-1-1-0:(OI)(CI)F" /q 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $script:skillsWasLocked = $true
+                $script:aclBackupPath = $aclBackup
+                Write-Host "Locked Codex skills folder" -ForegroundColor DarkGray
+            } else {
+                Write-Host "Warning: Could not lock Codex skills folder" -ForegroundColor Yellow
+            }
         } catch {
             Write-Host "Warning: Could not lock Codex skills folder: $_" -ForegroundColor Yellow
         }
@@ -34,11 +41,20 @@ function Lock-CodexSkills {
 }
 
 function Unlock-CodexSkills {
-    # Restore original ACL to ~/.codex/skills
-    if ($script:skillsWasLocked -and $script:savedAcl -and (Test-Path $codexSkillsPath)) {
+    # Restore original ACL to ~/.codex/skills using icacls
+    if ($script:skillsWasLocked -and $script:aclBackupPath -and (Test-Path $codexSkillsPath)) {
         try {
-            Set-Acl $codexSkillsPath $script:savedAcl
-            Write-Host "Unlocked Codex skills folder" -ForegroundColor DarkGray
+            $parentPath = Split-Path $codexSkillsPath -Parent
+
+            # Restore ACL from backup (icacls restore runs on parent directory)
+            $restoreResult = icacls $parentPath /restore $script:aclBackupPath /q 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                # Clean up backup file
+                Remove-Item $script:aclBackupPath -Force -ErrorAction SilentlyContinue
+                Write-Host "Unlocked Codex skills folder" -ForegroundColor DarkGray
+            } else {
+                Write-Host "Warning: Could not unlock Codex skills folder" -ForegroundColor Yellow
+            }
         } catch {
             Write-Host "Warning: Could not unlock Codex skills folder: $_" -ForegroundColor Yellow
         }

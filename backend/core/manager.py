@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, List
 
 from config import get_debug_config
 from domain.contexts import AgentResponseContext
@@ -626,8 +626,22 @@ class AgentManager:
                 has_situation_builder=context.has_situation_builder,
             )
 
+            # Build message content first (needed for session recovery)
+            message_content = self._build_codex_message_content(context)
+
+            # Build full conversation for session recovery (when thread is lost)
+            # This includes more history than the regular message_content
+            full_conversation = None
+            if context.full_conversation_for_recovery:
+                full_conversation = self._content_blocks_to_text(context.full_conversation_for_recovery)
+                logger.debug(f"[Codex] Full conversation for recovery: {len(full_conversation)} chars, message_content: {len(message_content)} chars")
+            else:
+                logger.debug(f"[Codex] No full_conversation_for_recovery available")
+
             # Build Codex-specific options via provider
+            # Include full_conversation for session recovery when thread is lost
             codex_options = provider.build_options(base_options)
+            codex_options.full_conversation = full_conversation or message_content
             client = provider.create_client(codex_options)
             parser = provider.get_parser()
 
@@ -635,9 +649,6 @@ class AgentManager:
             await client.connect()
             self.active_clients[task_id] = client
             self.streaming_state[task_id] = {"thinking_text": "", "response_text": ""}
-
-            # Build message content
-            message_content = self._build_codex_message_content(context)
 
             logger.info(f"📤 [Codex] Sending message | Task: {task_id} | Length: {len(message_content)}")
             await client.query(message_content)
@@ -747,3 +758,18 @@ class AgentManager:
             message = f"{context.conversation_history}\n\n{message}"
 
         return message
+
+    def _content_blocks_to_text(self, content_blocks: List[dict]) -> str:
+        """Convert content blocks to plain text string.
+
+        Args:
+            content_blocks: List of content blocks (text/image dicts)
+
+        Returns:
+            String with text content extracted from blocks
+        """
+        text_parts = []
+        for block in content_blocks:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+        return "\n".join(text_parts)

@@ -13,7 +13,9 @@
       "WebFetch(domain:developers.openai.com)",
       "Bash(find:*)",
       "Bash(wc:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "WebSearch",
+      "Bash(python -c:*)"
     ],
     "deny": [],
     "ask": []

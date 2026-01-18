@@ -124,8 +124,7 @@ def _get_codex_skills_path() -> Path:
 def lock_codex_skills() -> bool:
     """Lock the Codex skills folder to prevent unnecessary prompts.
 
-    Removes ALL permissions (equivalent to chmod 000 on Linux).
-    Saves original ACL for restoration on unlock.
+    Uses icacls to save ACL and deny all access.
     Returns True if the folder was locked, False otherwise.
     """
     global _codex_skills_was_locked
@@ -137,19 +136,22 @@ def lock_codex_skills() -> bool:
     if not skills_path.exists():
         return False
 
-    # PowerShell script to save ACL and remove all permissions
-    ps_script = f'''
-$path = "{skills_path}"
-$acl = Get-Acl $path
-$acl | Export-Clixml "{skills_path}.acl.xml"
-$acl.SetAccessRuleProtection($true, $false)
-$acl.Access | ForEach-Object {{ $acl.RemoveAccessRule($_) | Out-Null }}
-Set-Acl $path $acl
-'''
+    acl_backup = Path(f"{skills_path}.acl.txt")
 
     try:
+        # Save current ACL
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
+            ["icacls", str(skills_path), "/save", str(acl_backup), "/q"],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            print(f"경고: Codex skills ACL 저장 실패")
+            return False
+
+        # Deny all access (inheritance removed, deny Everyone full control)
+        result = subprocess.run(
+            ["icacls", str(skills_path), "/inheritance:r", "/deny", "*S-1-1-0:(OI)(CI)F", "/q"],
             capture_output=True,
             timeout=30,
         )
@@ -158,7 +160,7 @@ Set-Acl $path $acl
             print("Codex skills 폴더 잠금됨")
             return True
         else:
-            print(f"경고: Codex skills 폴더 잠금 실패: {result.stderr.decode()}")
+            print(f"경고: Codex skills 폴더 잠금 실패")
     except Exception as e:
         print(f"경고: Codex skills 폴더 잠금 실패: {e}")
 
@@ -177,31 +179,27 @@ def unlock_codex_skills() -> bool:
         return False
 
     skills_path = _get_codex_skills_path()
-    acl_backup = Path(f"{skills_path}.acl.xml")
+    parent_path = skills_path.parent  # icacls restore runs on parent directory
+    acl_backup = Path(f"{skills_path}.acl.txt")
 
     if not skills_path.exists() or not acl_backup.exists():
         return False
 
-    # PowerShell script to restore ACL from backup
-    ps_script = f'''
-$path = "{skills_path}"
-$acl = Import-Clixml "{acl_backup}"
-Set-Acl $path $acl
-Remove-Item "{acl_backup}" -Force
-'''
-
     try:
+        # Restore ACL from backup (icacls restore runs on parent dir)
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
+            ["icacls", str(parent_path), "/restore", str(acl_backup), "/q"],
             capture_output=True,
             timeout=30,
         )
         if result.returncode == 0:
             _codex_skills_was_locked = False
+            # Clean up backup file
+            acl_backup.unlink(missing_ok=True)
             print("Codex skills 폴더 잠금 해제됨")
             return True
         else:
-            print(f"경고: Codex skills 폴더 잠금 해제 실패: {result.stderr.decode()}")
+            print(f"경고: Codex skills 폴더 잠금 해제 실패")
     except Exception as e:
         print(f"경고: Codex skills 폴더 잠금 해제 실패: {e}")
 

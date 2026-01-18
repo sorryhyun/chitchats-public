@@ -107,6 +107,7 @@ class AgentResponseContext:
         conversation_started: Optional timestamp when the conversation started
         has_situation_builder: Whether the room has a situation builder participant
         provider: AI provider to use ('claude' or 'codex'), defaults to 'claude'
+        full_conversation_for_recovery: Full conversation history for session recovery (Codex)
     """
 
     system_prompt: str
@@ -122,3 +123,4 @@ class AgentResponseContext:
     conversation_started: Optional[str] = None
     has_situation_builder: bool = False
     provider: str = "claude"  # AI provider: 'claude' or 'codex'
+    full_conversation_for_recovery: Optional[List[dict]] = None  # For Codex session recovery

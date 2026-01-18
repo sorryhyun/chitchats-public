@@ -19,7 +19,7 @@ import sys
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -171,6 +171,62 @@ class CodexMCPServerManager:
         self._started = False
         self._request_lock = asyncio.Lock()
         self._available_tools: Dict[str, Any] = {}
+        # Captured reasoning from notifications during tool calls
+        self._captured_reasoning: List[str] = []
+
+    def _create_message_handler(self) -> Callable:
+        """Create a message handler callback for capturing Codex notifications.
+
+        This handler captures agent_reasoning events from Codex's custom
+        MCP notifications, which are not part of the standard tool result.
+        """
+
+        def handle_message(message: Any) -> None:
+            """Handle incoming MCP messages including custom notifications."""
+            try:
+                # Handle different message formats
+                if hasattr(message, "params"):
+                    params = message.params
+                    # Check for Codex's custom event notification
+                    if hasattr(params, "type") and params.type == "agent_reasoning":
+                        text = getattr(params, "text", "")
+                        if text:
+                            self._captured_reasoning.append(text)
+                            logger.debug(f"Captured agent_reasoning: {len(text)} chars")
+                    # Also check for nested payload format
+                    elif hasattr(params, "payload"):
+                        payload = params.payload
+                        if isinstance(payload, dict) and payload.get("type") == "agent_reasoning":
+                            text = payload.get("text", "")
+                            if text:
+                                self._captured_reasoning.append(text)
+                                logger.debug(f"Captured agent_reasoning from payload: {len(text)} chars")
+                # Handle dict format
+                elif isinstance(message, dict):
+                    msg_type = message.get("type", "")
+                    if msg_type == "event_msg":
+                        payload = message.get("payload", {})
+                        if payload.get("type") == "agent_reasoning":
+                            text = payload.get("text", "")
+                            if text:
+                                self._captured_reasoning.append(text)
+                                logger.debug(f"Captured agent_reasoning: {len(text)} chars")
+                    elif msg_type == "response_item":
+                        # Handle response_item with reasoning type
+                        payload = message.get("payload", {})
+                        if payload.get("type") == "reasoning":
+                            # Extract from summary array
+                            summary = payload.get("summary", [])
+                            for summary_item in summary:
+                                if isinstance(summary_item, dict) and summary_item.get("type") == "summary_text":
+                                    text = summary_item.get("text", "")
+                                    if text:
+                                        self._captured_reasoning.append(text)
+                                        logger.debug(f"Captured reasoning from summary: {len(text)} chars")
+            except Exception as e:
+                logger.debug(f"Error handling message: {e}")
+
+        return handle_message
 
     @classmethod
     async def get_instance(cls) -> "CodexMCPServerManager":
@@ -243,8 +299,14 @@ class CodexMCPServerManager:
             self._read_stream = read_stream
             self._write_stream = write_stream
 
-            # Create MCP session (type: ignore for MCP library's Any types)
-            self._session_context = ClientSession(read_stream, write_stream)  # type: ignore[arg-type]
+            # Create MCP session with message handler to capture Codex notifications
+            # (type: ignore for MCP library's Any types)
+            message_handler = self._create_message_handler()
+            self._session_context = ClientSession(
+                read_stream,
+                write_stream,
+                message_handler=message_handler,
+            )  # type: ignore[arg-type]
             session = await self._session_context.__aenter__()
             self._session = session
             assert session is not None, "MCP session failed to initialize"
@@ -271,6 +333,7 @@ class CodexMCPServerManager:
         approval_policy: str = "never",
         sandbox: str = "danger-full-access",
         cwd: Optional[str] = None,
+        full_conversation: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Call the Codex MCP tool.
 
@@ -281,6 +344,7 @@ class CodexMCPServerManager:
             approval_policy: Approval policy - "never", "on-request", "on-failure", "untrusted"
             sandbox: Sandbox mode - "danger-full-access", "workspace-write", "read-only"
             cwd: Working directory for the session
+            full_conversation: Full conversation history for session recovery
 
         Returns:
             Dict containing the tool response with content and threadId
@@ -288,7 +352,7 @@ class CodexMCPServerManager:
         await self.ensure_started()
 
         async with self._request_lock:
-            return await self._call_tool_impl(prompt, config, thread_id, approval_policy, sandbox, cwd)
+            return await self._call_tool_impl(prompt, config, thread_id, approval_policy, sandbox, cwd, full_conversation)
 
     async def _call_tool_impl(
         self,
@@ -298,6 +362,7 @@ class CodexMCPServerManager:
         approval_policy: str,
         sandbox: str,
         cwd: Optional[str] = None,
+        full_conversation: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Implementation of the tool call."""
         if self._session is None:
@@ -326,6 +391,9 @@ class CodexMCPServerManager:
             arguments["threadId"] = thread_id
 
         logger.info(f"Calling MCP tool '{tool_name}' with thread_id={thread_id}, prompt: {prompt[:100]}...")
+
+        # Clear any previously captured reasoning before this call
+        self._captured_reasoning.clear()
 
         try:
             result = await self._session.call_tool(tool_name, arguments)
@@ -399,6 +467,18 @@ class CodexMCPServerManager:
                 f"MCP tool call complete. Thread ID: {response.get('thread_id')}, content items: {len(response.get('content', []))}"
             )
 
+            # Add any reasoning captured from notifications during the tool call
+            if self._captured_reasoning:
+                combined_reasoning = "\n".join(self._captured_reasoning)
+                response["content"].append(
+                    {
+                        "type": "reasoning",
+                        "text": combined_reasoning,
+                    }
+                )
+                logger.info(f"Added captured reasoning: {len(combined_reasoning)} chars from {len(self._captured_reasoning)} notification(s)")
+                self._captured_reasoning.clear()
+
             # Handle "Session not found" error by falling back to new session
             if response.get("is_error") and thread_id:
                 error_text = ""
@@ -408,11 +488,13 @@ class CodexMCPServerManager:
 
                 if "session not found" in error_text.lower():
                     logger.warning(
-                        f"Session not found for thread_id {thread_id}, starting new session..."
+                        f"Session not found for thread_id {thread_id}, starting new session with full conversation..."
                     )
                     # Retry without thread_id to start a fresh session
+                    # Use full_conversation if available to preserve context
+                    recovery_prompt = full_conversation if full_conversation else prompt
                     return await self._call_tool_impl(
-                        prompt, config, None, approval_policy, sandbox, cwd
+                        recovery_prompt, config, None, approval_policy, sandbox, cwd, None
                     )
 
             return response
@@ -423,8 +505,8 @@ class CodexMCPServerManager:
             if "connection" in str(e).lower() or "closed" in str(e).lower():
                 logger.info("Connection error detected, attempting restart...")
                 await self._restart_server()
-                # Retry once
-                return await self._call_tool_impl(prompt, config, thread_id, approval_policy, sandbox, cwd)
+                # Retry once with full_conversation
+                return await self._call_tool_impl(prompt, config, thread_id, approval_policy, sandbox, cwd, full_conversation)
             raise
 
     async def _restart_server(self) -> None:

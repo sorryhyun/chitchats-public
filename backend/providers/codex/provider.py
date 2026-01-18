@@ -9,6 +9,7 @@ MCP Mode uses a persistent `codex mcp-server` connection for all queries.
 
 import logging
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -151,6 +152,9 @@ class CodexProvider(AIProvider):
         Converts mcp_tools into the format expected by the MCP server's
         config parameter.
 
+        In bundled mode (PyInstaller), uses the exe with --mcp flag.
+        In dev mode, uses python -m mcp_servers.<server>.
+
         Args:
             mcp_tools: Dict containing agent_name, agent_group, agent_id
 
@@ -166,23 +170,34 @@ class CodexProvider(AIProvider):
         room_id = mcp_tools.get("room_id")
         config_file = mcp_tools.get("config_file")
 
-        # Get backend path (parent of providers directory)
-        backend_path = str(Path(__file__).parent.parent.parent)
+        # Check if running in bundled mode (PyInstaller)
+        is_bundled = getattr(sys, "frozen", False)
 
-        # Get Python executable path
-        python_path = os.environ.get("VIRTUAL_ENV")
-        if python_path:
-            python_exe = str(Path(python_path) / "bin" / "python")
+        if is_bundled:
+            # Bundled mode: use the exe with --mcp flag
+            # The exe is in the same directory as the main executable
+            exe_path = sys.executable
+            # WORK_DIR is where the exe lives (where agents/ folder is)
+            project_root = str(Path(exe_path).parent)
+            # In bundled mode, backend_path is inside _MEIPASS but we don't need it for PYTHONPATH
+            backend_path = project_root
         else:
-            python_exe = "python"
+            # Dev mode: use python -m mcp_servers.<server>
+            # Get backend path (parent of providers directory)
+            backend_path = str(Path(__file__).parent.parent.parent)
+            project_root = str(Path(backend_path).parent)
 
         # Build environment variables
+        # WORK_DIR is needed for resolving relative config paths (e.g., agents/Claudia)
         action_env: Dict[str, str] = {
             "AGENT_NAME": agent_name,
             "AGENT_GROUP": agent_group,
-            "PYTHONPATH": backend_path,
             "PROVIDER": "codex",
+            "WORK_DIR": project_root,
         }
+        if not is_bundled:
+            # Only needed in dev mode for Python imports
+            action_env["PYTHONPATH"] = backend_path
         if room_id is not None:
             action_env["ROOM_ID"] = str(room_id)
         if agent_id is not None:
@@ -193,24 +208,57 @@ class CodexProvider(AIProvider):
         guidelines_env: Dict[str, str] = {
             "AGENT_NAME": agent_name,
             "AGENT_GROUP": agent_group,
-            "PYTHONPATH": backend_path,
             "PROVIDER": "codex",
         }
+        if not is_bundled:
+            guidelines_env["PYTHONPATH"] = backend_path
 
-        return {
-            "chitchats_action": {
-                "command": python_exe,
-                "args": ["-m", "mcp_servers.action_server"],
-                "cwd": backend_path,
-                "env": action_env,
-            },
-            "chitchats_guidelines": {
-                "command": python_exe,
-                "args": ["-m", "mcp_servers.guidelines_server"],
-                "cwd": backend_path,
-                "env": guidelines_env,
-            },
-        }
+        if is_bundled:
+            # Bundled mode: use exe with --mcp flag
+            # ClaudeCodeRP.exe --mcp action / ClaudeCodeRP.exe --mcp guidelines
+            return {
+                "chitchats_action": {
+                    "command": exe_path,
+                    "args": ["--mcp", "action"],
+                    "cwd": project_root,
+                    "env": action_env,
+                },
+                "chitchats_guidelines": {
+                    "command": exe_path,
+                    "args": ["--mcp", "guidelines"],
+                    "cwd": project_root,
+                    "env": guidelines_env,
+                },
+            }
+        else:
+            # Dev mode: use python -m mcp_servers.<server>
+            # Get Python executable path (cross-platform)
+            python_path = os.environ.get("VIRTUAL_ENV")
+            if python_path:
+                venv_path = Path(python_path)
+                # Windows uses Scripts/python.exe, Unix uses bin/python
+                if os.name == "nt":
+                    python_exe = str(venv_path / "Scripts" / "python.exe")
+                else:
+                    python_exe = str(venv_path / "bin" / "python")
+            else:
+                # Fall back to sys.executable for the current interpreter
+                python_exe = sys.executable
+
+            return {
+                "chitchats_action": {
+                    "command": python_exe,
+                    "args": ["-m", "mcp_servers.action_server"],
+                    "cwd": backend_path,
+                    "env": action_env,
+                },
+                "chitchats_guidelines": {
+                    "command": python_exe,
+                    "args": ["-m", "mcp_servers.guidelines_server"],
+                    "cwd": backend_path,
+                    "env": guidelines_env,
+                },
+            }
 
     def get_session_key_field(self) -> str:
         """Get the database field name for Codex's session ID.

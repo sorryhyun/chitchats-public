@@ -33,6 +33,7 @@ class CodexMCPOptions:
         sandbox: Sandbox mode - "danger-full-access", "workspace-write", "read-only"
         extra_config: Additional config options to pass to the tool (feature settings, etc.)
         cwd: Working directory for the session (use empty dir to avoid picking up AGENTS.md)
+        full_conversation: Full conversation history for session recovery (when thread is lost)
     """
 
     system_prompt: str = ""
@@ -43,6 +44,7 @@ class CodexMCPOptions:
     sandbox: str = "danger-full-access"
     extra_config: Dict[str, Any] = field(default_factory=dict)
     cwd: Optional[str] = None
+    full_conversation: Optional[str] = None
 
 
 class CodexMCPClient(AIClient):
@@ -176,6 +178,7 @@ class CodexMCPClient(AIClient):
                 approval_policy=self._options.approval_policy,
                 sandbox=self._options.sandbox,
                 cwd=self._options.cwd,
+                full_conversation=self._options.full_conversation,
             )
 
             # Extract thread_id from result

@@ -110,6 +110,25 @@ class ResponseGenerator:
             provider=provider,
         )
 
+        # For Codex: build full conversation for session recovery (when thread is lost)
+        # This includes more messages from the entire room history (not just after agent's last response)
+        full_conversation_for_recovery = None
+        if provider == "codex":
+            # Fetch ALL recent messages from the room (not filtered by agent's last response)
+            all_room_messages = await crud.get_recent_messages_cached(orch_context.db, orch_context.room_id, limit=200)
+            logger.debug(f"Building full conversation for recovery. All room messages: {len(all_room_messages)}, Recent (after agent): {len(room_messages)}")
+            full_conversation_for_recovery = build_conversation_context(
+                all_room_messages,
+                limit=100,  # Use last 100 messages for recovery context
+                agent_id=None,  # Don't filter by agent's last response
+                agent_name=agent.name,
+                agent_count=agent_count,
+                user_name=user_name,
+                provider=provider,
+                include_response_instruction=False,  # Just the history, no instruction
+            )
+            logger.debug(f"Full conversation for recovery: {len(full_conversation_for_recovery)} content blocks")
+
         # For follow-up rounds, skip if there are no new messages since this agent's last response
         if user_message_content is None:
             if not self._has_new_messages(conversation_content_blocks):
@@ -151,6 +170,7 @@ class ResponseGenerator:
             conversation_started=conversation_started,
             has_situation_builder=has_situation_builder,
             provider=provider,
+            full_conversation_for_recovery=full_conversation_for_recovery,
         )
 
         # Handle streaming response events
