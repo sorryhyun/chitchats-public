@@ -6,8 +6,8 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from infrastructure.database import Agent, Room
 import schemas
+from infrastructure.database import Agent, Room
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload

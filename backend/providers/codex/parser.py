@@ -85,16 +85,18 @@ class CodexStreamParser(AIStreamParser):
             # Extract thread_id for session resume
             # Try multiple locations: message root, item, payload, data
             new_session_id = (
-                message.get("thread_id") or
-                message.get("id") or
-                message.get("item", {}).get("thread_id") or
-                message.get("item", {}).get("id") or
-                message.get("payload", {}).get("thread_id") or
-                message.get("payload", {}).get("id") or
-                data.get("thread_id") or
-                data.get("id")
+                message.get("thread_id")
+                or message.get("id")
+                or message.get("item", {}).get("thread_id")
+                or message.get("item", {}).get("id")
+                or message.get("payload", {}).get("thread_id")
+                or message.get("payload", {}).get("id")
+                or data.get("thread_id")
+                or data.get("id")
             )
-            logger.info(f"[CodexParser] thread.started: session_id={new_session_id}, message_keys={list(message.keys())}")
+            logger.info(
+                f"[CodexParser] thread.started: session_id={new_session_id}, message_keys={list(message.keys())}"
+            )
 
         elif event_type == "item.completed":
             # Completed response item - extract content

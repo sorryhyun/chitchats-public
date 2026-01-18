@@ -17,8 +17,9 @@ from datetime import datetime, timedelta
 
 import bcrypt
 import jwt
-from core import get_settings
 from fastapi import HTTPException, Request, status
+
+from core import get_settings
 
 logger = logging.getLogger("Auth")
 

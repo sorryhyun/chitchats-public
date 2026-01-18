@@ -10,7 +10,7 @@ from typing import Dict, List
 from core.auth import require_admin
 from fastapi import APIRouter, Depends
 from infrastructure.cache import get_cache
-from providers import get_available_providers, check_provider_availability
+from providers import check_provider_availability, get_available_providers
 
 router = APIRouter()
 

@@ -16,14 +16,13 @@ import logging
 import uuid
 from typing import AsyncIterator
 
+from config import get_debug_config
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
 from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
 from providers.claude import ClaudeClientPool
-
-from config import get_debug_config
 
 # Configure from settings
 DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)
@@ -187,7 +186,16 @@ class AgentManager:
         if task_id in self.streaming_state:
             del self.streaming_state[task_id]
 
-    def _build_stream_end_event(self, temp_id: str, response_text: str, thinking_text: str, session_id: str | None, memory_entries: list[str], anthropic_calls: list[str], skip_used: bool) -> dict:
+    def _build_stream_end_event(
+        self,
+        temp_id: str,
+        response_text: str,
+        thinking_text: str,
+        session_id: str | None,
+        memory_entries: list[str],
+        anthropic_calls: list[str],
+        skip_used: bool,
+    ) -> dict:
         """
         Build stream_end event from response state.
 
@@ -592,9 +600,7 @@ class AgentManager:
         # Setup task identifiers
         task_id, temp_id = self._setup_task_identifiers(context)
 
-        logger.info(
-            f"🤖 [Codex] Agent generating response | Session: {context.session_id or 'NEW'} | Task: {task_id}"
-        )
+        logger.info(f"🤖 [Codex] Agent generating response | Session: {context.session_id or 'NEW'} | Task: {task_id}")
 
         yield {"type": "stream_start", "temp_id": temp_id}
 
@@ -648,8 +654,8 @@ class AgentManager:
                 parsed = parser.parse_message(raw_event, response_text, thinking_text)
 
                 # Calculate deltas
-                content_delta = parsed.response_text[len(response_text):]
-                thinking_delta = parsed.thinking_text[len(thinking_text):]
+                content_delta = parsed.response_text[len(response_text) :]
+                thinking_delta = parsed.thinking_text[len(thinking_text) :]
 
                 # Update session if found
                 if parsed.session_id:

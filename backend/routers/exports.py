@@ -20,6 +20,7 @@ router = APIRouter()
 
 class ConversationFile(BaseModel):
     """Represents a Claude Code conversation file."""
+
     id: str
     filename: str
     project: str
@@ -29,6 +30,7 @@ class ConversationFile(BaseModel):
 
 class ConversationList(BaseModel):
     """List of conversation files."""
+
     conversations: List[ConversationFile]
 
 
@@ -87,7 +89,7 @@ def get_claude_projects_dirs() -> List[Path]:
                 if base.exists():
                     for user_dir in base.iterdir():
                         if user_dir.is_dir() and not user_dir.name.startswith(
-                            ('Default', 'Public', 'All Users', 'Default User')
+                            ("Default", "Public", "All Users", "Default User")
                         ):
                             win_claude = user_dir / ".claude" / "projects"
                             if win_claude.exists():
@@ -154,13 +156,15 @@ def list_project_conversations(projects_dir: Path) -> List[ConversationFile]:
                     if jsonl_file.stem.startswith("agent-"):
                         continue
                     stat = jsonl_file.stat()
-                    conversations.append(ConversationFile(
-                        id=jsonl_file.stem,
-                        filename=jsonl_file.name,
-                        project=project_name,
-                        modified=str(stat.st_mtime),
-                        size=stat.st_size
-                    ))
+                    conversations.append(
+                        ConversationFile(
+                            id=jsonl_file.stem,
+                            filename=jsonl_file.name,
+                            project=project_name,
+                            modified=str(stat.st_mtime),
+                            size=stat.st_size,
+                        )
+                    )
     except Exception:
         pass
 
@@ -184,7 +188,7 @@ def simplify_conversation(content: str) -> str:
         Simplified content
     """
     lines = []
-    for line in content.strip().split('\n'):
+    for line in content.strip().split("\n"):
         if not line.strip():
             continue
         try:
@@ -194,7 +198,7 @@ def simplify_conversation(content: str) -> str:
         except json.JSONDecodeError:
             # Keep malformed lines as-is
             lines.append(line)
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def _simplify_entry(obj: Any) -> None:
@@ -213,14 +217,18 @@ def _simplify_entry(obj: Any) -> None:
     if isinstance(obj, dict):
         # Remove top-level tracking fields
         for field in (
-            'parentUuid', 'sessionId', 'uuid', 'requestId', 'isSidechain',
-            'toolUseResult',  # Duplicates message.content for tool results
+            "parentUuid",
+            "sessionId",
+            "uuid",
+            "requestId",
+            "isSidechain",
+            "toolUseResult",  # Duplicates message.content for tool results
         ):
             obj.pop(field, None)
 
         # Remove signature if this is a thinking block
-        if obj.get('type') == 'thinking':
-            obj.pop('signature', None)
+        if obj.get("type") == "thinking":
+            obj.pop("signature", None)
 
         # Recurse into all values
         for value in obj.values():
@@ -229,7 +237,7 @@ def _simplify_entry(obj: Any) -> None:
         # Filter out image content blocks before recursing
         items_to_remove = []
         for i, item in enumerate(obj):
-            if isinstance(item, dict) and item.get('type') == 'image':
+            if isinstance(item, dict) and item.get("type") == "image":
                 items_to_remove.append(i)
             else:
                 _simplify_entry(item)
@@ -307,7 +315,7 @@ async def download_conversation(
         raise HTTPException(status_code=404, detail="Conversation file not found")
 
     # Read file content
-    content = file_path.read_text(encoding='utf-8')
+    content = file_path.read_text(encoding="utf-8")
 
     # Apply simplification if requested
     if simplified:
@@ -324,7 +332,5 @@ async def download_conversation(
     return StreamingResponse(
         iterate_content(),
         media_type="application/x-jsonlines",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
-        }
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

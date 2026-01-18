@@ -17,6 +17,7 @@ def __getattr__(name: str):
     """Lazy import for AgentManager to avoid circular import."""
     if name == "AgentManager":
         from .manager import AgentManager
+
         return AgentManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

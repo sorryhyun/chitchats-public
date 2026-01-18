@@ -30,10 +30,6 @@ if str(backend_path) not in sys.path:
     sys.path.insert(0, str(backend_path))
 
 import mcp.types as types
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-
-from domain.action_models import MemorizeInput, RecallInput, SkipInput
 from config import (
     clear_cache,
     get_tool_description,
@@ -42,6 +38,9 @@ from config import (
     parse_long_term_memory,
 )
 from core import get_settings
+from domain.action_models import MemorizeInput, RecallInput, SkipInput
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
 
 logger = logging.getLogger("ActionMCPServer")
 
@@ -66,41 +65,50 @@ def create_action_server(
         memory_subtitles = ", ".join(subtitles) if subtitles else "None available"
 
         if is_tool_enabled("skip"):
-            tools.append(types.Tool(
-                name="skip",
-                description=get_tool_description(
-                    "skip",
-                    agent_name=agent_name,
-                    group_name=agent_group,
-                    provider=provider,
-                ) or "Skip responding to the current message.",
-                inputSchema=SkipInput.model_json_schema(),
-            ))
+            tools.append(
+                types.Tool(
+                    name="skip",
+                    description=get_tool_description(
+                        "skip",
+                        agent_name=agent_name,
+                        group_name=agent_group,
+                        provider=provider,
+                    )
+                    or "Skip responding to the current message.",
+                    inputSchema=SkipInput.model_json_schema(),
+                )
+            )
 
         if is_tool_enabled("memorize"):
-            tools.append(types.Tool(
-                name="memorize",
-                description=get_tool_description(
-                    "memorize",
-                    agent_name=agent_name,
-                    group_name=agent_group,
-                    provider=provider,
-                ) or "Record a new memory or observation for future reference.",
-                inputSchema=MemorizeInput.model_json_schema(),
-            ))
+            tools.append(
+                types.Tool(
+                    name="memorize",
+                    description=get_tool_description(
+                        "memorize",
+                        agent_name=agent_name,
+                        group_name=agent_group,
+                        provider=provider,
+                    )
+                    or "Record a new memory or observation for future reference.",
+                    inputSchema=MemorizeInput.model_json_schema(),
+                )
+            )
 
         if is_tool_enabled("recall"):
-            tools.append(types.Tool(
-                name="recall",
-                description=get_tool_description(
-                    "recall",
-                    agent_name=agent_name,
-                    memory_subtitles=memory_subtitles,
-                    group_name=agent_group,
-                    provider=provider,
-                ) or f"Retrieve long-term memories by subtitle. Available: {memory_subtitles}",
-                inputSchema=RecallInput.model_json_schema(),
-            ))
+            tools.append(
+                types.Tool(
+                    name="recall",
+                    description=get_tool_description(
+                        "recall",
+                        agent_name=agent_name,
+                        memory_subtitles=memory_subtitles,
+                        group_name=agent_group,
+                        provider=provider,
+                    )
+                    or f"Retrieve long-term memories by subtitle. Available: {memory_subtitles}",
+                    inputSchema=RecallInput.model_json_schema(),
+                )
+            )
 
         return tools
 
@@ -176,24 +184,28 @@ def create_action_server(
         # Expose consolidated memory sections as a resource
         if memory_index:
             subtitles = list(memory_index.keys())
-            resources.append(types.Resource(
-                uri=AnyUrl(f"memory://{agent_name}/consolidated"),  # type: ignore[arg-type]
-                name=f"{agent_name}'s Long-Term Memories",
-                description=f"Consolidated memories with sections: {', '.join(subtitles)}",
-                mimeType="text/markdown",
-            ))
+            resources.append(
+                types.Resource(
+                    uri=AnyUrl(f"memory://{agent_name}/consolidated"),  # type: ignore[arg-type]
+                    name=f"{agent_name}'s Long-Term Memories",
+                    description=f"Consolidated memories with sections: {', '.join(subtitles)}",
+                    mimeType="text/markdown",
+                )
+            )
 
         # Expose recent events if available
         if config_file:
             config_path = Path(config_file)
             recent_events_path = config_path / "recent_events.md"
             if recent_events_path.exists():
-                resources.append(types.Resource(
-                    uri=AnyUrl(f"memory://{agent_name}/recent_events"),  # type: ignore[arg-type]
-                    name=f"{agent_name}'s Recent Events",
-                    description="Recent events and observations recorded by the agent",
-                    mimeType="text/markdown",
-                ))
+                resources.append(
+                    types.Resource(
+                        uri=AnyUrl(f"memory://{agent_name}/recent_events"),  # type: ignore[arg-type]
+                        name=f"{agent_name}'s Recent Events",
+                        description="Recent events and observations recorded by the agent",
+                        mimeType="text/markdown",
+                    )
+                )
 
         return resources
 

@@ -247,7 +247,8 @@ class TestProcessRoomAutonomousRound:
 
         with (
             patch(
-                "infrastructure.scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
+                "infrastructure.scheduler.crud.get_agents_cached",
+                new=AsyncMock(return_value=[mock_agent1, mock_agent2]),
             ),
             patch("infrastructure.scheduler.TapeExecutor") as mock_executor_class,
             patch("infrastructure.scheduler.TapeGenerator") as mock_generator_class,
@@ -332,7 +333,8 @@ class TestProcessRoomAutonomousRound:
 
         with (
             patch(
-                "infrastructure.scheduler.crud.get_agents_cached", new=AsyncMock(return_value=[mock_agent1, mock_agent2])
+                "infrastructure.scheduler.crud.get_agents_cached",
+                new=AsyncMock(return_value=[mock_agent1, mock_agent2]),
             ),
             patch.object(scheduler, "_count_agent_messages", new=AsyncMock(return_value=10)),
             patch("infrastructure.scheduler.TapeExecutor") as mock_executor_class,

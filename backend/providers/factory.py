@@ -6,7 +6,6 @@ based on provider type string.
 """
 
 import logging
-from typing import Optional
 
 from .base import AIProvider, ProviderType
 
@@ -34,8 +33,7 @@ def get_provider(provider_type: str | ProviderType) -> AIProvider:
             provider_type = ProviderType(provider_type.lower())
         except ValueError:
             raise ValueError(
-                f"Unknown provider type: {provider_type}. "
-                f"Supported types: {[p.value for p in ProviderType]}"
+                f"Unknown provider type: {provider_type}. Supported types: {[p.value for p in ProviderType]}"
             )
 
     # Return cached instance if available

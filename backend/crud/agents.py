@@ -6,10 +6,10 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from infrastructure.database import Agent
 import schemas
 from config import list_available_configs, parse_agent_config
 from domain.agent_config import AgentConfigData
+from infrastructure.database import Agent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -30,7 +30,9 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
             in_a_nutshell=agent.in_a_nutshell or "",
             characteristics=agent.characteristics or "",
             recent_events=agent.recent_events,
-            profile_pic_base64=agent.profile_pic if agent.profile_pic and agent.profile_pic.startswith("data:") else None,
+            profile_pic_base64=agent.profile_pic
+            if agent.profile_pic and agent.profile_pic.startswith("data:")
+            else None,
         )
 
     # Parse config file if provided to populate fields

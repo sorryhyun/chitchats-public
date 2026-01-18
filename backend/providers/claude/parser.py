@@ -87,9 +87,7 @@ class ClaudeStreamParser(AIStreamParser):
 
                     # Handle thinking blocks
                     block_class_name = block.__class__.__name__ if hasattr(block, "__class__") else ""
-                    if block_class_name == "ThinkingBlock" or (
-                        hasattr(block, "type") and block.type == "thinking"
-                    ):
+                    if block_class_name == "ThinkingBlock" or (hasattr(block, "type") and block.type == "thinking"):
                         if hasattr(block, "thinking"):
                             thinking_delta = block.thinking
                         elif hasattr(block, "text"):

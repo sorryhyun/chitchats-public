@@ -11,8 +11,8 @@ from .agent_config import AgentConfigData
 from .task_identifier import TaskIdentifier
 
 if TYPE_CHECKING:
-    from infrastructure.database import Agent
     from core import AgentManager
+    from infrastructure.database import Agent
     from sqlalchemy.ext.asyncio import AsyncSession
 
 

@@ -31,6 +31,7 @@ def _get_work_dir() -> Path:
         return Path(sys.executable).parent
     return Path(__file__).parent.parent.parent  # backend/core -> backend -> project_root
 
+
 # ============================================================================
 # Application Constants
 # ============================================================================
@@ -364,8 +365,7 @@ class Settings(BaseSettings):
 
         if self.enable_recall_tool:
             logger.warning(
-                "ENABLE_RECALL_TOOL is deprecated and can be removed. "
-                "The recall tool is now always enabled."
+                "ENABLE_RECALL_TOOL is deprecated and can be removed. The recall tool is now always enabled."
             )
 
         if self.enable_memory_tool:

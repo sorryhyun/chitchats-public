@@ -19,11 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core import AgentManager
 from database import Base, get_db
 from infrastructure.database.models import Agent, Message, Room
 from main import app
 from orchestration import ChatOrchestrator
-from core import AgentManager
 
 
 # Configure pytest-asyncio
@@ -256,9 +256,7 @@ async def sample_room(test_db: AsyncSession) -> Room:
 
 
 @pytest.fixture
-async def sample_room_with_agents(
-    test_db: AsyncSession, sample_room: Room, sample_agent: Agent
-) -> Room:
+async def sample_room_with_agents(test_db: AsyncSession, sample_room: Room, sample_agent: Agent) -> Room:
     """Create a sample room with agents."""
     # Refresh to ensure we have the agents relationship loaded
     await test_db.refresh(sample_room, ["agents"])

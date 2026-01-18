@@ -6,9 +6,9 @@ and their relationships.
 """
 
 import crud
-from infrastructure.database import Agent
 import pytest
 import schemas
+from infrastructure.database import Agent
 
 
 class TestRoomCRUD:

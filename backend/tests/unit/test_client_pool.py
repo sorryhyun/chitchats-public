@@ -9,8 +9,8 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from domain.task_identifier import TaskIdentifier
 from core.client_pool import BaseClientPool
+from domain.task_identifier import TaskIdentifier
 from providers.base import AIClient
 
 

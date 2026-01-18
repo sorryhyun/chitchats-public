@@ -117,7 +117,7 @@ class CodexProvider(AIProvider):
 
         return CodexMCPOptions(
             system_prompt=base_options.system_prompt,
-            model=base_options.model if base_options.model else 'gpt-5.2',
+            model=base_options.model if base_options.model else "gpt-5.2",
             thread_id=base_options.session_id,  # Codex uses thread_id
             mcp_servers=mcp_servers,
             approval_policy="never",  # Minimal prompt - non-interactive mode
@@ -138,6 +138,7 @@ class CodexProvider(AIProvider):
         """
         try:
             from .mcp_server_manager import CodexMCPServerManager
+
             manager = await CodexMCPServerManager.get_instance()
             return manager.is_started
         except Exception as e:

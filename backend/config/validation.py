@@ -75,7 +75,9 @@ def validate_config_schema() -> list[str]:
                 has_template = "template" in version_config
                 has_provider_keys = "claudecode" in version_config or "codex" in version_config
                 if not has_template and not has_provider_keys:
-                    errors.append(f"{guidelines_filename} version '{active_version}' missing 'template' or provider keys")
+                    errors.append(
+                        f"{guidelines_filename} version '{active_version}' missing 'template' or provider keys"
+                    )
 
         # Check for system_prompt
         active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")

@@ -11,6 +11,7 @@ from typing import Dict, Optional
 
 from core import get_settings
 from domain.agent_config import AgentConfigData
+
 from .memory_parser import parse_long_term_memory
 
 logger = logging.getLogger("ConfigParser")
@@ -180,6 +181,7 @@ def list_available_configs() -> Dict[str, Dict[str, Optional[str]]]:
         # For bundled agents, use a special prefix to indicate bundled location
         # But we use the same relative path format for consistency
         import sys
+
         base_path = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else project_root  # type: ignore[attr-defined]
         scan_agents_dir(bundled_agents_dir, base_path)
 

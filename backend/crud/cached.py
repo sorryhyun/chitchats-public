@@ -14,8 +14,8 @@ Caching strategy:
 import logging
 from typing import List, Optional
 
-from infrastructure.database import Agent, Message, Room
 from infrastructure.cache import agent_object_key, get_cache, room_agents_key, room_messages_key, room_object_key
+from infrastructure.database import Agent, Message, Room
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import crud

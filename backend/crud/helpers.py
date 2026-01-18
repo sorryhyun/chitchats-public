@@ -7,8 +7,8 @@ import logging
 import re
 from typing import Optional
 
-from infrastructure.database import Message, Room
 from core.settings import get_settings
+from infrastructure.database import Message, Room
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -23,9 +23,7 @@ async def get_room_with_relationships(db: AsyncSession, room_id: int) -> Optiona
     """
     result = await db.execute(
         select(Room)
-        .options(
-            selectinload(Room.agents), selectinload(Room.messages).selectinload(Message.agent)
-        )
+        .options(selectinload(Room.agents), selectinload(Room.messages).selectinload(Message.agent))
         .where(Room.id == room_id)
     )
     return result.scalar_one_or_none()
@@ -174,9 +172,7 @@ def persist_agent_to_filesystem(
         agent_folder.mkdir(parents=True, exist_ok=True)
 
         # Write in_a_nutshell.md (required)
-        (agent_folder / "in_a_nutshell.md").write_text(
-            in_a_nutshell.strip() if in_a_nutshell else "", encoding="utf-8"
-        )
+        (agent_folder / "in_a_nutshell.md").write_text(in_a_nutshell.strip() if in_a_nutshell else "", encoding="utf-8")
 
         # Write characteristics.md (required)
         (agent_folder / "characteristics.md").write_text(
@@ -184,9 +180,7 @@ def persist_agent_to_filesystem(
         )
 
         # Write recent_events.md (optional, create empty if not provided)
-        (agent_folder / "recent_events.md").write_text(
-            recent_events.strip() if recent_events else "", encoding="utf-8"
-        )
+        (agent_folder / "recent_events.md").write_text(recent_events.strip() if recent_events else "", encoding="utf-8")
 
         # Handle profile picture if provided
         if profile_pic_base64 and profile_pic_base64.startswith("data:image/"):

@@ -7,8 +7,8 @@ and their relationships.
 
 from datetime import datetime
 
-from infrastructure.database import Agent, Message, Room, RoomAgentSession
 import pytest
+from infrastructure.database import Agent, Message, Room, RoomAgentSession
 from sqlalchemy import select
 
 
@@ -171,9 +171,7 @@ class TestRoomAgentSession:
     @pytest.mark.unit
     async def test_create_session(self, sample_room, sample_agent, test_db):
         """Test creating a room-agent session."""
-        session = RoomAgentSession(
-            room_id=sample_room.id, agent_id=sample_agent.id, session_id="test_session_123"
-        )
+        session = RoomAgentSession(room_id=sample_room.id, agent_id=sample_agent.id, session_id="test_session_123")
         test_db.add(session)
         await test_db.commit()
 

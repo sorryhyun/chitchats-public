@@ -7,14 +7,13 @@ This module provides helpers for creating test app instances with overridden com
 from contextlib import asynccontextmanager
 from typing import Optional
 
+from core import AgentManager, get_settings
 from core.auth import AuthMiddleware
-from infrastructure.scheduler import BackgroundScheduler
-from core import get_settings
 from database import get_db, init_db
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from infrastructure.scheduler import BackgroundScheduler
 from orchestration import ChatOrchestrator
-from core import AgentManager
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

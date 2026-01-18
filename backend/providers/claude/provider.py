@@ -10,12 +10,12 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk.types import HookMatcher, McpStdioServerConfig, PostToolUseHookInput, SyncHookJSONOutput
-
 from core import get_settings
+
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
 from .client import ClaudeClient
@@ -121,11 +121,7 @@ class ClaudeProvider(AIProvider):
         # Determine model
         model = base_options.model
         if not model:
-            model = (
-                "claude-opus-4-5-20251101"
-                if not _settings.use_haiku
-                else "claude-haiku-4-5-20251001"
-            )
+            model = "claude-opus-4-5-20251101" if not _settings.use_haiku else "claude-haiku-4-5-20251001"
 
         # Build options
         options = ClaudeAgentOptions(
@@ -293,9 +289,7 @@ class ClaudeProvider(AIProvider):
                         logger.info(f"Captured anthropic tool call: {situation[:100]}...")
                 return {"continue_": True}
 
-            hook_matchers.append(
-                HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool])
-            )
+            hook_matchers.append(HookMatcher(matcher="mcp__guidelines__anthropic", hooks=[capture_anthropic_tool]))
 
         # Hook for skip tool calls
         if skip_tool_capture is not None:
@@ -312,9 +306,7 @@ class ClaudeProvider(AIProvider):
                     logger.info("Skip tool detected via hook!")
                 return {"continue_": True}
 
-            hook_matchers.append(
-                HookMatcher(matcher="mcp__action__skip", hooks=[capture_skip_tool])
-            )
+            hook_matchers.append(HookMatcher(matcher="mcp__action__skip", hooks=[capture_skip_tool]))
 
         if not hook_matchers:
             return None

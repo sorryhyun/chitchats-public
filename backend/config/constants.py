@@ -10,11 +10,7 @@ This module re-exports them for backward compatibility.
 
 # Re-export constants from settings for backward compatibility
 from core.settings import (
-    AGENT_TOOL_NAMES,
-    AGENT_TOOL_NAMES_BY_GROUP,
-    # BUILTIN_TOOLS,
     DEFAULT_FALLBACK_PROMPT,
-    SKIP_MESSAGE_TEXT,
 )
 
 
@@ -54,7 +50,10 @@ def get_base_system_prompt(provider: str = "claude") -> str:
                     return system_prompt.strip()
                 # Provider-specific key specified but prompt not found, log and fall through
                 import logging
-                logging.warning(f"System prompt '{active_prompt_key}' for provider '{provider}' not found, falling back to default")
+
+                logging.warning(
+                    f"System prompt '{active_prompt_key}' for provider '{provider}' not found, falling back to default"
+                )
 
         # Default system prompt selection
         active_prompt_key = guidelines_config.get("active_system_prompt", "system_prompt")

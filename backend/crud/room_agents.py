@@ -15,18 +15,14 @@ from sqlalchemy.orm import selectinload
 async def get_agents(db: AsyncSession, room_id: int) -> List[Agent]:
     """Get all agents in a specific room."""
     # Query agents directly via join to avoid detached instance issues with cached objects
-    result = await db.execute(
-        select(Agent).join(room_agents).where(room_agents.c.room_id == room_id)
-    )
+    result = await db.execute(select(Agent).join(room_agents).where(room_agents.c.room_id == room_id))
     return list(result.scalars().all())
 
 
 async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Optional[Room]:
     """Add an existing agent to a room with invitation tracking."""
     # Load room with agents only (not messages - too expensive for large conversations)
-    room_result = await db.execute(
-        select(Room).options(selectinload(Room.agents)).where(Room.id == room_id)
-    )
+    room_result = await db.execute(select(Room).options(selectinload(Room.agents)).where(Room.id == room_id))
     room = room_result.scalar_one_or_none()
 
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
@@ -36,9 +32,7 @@ async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Op
         if agent not in room.agents:
             # Efficient check for existing messages (O(1) instead of loading all)
             has_messages = (
-                await db.scalar(
-                    select(func.count()).select_from(Message).where(Message.room_id == room_id).limit(1)
-                )
+                await db.scalar(select(func.count()).select_from(Message).where(Message.room_id == room_id).limit(1))
                 > 0
             )
 
@@ -68,9 +62,7 @@ async def add_agent_to_room(db: AsyncSession, room_id: int, agent_id: int) -> Op
 
 async def remove_agent_from_room(db: AsyncSession, room_id: int, agent_id: int) -> bool:
     """Remove an agent from a room (agent still exists globally)."""
-    room_result = await db.execute(
-        select(Room).options(selectinload(Room.agents)).where(Room.id == room_id)
-    )
+    room_result = await db.execute(select(Room).options(selectinload(Room.agents)).where(Room.id == room_id))
     room = room_result.scalar_one_or_none()
 
     if room:
@@ -109,9 +101,7 @@ async def get_room_agent_session(
         Session ID for Claude, thread ID for Codex, or None if not found
     """
     result = await db.execute(
-        select(RoomAgentSession).where(
-            RoomAgentSession.room_id == room_id, RoomAgentSession.agent_id == agent_id
-        )
+        select(RoomAgentSession).where(RoomAgentSession.room_id == room_id, RoomAgentSession.agent_id == agent_id)
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -137,9 +127,7 @@ async def update_room_agent_session(
         Updated RoomAgentSession
     """
     result = await db.execute(
-        select(RoomAgentSession).where(
-            RoomAgentSession.room_id == room_id, RoomAgentSession.agent_id == agent_id
-        )
+        select(RoomAgentSession).where(RoomAgentSession.room_id == room_id, RoomAgentSession.agent_id == agent_id)
     )
     session = result.scalar_one_or_none()
 

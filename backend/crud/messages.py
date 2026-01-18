@@ -5,8 +5,8 @@ CRUD operations for Message entities.
 from datetime import datetime
 from typing import List
 
-from infrastructure.database import Agent, Message, Room, room_agents
 import schemas
+from infrastructure.database import Agent, Message, Room, room_agents
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -120,9 +120,7 @@ async def get_messages(db: AsyncSession, room_id: int) -> List[Message]:
     return result.scalars().all()
 
 
-async def get_messages_since(
-    db: AsyncSession, room_id: int, since_id: int = None, limit: int = 100
-) -> List[Message]:
+async def get_messages_since(db: AsyncSession, room_id: int, since_id: int = None, limit: int = 100) -> List[Message]:
     """
     Get messages in a room since a specific message ID.
     Used for polling to fetch only new messages.

@@ -9,12 +9,12 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from core.manager import AgentManager
 from domain.agent_config import AgentConfigData
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
 from providers import AIClientOptions, get_provider
 from providers.claude import ClaudeClientPool
-from core.manager import AgentManager
 
 
 class TestAgentManagerInit:

@@ -4,12 +4,12 @@ from typing import List
 
 import crud
 import schemas
+from core import AgentManager
 from core.auth import require_admin
 from core.dependencies import RequestIdentity, ensure_room_access, get_agent_manager, get_request_identity
+from crud import remove_agent_from_room_with_cleanup
 from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from core import AgentManager
-from crud import remove_agent_from_room_with_cleanup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()

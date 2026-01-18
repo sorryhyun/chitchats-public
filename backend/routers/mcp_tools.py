@@ -9,7 +9,7 @@ from typing import Optional
 
 import crud
 import schemas
-from core import get_settings
+from core import AgentManager, get_settings
 from core.dependencies import (
     RequestIdentity,
     ensure_room_access,
@@ -21,7 +21,6 @@ from database import get_db
 from fastapi import APIRouter, Depends, HTTPException
 from orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field
-from core import AgentManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/mcp-tools", tags=["MCP Tools"])

@@ -31,16 +31,15 @@ if str(backend_path) not in sys.path:
     sys.path.insert(0, str(backend_path))
 
 import mcp.types as types
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-
-from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
 from config import (
     get_extreme_traits,
     get_situation_builder_note,
     get_tool_description,
     is_tool_enabled,
 )
+from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
 
 logger = logging.getLogger("GuidelinesMCPServer")
 
@@ -56,12 +55,15 @@ def create_guidelines_server(
 
     # Load guidelines content using sdk.config (provider-specific)
     situation_builder_note = get_situation_builder_note(has_situation_builder)
-    guidelines_content = get_tool_description(
-        "guidelines",
-        agent_name=agent_name,
-        situation_builder_note=situation_builder_note,
-        provider=provider,
-    ) or "Guidelines not available."
+    guidelines_content = (
+        get_tool_description(
+            "guidelines",
+            agent_name=agent_name,
+            situation_builder_note=situation_builder_note,
+            provider=provider,
+        )
+        or "Guidelines not available."
+    )
 
     # Load extreme traits for group
     extreme_traits = get_extreme_traits(group_name) if group_name else {}
@@ -73,42 +75,51 @@ def create_guidelines_server(
 
         # Read guidelines tool
         if is_tool_enabled("read", group_name=group_name, provider=provider):
-            tools.append(types.Tool(
-                name="read",
-                description=get_tool_description(
-                    "read",
-                    agent_name=agent_name,
-                    group_name=group_name,
-                    provider=provider,
-                ) or "Retrieve behavioral guidelines and character information.",
-                inputSchema=GuidelinesReadInput.model_json_schema(),
-            ))
+            tools.append(
+                types.Tool(
+                    name="read",
+                    description=get_tool_description(
+                        "read",
+                        agent_name=agent_name,
+                        group_name=group_name,
+                        provider=provider,
+                    )
+                    or "Retrieve behavioral guidelines and character information.",
+                    inputSchema=GuidelinesReadInput.model_json_schema(),
+                )
+            )
 
         # Anthropic classification tool (for Claude provider)
         if is_tool_enabled("anthropic", group_name=group_name, provider=provider):
-            tools.append(types.Tool(
-                name="anthropic",
-                description=get_tool_description(
-                    "anthropic",
-                    agent_name=agent_name,
-                    group_name=group_name,
-                    provider=provider,
-                ) or "Classify a situation against Anthropic guidelines.",
-                inputSchema=GuidelinesAnthropicInput.model_json_schema(),
-            ))
+            tools.append(
+                types.Tool(
+                    name="anthropic",
+                    description=get_tool_description(
+                        "anthropic",
+                        agent_name=agent_name,
+                        group_name=group_name,
+                        provider=provider,
+                    )
+                    or "Classify a situation against Anthropic guidelines.",
+                    inputSchema=GuidelinesAnthropicInput.model_json_schema(),
+                )
+            )
 
         # OpenAI classification tool (for Codex provider)
         if is_tool_enabled("openai", group_name=group_name, provider=provider):
-            tools.append(types.Tool(
-                name="openai",
-                description=get_tool_description(
-                    "openai",
-                    agent_name=agent_name,
-                    group_name=group_name,
-                    provider=provider,
-                ) or "Classify a situation against OpenAI guidelines.",
-                inputSchema=GuidelinesAnthropicInput.model_json_schema(),  # Same schema
-            ))
+            tools.append(
+                types.Tool(
+                    name="openai",
+                    description=get_tool_description(
+                        "openai",
+                        agent_name=agent_name,
+                        group_name=group_name,
+                        provider=provider,
+                    )
+                    or "Classify a situation against OpenAI guidelines.",
+                    inputSchema=GuidelinesAnthropicInput.model_json_schema(),  # Same schema
+                )
+            )
 
         return tools
 
@@ -129,10 +140,9 @@ def create_guidelines_server(
                 return [types.TextContent(type="text", text="Not allowed.")]
 
             # Default response - situation is allowed
-            return [types.TextContent(
-                type="text",
-                text=f"The situation '{situation}' is allowed within normal guidelines."
-            )]
+            return [
+                types.TextContent(type="text", text=f"The situation '{situation}' is allowed within normal guidelines.")
+            ]
 
         else:
             raise ValueError(f"Unknown tool: {name}")
@@ -145,12 +155,14 @@ def create_guidelines_server(
         resources = []
 
         # Expose guidelines as a resource
-        resources.append(types.Resource(
-            uri=AnyUrl(f"guidelines://{agent_name}/roleplay"),  # type: ignore[arg-type]
-            name=f"{agent_name}'s Roleplay Guidelines",
-            description="Behavioral guidelines and character information for roleplay",
-            mimeType="text/markdown",
-        ))
+        resources.append(
+            types.Resource(
+                uri=AnyUrl(f"guidelines://{agent_name}/roleplay"),  # type: ignore[arg-type]
+                name=f"{agent_name}'s Roleplay Guidelines",
+                description="Behavioral guidelines and character information for roleplay",
+                mimeType="text/markdown",
+            )
+        )
 
         return resources
 

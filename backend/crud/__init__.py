@@ -19,14 +19,6 @@ from .agents import (
     update_agent,
 )
 
-# Cleanup operations (CRUD + resource cleanup)
-from .cleanup import (
-    clear_room_messages_with_cleanup,
-    delete_agent_with_cleanup,
-    delete_room_with_cleanup,
-    remove_agent_from_room_with_cleanup,
-)
-
 # Cached operations
 from .cached import (
     get_agent_cached,
@@ -39,6 +31,14 @@ from .cached import (
     invalidate_agent_cache,
     invalidate_messages_cache,
     invalidate_room_cache,
+)
+
+# Cleanup operations (CRUD + resource cleanup)
+from .cleanup import (
+    clear_room_messages_with_cleanup,
+    delete_agent_with_cleanup,
+    delete_room_with_cleanup,
+    remove_agent_from_room_with_cleanup,
 )
 
 # Message operations

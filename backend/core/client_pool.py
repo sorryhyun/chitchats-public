@@ -197,7 +197,9 @@ class BaseClientPool(ClientPoolInterface, ABC):
                     except Exception as e:
                         error_str = str(e)
                         # Retry on transport-related errors
-                        if ("ProcessTransport is not ready" in error_str or "transport" in error_str.lower()) and attempt < max_retries - 1:
+                        if (
+                            "ProcessTransport is not ready" in error_str or "transport" in error_str.lower()
+                        ) and attempt < max_retries - 1:
                             delay = 0.3 * (2**attempt)  # Exponential backoff: 0.3s, 0.6s
                             logger.warning(
                                 f"Connection failed for {task_id}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
@@ -316,9 +318,7 @@ class BaseClientPool(ClientPoolInterface, ABC):
         """
         return self._pool.keys()
 
-    async def _disconnect_client_background(
-        self, client: AIClient, task_id: TaskIdentifier
-    ):
+    async def _disconnect_client_background(self, client: AIClient, task_id: TaskIdentifier):
         """
         Background task for client disconnection with timeout.
 

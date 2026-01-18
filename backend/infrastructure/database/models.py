@@ -81,6 +81,7 @@ class Agent(Base):
             AgentConfigData instance with this agent's configuration
         """
         from domain.agent_config import AgentConfigData
+
         from infrastructure.cache import agent_config_key, get_cache
 
         # Check cache first if enabled

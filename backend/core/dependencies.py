@@ -3,11 +3,12 @@
 from typing import NamedTuple
 
 import crud
-from core.exceptions import RoomNotFoundError
 from fastapi import HTTPException, Request
 from orchestration import ChatOrchestrator
-from core import AgentManager
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core import AgentManager
+from core.exceptions import RoomNotFoundError
 
 
 class RequestIdentity(NamedTuple):

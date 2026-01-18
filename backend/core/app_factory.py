@@ -11,13 +11,12 @@ from pathlib import Path
 
 import crud
 from database import get_db, init_db
-from infrastructure.scheduler import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
+from infrastructure.scheduler import BackgroundScheduler
 from orchestration import ChatOrchestrator
-from core import AgentManager
 
-from core import get_logger, get_settings
+from core import AgentManager, get_logger, get_settings
 
 logger = get_logger("AppFactory")
 
@@ -29,12 +28,13 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance
     """
-    from core.auth import AuthMiddleware
     from fastapi.middleware.cors import CORSMiddleware
     from routers import agent_management, agents, auth, debug, exports, mcp_tools, messages, room_agents, rooms
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
     from slowapi.util import get_remote_address
+
+    from core.auth import AuthMiddleware
 
     settings = get_settings()
 
@@ -88,6 +88,7 @@ def create_app() -> FastAPI:
         codex_mcp_manager = None
         try:
             from providers.codex import CodexMCPServerManager
+
             logger.info("🔌 Starting Codex MCP server...")
             codex_mcp_manager = await CodexMCPServerManager.get_instance()
             await codex_mcp_manager.ensure_started()

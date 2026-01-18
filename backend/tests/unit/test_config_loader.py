@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 import pytest
-from core.settings import Settings, reset_settings
 from config import (
     _config_cache,
     _get_file_mtime,
@@ -18,6 +17,7 @@ from config import (
     get_debug_config,
     get_tool_description,
 )
+from core.settings import Settings, reset_settings
 
 # Alias for backward compatibility in tests
 _get_cached_config = get_cached_config

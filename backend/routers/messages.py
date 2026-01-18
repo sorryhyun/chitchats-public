@@ -6,6 +6,7 @@ from typing import List
 
 import crud
 import schemas
+from core import AgentManager
 from core.dependencies import (
     RequestIdentity,
     ensure_room_access,
@@ -18,7 +19,6 @@ from database import get_db
 from fastapi import APIRouter, Depends, HTTPException, Request
 from infrastructure.images import compress_image_base64
 from orchestration import ChatOrchestrator
-from core import AgentManager
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
