@@ -47,6 +47,10 @@ evaluation_*.yaml
 report_*.md
 
 key.pem
+
+# Code signing certificates
+*.pfx
+*.p12
 /backend/.coverage
 .coverage
 coverage.json

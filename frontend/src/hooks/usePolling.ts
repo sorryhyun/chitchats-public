@@ -87,7 +87,10 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
         if (newMessages.length > 0) {
           setMessages((prev) => {
-            return [...prev, ...newMessages];
+            // Deduplicate to handle race conditions between immediate and regular polls
+            const existingIds = new Set(prev.map(m => m.id));
+            const uniqueNewMessages = newMessages.filter((m: Message) => !existingIds.has(m.id));
+            return uniqueNewMessages.length > 0 ? [...prev, ...uniqueNewMessages] : prev;
           });
           // Update last message ID
           lastMessageIdRef.current = newMessages[newMessages.length - 1].id;

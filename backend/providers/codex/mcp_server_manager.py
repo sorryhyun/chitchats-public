@@ -16,6 +16,7 @@ import logging
 import os
 import shutil
 import sys
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -32,8 +33,9 @@ IS_WINDOWS = sys.platform == "win32"
 _CODEX_WINDOWS_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
 
 # Project root directory (backend's parent) - for development
-_BACKEND_ROOT = Path(__file__).parent.parent.parent
-_BUNDLED_CODEX_DEV = _BACKEND_ROOT / "bundled" / _CODEX_WINDOWS_EXE_NAME
+# backend/providers/codex/mcp_server_manager.py -> 4 parents to reach project root
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+_BUNDLED_CODEX_DEV = _PROJECT_ROOT / "bundled" / _CODEX_WINDOWS_EXE_NAME
 
 # Next to the main executable - for packaged Windows builds (e.g., chitchat.exe)
 _BUNDLED_CODEX_PACKAGED = Path(sys.executable).parent / _CODEX_WINDOWS_EXE_NAME
@@ -73,6 +75,59 @@ def _get_codex_executable() -> str:
     if bundled_path:
         return str(bundled_path)
     return "codex"
+
+
+def _get_clean_environment() -> Dict[str, str]:
+    """Create a minimal, clean environment for the Codex subprocess.
+
+    Passing the full os.environ can cause stdout pollution from development
+    tools (Node.js diagnostics, Python warnings, etc.) that interfere with
+    the MCP JSON-RPC protocol.
+
+    Returns:
+        A dict with only essential environment variables for Codex to run.
+    """
+    # Essential variables to keep
+    essential_vars = {
+        # System essentials
+        "PATH",
+        "SystemRoot",
+        "SYSTEMROOT",
+        "COMSPEC",
+        "TEMP",
+        "TMP",
+        # User identity
+        "HOME",
+        "USERPROFILE",
+        "USERNAME",
+        "USER",
+        # Codex/OpenAI authentication
+        "OPENAI_API_KEY",
+        "OPENAI_ORG_ID",
+        "OPENAI_PROJECT_ID",
+        # Windows-specific
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "windir",
+    }
+
+    clean_env: Dict[str, str] = {}
+    for key in essential_vars:
+        if key in os.environ:
+            clean_env[key] = os.environ[key]
+
+    # Force non-interactive/plain output mode
+    # These suppress fancy terminal UI elements that corrupt JSON-RPC
+    clean_env["NO_COLOR"] = "1"
+    clean_env["CI"] = "true"
+    clean_env["TERM"] = "dumb"
+    clean_env["FORCE_COLOR"] = "0"
+
+    return clean_env
 
 
 class _MCPNotificationFilter(logging.Filter):
@@ -166,35 +221,47 @@ class CodexMCPServerManager:
                 raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
         logger.info("Starting Codex MCP server...")
+        logger.info(f"Codex path: {codex_path}")
+
+        # Create a minimal, clean environment for the Codex subprocess
+        # Passing the full environment can cause stdout pollution from
+        # development tools (Node.js, Python, etc.) that emit diagnostics
+        clean_env = _get_clean_environment()
+        logger.debug(f"Clean environment keys: {list(clean_env.keys())}")
 
         # Create server parameters for stdio transport
         server_params = StdioServerParameters(
             command=codex_path,
             args=["mcp-server"],
-            env={**os.environ},  # Pass through environment
+            env=clean_env,
         )
 
-        # Start the server process with stdio transport
-        self._process_context = stdio_client(server_params)
-        read_stream, write_stream = await self._process_context.__aenter__()
-        self._read_stream = read_stream
-        self._write_stream = write_stream
+        try:
+            # Start the server process with stdio transport
+            self._process_context = stdio_client(server_params)
+            read_stream, write_stream = await self._process_context.__aenter__()
+            self._read_stream = read_stream
+            self._write_stream = write_stream
 
-        # Create MCP session (type: ignore for MCP library's Any types)
-        self._session_context = ClientSession(read_stream, write_stream)  # type: ignore[arg-type]
-        session = await self._session_context.__aenter__()
-        self._session = session
-        assert session is not None, "MCP session failed to initialize"
+            # Create MCP session (type: ignore for MCP library's Any types)
+            self._session_context = ClientSession(read_stream, write_stream)  # type: ignore[arg-type]
+            session = await self._session_context.__aenter__()
+            self._session = session
+            assert session is not None, "MCP session failed to initialize"
 
-        # Initialize the session
-        await session.initialize()
+            # Initialize the session
+            await session.initialize()
 
-        # Discover available tools
-        tools_result = await session.list_tools()
-        self._available_tools = {tool.name: tool for tool in tools_result.tools}
+            # Discover available tools
+            tools_result = await session.list_tools()
+            self._available_tools = {tool.name: tool for tool in tools_result.tools}
 
-        logger.info(f"Codex MCP server started. Available tools: {list(self._available_tools.keys())}")
-        self._started = True
+            logger.info(f"Codex MCP server started. Available tools: {list(self._available_tools.keys())}")
+            self._started = True
+        except Exception as e:
+            logger.error(f"❌ Failed to start Codex MCP server: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            raise
 
     async def call_codex(
         self,
@@ -331,6 +398,23 @@ class CodexMCPServerManager:
             logger.info(
                 f"MCP tool call complete. Thread ID: {response.get('thread_id')}, content items: {len(response.get('content', []))}"
             )
+
+            # Handle "Session not found" error by falling back to new session
+            if response.get("is_error") and thread_id:
+                error_text = ""
+                for item in response.get("content", []):
+                    if item.get("type") == "text":
+                        error_text += item.get("text", "")
+
+                if "session not found" in error_text.lower():
+                    logger.warning(
+                        f"Session not found for thread_id {thread_id}, starting new session..."
+                    )
+                    # Retry without thread_id to start a fresh session
+                    return await self._call_tool_impl(
+                        prompt, config, None, approval_policy, sandbox, cwd
+                    )
+
             return response
 
         except Exception as e:

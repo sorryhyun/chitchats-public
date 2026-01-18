@@ -16,6 +16,7 @@ This allows the bundled exe to spawn itself as MCP tool servers.
 
 import argparse
 import asyncio
+import atexit
 import getpass
 import os
 import secrets
@@ -27,6 +28,14 @@ from threading import Timer
 
 # Windows detection
 IS_WINDOWS = sys.platform == "win32"
+
+# Track if we locked the Codex skills folder
+_codex_skills_was_locked = False
+
+# Windows asyncio subprocess fix - must be set before any async code runs
+if IS_WINDOWS:
+    # ProactorEventLoop is required for subprocess support on Windows
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Codex Windows executable name
 _CODEX_WINDOWS_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
@@ -105,6 +114,98 @@ def _get_bundled_codex_path() -> Path | None:
         return dev_path
 
     return None
+
+
+def _get_codex_skills_path() -> Path:
+    """Get the path to the Codex skills folder."""
+    return Path.home() / ".codex" / "skills"
+
+
+def lock_codex_skills() -> bool:
+    """Lock the Codex skills folder to prevent unnecessary prompts.
+
+    Removes ALL permissions (equivalent to chmod 000 on Linux).
+    Saves original ACL for restoration on unlock.
+    Returns True if the folder was locked, False otherwise.
+    """
+    global _codex_skills_was_locked
+
+    if not IS_WINDOWS:
+        return False
+
+    skills_path = _get_codex_skills_path()
+    if not skills_path.exists():
+        return False
+
+    # PowerShell script to save ACL and remove all permissions
+    ps_script = f'''
+$path = "{skills_path}"
+$acl = Get-Acl $path
+$acl | Export-Clixml "{skills_path}.acl.xml"
+$acl.SetAccessRuleProtection($true, $false)
+$acl.Access | ForEach-Object {{ $acl.RemoveAccessRule($_) | Out-Null }}
+Set-Acl $path $acl
+'''
+
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            _codex_skills_was_locked = True
+            print("Codex skills 폴더 잠금됨")
+            return True
+        else:
+            print(f"경고: Codex skills 폴더 잠금 실패: {result.stderr.decode()}")
+    except Exception as e:
+        print(f"경고: Codex skills 폴더 잠금 실패: {e}")
+
+    return False
+
+
+def unlock_codex_skills() -> bool:
+    """Unlock the Codex skills folder (restore access).
+
+    Restores the original ACL that was saved during lock.
+    Returns True if the folder was unlocked, False otherwise.
+    """
+    global _codex_skills_was_locked
+
+    if not IS_WINDOWS or not _codex_skills_was_locked:
+        return False
+
+    skills_path = _get_codex_skills_path()
+    acl_backup = Path(f"{skills_path}.acl.xml")
+
+    if not skills_path.exists() or not acl_backup.exists():
+        return False
+
+    # PowerShell script to restore ACL from backup
+    ps_script = f'''
+$path = "{skills_path}"
+$acl = Import-Clixml "{acl_backup}"
+Set-Acl $path $acl
+Remove-Item "{acl_backup}" -Force
+'''
+
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            _codex_skills_was_locked = False
+            print("Codex skills 폴더 잠금 해제됨")
+            return True
+        else:
+            print(f"경고: Codex skills 폴더 잠금 해제 실패: {result.stderr.decode()}")
+    except Exception as e:
+        print(f"경고: Codex skills 폴더 잠금 해제 실패: {e}")
+
+    return False
 
 
 def check_codex_logged_in() -> bool:
@@ -353,6 +454,11 @@ def main():
     # Set up paths first
     setup_paths()
 
+    # Lock Codex skills folder to prevent unnecessary prompts
+    # Register cleanup on exit
+    lock_codex_skills()
+    atexit.register(unlock_codex_skills)
+
     # Run environment setup (including first-time wizard if needed)
     setup_was_run = setup_environment()
 
@@ -372,6 +478,7 @@ def main():
 
     # Import the app directly instead of using string path
     # This works better with PyInstaller bundling
+    # Note: main.py sets WindowsProactorEventLoopPolicy at import time
     from main import app
 
     # Run the server with the app object directly

@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-sqlite prod stop clean env generate-hash simulate build-exe
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -8,6 +8,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev               - Run backend + frontend (PostgreSQL)"
+	@echo "  make dev-win           - Run backend + frontend (Windows, clean Ctrl+C)"
 	@echo "  make dev-sqlite        - Run backend + frontend (SQLite)"
 	@echo "  make install           - Install all dependencies (backend + frontend)"
 	@echo "  make run-backend       - Run backend server only"
@@ -65,6 +66,10 @@ dev:
 	@echo "Press Ctrl+C to stop all servers"
 # 	@$(MAKE) -j3 run-backend run-frontend run-tunnel-backend
 	@$(MAKE) -j3 run-backend run-frontend
+
+dev-win:
+	@echo "Starting backend and frontend (Windows)..."
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/windows/dev.ps1
 
 dev-sqlite:
 	@echo "Starting backend and frontend with SQLite..."

@@ -8,6 +8,7 @@ with Claude SDK-specific client creation logic.
 from __future__ import annotations
 
 import logging
+import traceback
 
 from claude_agent_sdk import ClaudeAgentOptions
 from core.client_pool import BaseClientPool
@@ -41,7 +42,13 @@ class ClaudeClientPool(BaseClientPool):
         client = ClaudeClient(options)
 
         # Connect (spawns Claude Code CLI subprocess)
-        await client.connect()
+        try:
+            await client.connect()
+        except Exception as e:
+            # Log full traceback for connection errors (these are hard to debug)
+            logger.error(f"❌ Failed to connect Claude client: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            raise
 
         logger.debug(f"Created and connected ClaudeClient with session: {options.resume}")
         return client

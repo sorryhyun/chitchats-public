@@ -240,6 +240,19 @@ class CodexStreamParser(AIStreamParser):
                         thinking_delta += text
                         logger.info(f"[CodexParser] Extracted reasoning: {len(text)} chars")
 
+        elif event_type == "event_msg":
+            # Event message wrapper - extract from payload based on type
+            payload = message.get("payload", {})
+            payload_type = payload.get("type", "")
+            logger.info(f"[CodexParser] event_msg payload_type={payload_type}")
+
+            if payload_type == "agent_reasoning":
+                # Agent reasoning/thinking content
+                text = payload.get("text", "")
+                if text:
+                    thinking_delta = text
+                    logger.info(f"[CodexParser] Extracted agent_reasoning: {len(text)} chars")
+
         # Return accumulated text with deltas applied
         return ParsedStreamMessage(
             response_text=current_response + content_delta,

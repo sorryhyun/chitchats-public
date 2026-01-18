@@ -12,7 +12,8 @@
       "Bash(git mv:*)",
       "WebFetch(domain:developers.openai.com)",
       "Bash(find:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(env)"
     ],
     "deny": [],
     "ask": []
