@@ -34,13 +34,13 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from domain.action_models import MemorizeInput, RecallInput, SkipInput
-from core.config import (
+from config import (
     clear_cache,
     get_tool_description,
     get_tool_response,
     is_tool_enabled,
+    parse_long_term_memory,
 )
-from core.memory.parser import parse_long_term_memory
 from core import get_settings
 
 logger = logging.getLogger("ActionMCPServer")

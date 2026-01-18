@@ -152,7 +152,7 @@ class TestMemoryParser:
     @pytest.mark.unit
     def test_parse_long_term_memory(self, tmp_path):
         """Test parsing long-term memory file with subtitles."""
-        from core.memory.parser import parse_long_term_memory
+        from config import parse_long_term_memory
 
         # Create test memory file
         memory_file = tmp_path / "long_term_memory.md"
@@ -178,7 +178,7 @@ Third memory here.
     @pytest.mark.unit
     def test_parse_long_term_memory_not_found(self, tmp_path):
         """Test parsing non-existent memory file."""
-        from core.memory.parser import parse_long_term_memory
+        from config import parse_long_term_memory
 
         result = parse_long_term_memory(tmp_path / "nonexistent.md")
         assert result == {}
@@ -186,7 +186,7 @@ Third memory here.
     @pytest.mark.unit
     def test_get_memory_subtitles(self, tmp_path):
         """Test extracting memory subtitles."""
-        from core.memory.parser import get_memory_subtitles
+        from config import get_memory_subtitles
 
         memory_file = tmp_path / "long_term_memory.md"
         memory_file.write_text("""## [Sub1]
@@ -205,7 +205,7 @@ Content 2
     @pytest.mark.unit
     def test_get_memory_by_subtitle(self, tmp_path):
         """Test retrieving specific memory by subtitle."""
-        from core.memory.parser import get_memory_by_subtitle
+        from config import get_memory_by_subtitle
 
         memory_file = tmp_path / "long_term_memory.md"
         memory_file.write_text("""## [Important]
@@ -223,7 +223,7 @@ Random stuff here.
     @pytest.mark.unit
     def test_get_memory_by_subtitle_not_found(self, tmp_path):
         """Test retrieving non-existent memory."""
-        from core.memory.parser import get_memory_by_subtitle
+        from config import get_memory_by_subtitle
 
         memory_file = tmp_path / "long_term_memory.md"
         memory_file.write_text("## [Exists]\nContent")

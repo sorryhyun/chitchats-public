@@ -23,7 +23,7 @@ from infrastructure.logging.formatters import format_message_for_debug
 from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
 from providers.claude import ClaudeClientPool
 
-from .config import get_debug_config
+from config import get_debug_config
 
 # Configure from settings
 DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)

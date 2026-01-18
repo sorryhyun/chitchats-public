@@ -10,7 +10,7 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 from core.settings import Settings, reset_settings
-from core.config import (
+from config import (
     _config_cache,
     _get_file_mtime,
     _load_yaml_file,

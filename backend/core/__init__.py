@@ -9,7 +9,7 @@ from .logging import get_logger, setup_logging
 from .settings import Settings, get_settings, reset_settings
 
 # Lazy import to avoid circular dependency
-# AgentManager imports from providers which imports from core.config
+# AgentManager imports from providers which imports from config module
 # which in turn may need core.settings
 
 
