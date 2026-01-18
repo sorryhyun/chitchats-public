@@ -54,23 +54,11 @@ make dev
 
 http://localhost:5173 에서 비밀번호로 로그인하세요.
 
-## 시뮬레이션 및 테스트
+## 시뮬레이션
 
-**시뮬레이션 실행:**
 ```bash
 make simulate ARGS='-s "AI 윤리에 대해 토론" -a "alice,bob,charlie"'
 ```
-
-**에이전트 테스트:**
-```bash
-make test-agents ARGS='10 agent1 agent2 agent3'
-```
-
-```bash
-make evaluate-agents ARGS='--target-agent "프리렌" --evaluator "페른" --questions 2'
-```
-
-자세한 내용은 [SIMULATIONS.md](SIMULATIONS.md)를 참조하세요.
 
 ## 에이전트 설정
 

@@ -197,21 +197,11 @@ ChitChats uses JWT token-based authentication with bcrypt password hashing.
 make simulate ARGS='--password "yourpass" --scenario "Discuss AI ethics" --agents "alice,bob,charlie"'
 ```
 
-**See [SIMULATIONS.md](SIMULATIONS.md) for complete guide.**
-
-### Test Agent Capabilities
-
-```bash
-make test-agents ARGS='10 agent1 agent2 agent3'
-# 10 questions per agent
-```
-
 ### Scripts Location
 
 All scripts are now organized in `scripts/` directory:
 - `scripts/setup/` - Setup utilities (generate_hash.py)
 - `scripts/simulation/` - Simulation scripts
-- `scripts/testing/` - Testing scripts
 
 ## Common Tasks
 

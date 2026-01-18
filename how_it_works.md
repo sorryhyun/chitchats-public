@@ -207,31 +207,4 @@ All configuration is hot-reloaded (no restart needed):
 | `USE_HAIKU` | Use Haiku model instead of Opus | `false` |
 | `RECALL_MEMORY_FILE` | Memory file for recall tool | `consolidated_memory` |
 
----
-
-## Agent Evaluation
-
-We use cross-evaluation to compare agent configurations and prompt changes.
-
-### Cross-Evaluation (Simple)
-
-```bash
-make evaluate-agents-cross AGENT1="프리렌" AGENT2="페른" QUESTIONS=7
-```
-
-This is a basic **character-as-evaluator** approach: one agent evaluates another's responses. It generates side-by-side comparisons but lacks sophisticated metrics.
-
-### What We Measure
-
-Currently, we focus on **enjoyability** rather than hard metrics:
-
-- Does the response feel in-character?
-- Is the conversation engaging and natural?
-- Does the agent maintain consistent personality?
-
-This is intentionally subjective—we're optimizing for immersive roleplay experience, not benchmark scores.
-
-### Historical Note
-
-See [how_it_worked.md](how_it_worked.md#evaluation-learnings) for evaluation history and why A/B testing became less useful after prompt convergence.
 

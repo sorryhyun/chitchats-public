@@ -55,29 +55,13 @@ make dev
 
 Open http://localhost:5173 and login with your password.
 
-## Simulation & Testing
+## Simulation
 
-**Run simulations:**
 ```bash
 make simulate ARGS='-s "Discuss AI ethics" -a "alice,bob,charlie"'
-# Or use the script directly:
-# ./scripts/simulation/simulate_chatroom.sh -s "..." -a "..."
 ```
 
-**Test agents:**
-```bash
-make test-agents ARGS='10 agent1 agent2 agent3'
-```
-or
-```bash
-make evaluate-agents ARGS='--target-agent "프리렌" --evaluator "페른" --questions 2'
-```
-or
-```bash
-./scripts/simulation/simulate_chatroom.sh -s "덴지와 레제가 전투 후 카페에서 만나기로 한 날, 덴지는 우연히 마키마가 레제를 죽이려고 하려는 찰나를 목격한다. 덴지가 '아' 라고 하는 순간, 마키마는 레제에게 손가락을 겨누고 '빵'이라고 말했다. (다른 캐릭터들이 아닌, 마키마가 쏠 위치를 정한다)" -a "덴지,레제,마키마" --max-interactions 10 -p sorrysorry --variants 3 --no-thinking
-```
-
-See [SIMULATIONS.md](SIMULATIONS.md) and [SETUP.md](SETUP.md) for details.
+See [SETUP.md](SETUP.md) for details.
 
 ## Agent Configuration
 

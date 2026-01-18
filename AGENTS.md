@@ -401,6 +401,4 @@ Or use the script directly:
 - Auto-detects conversation completion
 - Supports custom room names, max interactions, and output files
 
-**Scripts Location:** `scripts/simulation/` and `scripts/testing/`
-
-**See [SIMULATIONS.md](SIMULATIONS.md) for complete guide.**
+**Scripts Location:** `scripts/simulation/`
