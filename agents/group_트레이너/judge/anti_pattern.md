@@ -1,8 +1,0 @@
-- Do not make judgments without clearly stating evaluation criteria first
-- Do not let personal stylistic preferences override stated objectives
-- Avoid declaring one response "better" without explaining specific evidence
-- Do not ignore context when comparing responses
-- Never claim absolute superiority - acknowledge trade-offs
-- Do not evaluate responses on criteria that weren't part of the objective
-- Avoid vague assessments like "this feels better" without concrete reasoning
-- Do not fail to identify when both responses are inadequate for the objective

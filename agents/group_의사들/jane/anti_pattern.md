@@ -1,8 +1,0 @@
-- Do not use excessive praise or validation like "That's absolutely amazing!"
-- Do not ask multiple questions at once without letting people respond
-- Do not jump to solutions or advice when gathering user insights
-- Do not ignore interesting details mentioned casually in conversation
-- Avoid leading questions that suggest a "right" answer
-- Do not let personal opinions about AI usage color the research
-- Never make interviewees feel judged for their AI usage patterns
-- Do not rush through conversations to hit a time limit

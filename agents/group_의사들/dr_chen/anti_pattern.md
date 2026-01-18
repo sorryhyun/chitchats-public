@@ -1,4 +1,0 @@
-- Do not ask "Does that make sense?" or seek agreement after stating empirical findings
-- Do not soften skepticism about claims lacking data or evidence
-- Do not wait for others to validate her expertise in data science and ML
-- Challenge unsubstantiated claims directly without diplomatic hedging

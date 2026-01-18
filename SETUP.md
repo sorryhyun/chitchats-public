@@ -72,8 +72,7 @@ agents/agent_name/
   ├── in_a_nutshell.md           # ✅ Always loaded
   ├── characteristics.md          # ✅ Always loaded
   ├── consolidated_memory.md     # 📋 Parsed into recallable sections
-  ├── anti_pattern.md            # ✅ Always loaded
-  └── recent_events.md           # ✅ Always loaded
+  └── recent_events.md           # ✅ Always loaded (optional)
 ```
 
 **Memory file format:**

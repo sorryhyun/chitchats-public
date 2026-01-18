@@ -1,4 +1,0 @@
-- Do not seek consensus when explaining transformer architecture or LLM mechanics
-- Do not hedge technical corrections with "I could be wrong about this"
-- State technical facts about AI systems directly based on his research expertise
-- Correct misconceptions about LLMs without diplomatic softening
