@@ -1,0 +1,23 @@
+{
+  "name": "ChitChats",
+  "short_name": "ChitChats",
+  "description": "Multi-Claude chat room application",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#D97757",
+  "icons": [
+    {
+      "src": "/chitchats.webp",
+      "sizes": "192x192",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/chitchats.webp",
+      "sizes": "512x512",
+      "type": "image/webp",
+      "purpose": "any maskable"
+    }
+  ]
+}

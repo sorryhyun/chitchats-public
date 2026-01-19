@@ -31,26 +31,51 @@ logger = logging.getLogger("CodexMCPServerManager")
 
 def _get_bundled_codex_path() -> Optional[str]:
     """Get the path to the bundled Codex Rust binary."""
-    # Bundled paths by platform (relative to project root)
-    bundled_paths = {
-        "windows-amd64": "bundled/codex-x86_64-pc-windows-msvc.exe",
-        "windows-x86_64": "bundled/codex-x86_64-pc-windows-msvc.exe",
-        "darwin-arm64": "bundled/codex-aarch64-apple-darwin",
-        "darwin-x86_64": "bundled/codex-x86_64-apple-darwin",
-        "linux-x86_64": "bundled/codex-x86_64-unknown-linux-gnu",
-        "linux-aarch64": "bundled/codex-aarch64-unknown-linux-gnu",
+    import sys
+
+    # Binary filenames by platform
+    binary_names = {
+        "windows-amd64": "codex-x86_64-pc-windows-msvc.exe",
+        "windows-x86_64": "codex-x86_64-pc-windows-msvc.exe",
+        "darwin-arm64": "codex-aarch64-apple-darwin",
+        "darwin-x86_64": "codex-x86_64-apple-darwin",
+        "linux-x86_64": "codex-x86_64-unknown-linux-gnu",
+        "linux-aarch64": "codex-aarch64-unknown-linux-gnu",
     }
 
     key = f"{platform.system().lower()}-{platform.machine().lower()}"
-    relative_path = bundled_paths.get(key)
-    if relative_path:
-        # This file: backend/providers/codex/mcp_server_manager.py
-        # Project root: 4 levels up
+    binary_name = binary_names.get(key)
+
+    if not binary_name:
+        logger.warning(f"No bundled binary configured for platform: {key}")
+        return None
+
+    # Check multiple locations in order of priority
+    search_paths = []
+
+    if getattr(sys, "frozen", False):
+        # Running as PyInstaller bundle
+        # 1. Check next to the exe (work directory)
+        exe_dir = Path(sys.executable).parent
+        search_paths.append(exe_dir / binary_name)
+        search_paths.append(exe_dir / "bundled" / binary_name)
+        # 2. Check in _MEIPASS (temp extraction directory)
+        meipass = Path(sys._MEIPASS)
+        search_paths.append(meipass / binary_name)
+        search_paths.append(meipass / "bundled" / binary_name)
+    else:
+        # Running in development
+        # Project root: 4 levels up from backend/providers/codex/mcp_server_manager.py
         project_root = Path(__file__).parent.parent.parent.parent
-        bundled_path = project_root / relative_path
-        if bundled_path.exists():
-            logger.info(f"Found bundled Codex binary: {bundled_path}")
-            return str(bundled_path)
+        search_paths.append(project_root / "bundled" / binary_name)
+
+    for path in search_paths:
+        logger.debug(f"Checking bundled path: {path}")
+        if path.exists():
+            logger.info(f"Found bundled Codex binary: {path}")
+            return str(path)
+
+    logger.warning(f"Bundled Codex binary not found in any of: {[str(p) for p in search_paths]}")
     return None
 
 

@@ -70,8 +70,13 @@ export const MainSidebar = ({
     <div className="w-80 sm:w-80 bg-slate-100 flex flex-col h-full border-r border-slate-300 select-none">
       {/* Header - Add left padding to avoid overlap with fixed hamburger button */}
       <div className="pl-14 pr-6 pt-2 pb-4 border-b border-slate-300 bg-white">
-        <h2 className="text-mobile-base font-bold text-slate-700 tracking-tight mb-1">{tCommon('appName')}</h2>
-        <p className="text-slate-600 text-xs font-medium tracking-wider">{tCommon('appSubtitle')}</p>
+        <div className="flex items-center gap-2">
+          <img src="/chitchats.webp" alt="ChitChats" className="w-8 h-8 rounded" />
+          <div>
+            <h2 className="text-mobile-base font-bold text-slate-700 tracking-tight">{tCommon('appName')}</h2>
+            <p className="text-slate-600 text-xs font-medium tracking-wider">{tCommon('appSubtitle')}</p>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
