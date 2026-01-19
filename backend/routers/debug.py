@@ -1,16 +1,14 @@
 """
 Debug and monitoring endpoints.
 
-These endpoints provide access to cache statistics, provider health,
-and other debugging information.
+These endpoints provide access to cache statistics and other debugging information.
 """
 
-from typing import Dict, List
+from typing import Dict
 
-from core.auth import require_admin
+from core import require_admin
+from core.cache_service import get_cache_service
 from fastapi import APIRouter, Depends
-from infrastructure.cache import get_cache
-from providers import check_provider_availability, get_available_providers
 
 router = APIRouter()
 
@@ -29,8 +27,8 @@ async def get_cache_stats() -> Dict[str, int]:
         - size: Number of entries in cache
         - invalidations: Number of cache invalidations
     """
-    cache = get_cache()
-    return cache.get_stats()
+    cache_service = get_cache_service()
+    return cache_service.get_stats()
 
 
 @router.post("/cache/cleanup", dependencies=[Depends(require_admin)])
@@ -41,8 +39,8 @@ async def cleanup_cache() -> Dict[str, str]:
     Returns:
         Success message
     """
-    cache = get_cache()
-    cache.cleanup_expired()
+    cache_service = get_cache_service()
+    cache_service.cleanup_expired()
     return {"status": "success", "message": "Cache cleanup completed"}
 
 
@@ -56,35 +54,6 @@ async def clear_cache() -> Dict[str, str]:
     Returns:
         Success message
     """
-    cache = get_cache()
-    cache.clear()
+    cache_service = get_cache_service()
+    cache_service.clear()
     return {"status": "success", "message": "Cache cleared successfully"}
-
-
-@router.get("/providers", dependencies=[Depends(require_admin)])
-async def get_providers() -> Dict[str, List[str]]:
-    """
-    Get list of supported AI providers.
-
-    Returns:
-        Dictionary containing list of provider names
-    """
-    providers = get_available_providers()
-    return {"providers": [p.value for p in providers]}
-
-
-@router.get("/providers/health", dependencies=[Depends(require_admin)])
-async def get_provider_health() -> Dict[str, Dict[str, bool]]:
-    """
-    Check availability status of all AI providers.
-
-    Returns:
-        Dictionary mapping provider names to their availability status:
-        - available: True if provider is installed and authenticated
-    """
-    providers = get_available_providers()
-    health = {}
-    for provider in providers:
-        available = await check_provider_availability(provider)
-        health[provider.value] = {"available": available}
-    return {"providers": health}

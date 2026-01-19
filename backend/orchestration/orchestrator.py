@@ -16,9 +16,9 @@ logger = logging.getLogger("ChatOrchestrator")
 
 import crud
 import schemas
-from core import AgentManager
+from core.manager import AgentManager
 from domain.contexts import OrchestrationContext
-from infrastructure.database import Message
+from infrastructure.database import models
 
 from .agent_ordering import separate_interrupt_agents
 from .critic import process_critic_feedback
@@ -91,6 +91,10 @@ class ChatOrchestrator:
         # Capture streaming state BEFORE interrupting (contains partial responses)
         partial_responses = agent_manager.get_and_clear_streaming_state_for_room(room_id)
 
+        # Interrupt all agents in this room via the agent manager FIRST
+        # This must happen before task.cancel() because cancellation cleans up active_clients
+        await agent_manager.interrupt_room(room_id)
+
         # Cancel any active processing task for this room
         if room_id in self.active_room_tasks:
             task = self.active_room_tasks[room_id]
@@ -100,9 +104,6 @@ class ChatOrchestrator:
                     await task
                 except asyncio.CancelledError:
                     pass  # Expected
-
-        # Interrupt all agents in this room via the agent manager
-        await agent_manager.interrupt_room(room_id)
 
         # Save any partial responses that have content
         if save_partial_responses and db and partial_responses:
@@ -193,7 +194,7 @@ class ChatOrchestrator:
             saved_user_msg = await crud.create_message(db, room_id, user_message, update_room_activity=True)
         else:
             # Fetch the already-saved message in this session
-            saved_user_msg = await db.get(Message, saved_user_message_id)
+            saved_user_msg = await db.get(models.Message, saved_user_message_id)
 
         # Note: User message broadcasting removed - not needed with HTTP polling architecture
         # Clients poll /api/rooms/{room_id}/messages to get new messages
@@ -210,7 +211,9 @@ class ChatOrchestrator:
         # Get all agents for the room (use cache for performance)
         all_agents = await crud.get_agents_cached(db, room_id)
 
-        # Filter by mentioned agents if specified (@ mention feature)
+        # Extract mentioned agent for priority (@ mention feature)
+        # First valid mentioned agent gets to respond first, others follow normal order
+        mentioned_agent_id = None
         mentioned_agent_ids = message_data.get("mentioned_agent_ids")
         if mentioned_agent_ids:
             mentioned_set = set(mentioned_agent_ids)
@@ -221,8 +224,12 @@ class ChatOrchestrator:
                 invalid = mentioned_set - room_agent_ids
                 logger.warning(f"⚠️ Invalid @mentions (not in room): {invalid}")
             if valid_mentions:
-                all_agents = [a for a in all_agents if a.id in valid_mentions]
-                logger.info(f"🎯 MENTION FILTER | Room: {room_id} | Only responding: {[a.name for a in all_agents]}")
+                # Take first valid mention as priority agent
+                for mid in mentioned_agent_ids:
+                    if mid in valid_mentions:
+                        mentioned_agent_id = mid
+                        break
+                logger.info(f"🎯 MENTION PRIORITY | Room: {room_id} | Priority agent ID: {mentioned_agent_id}")
 
         # Separate regular agents, critics, and interrupt agents
         agents = [agent for agent in all_agents if not agent.is_critic]
@@ -231,21 +238,26 @@ class ChatOrchestrator:
         # Separate interrupt agents from regular agents
         interrupt_agents, non_interrupt_agents = separate_interrupt_agents(agents)
 
+        # Separate final_response agents (they get one more turn when limit is reached)
+        final_response_agents = [a for a in non_interrupt_agents if getattr(a, "final_response", False)]
+
         # Create orchestration context
         orch_context = OrchestrationContext(db=db, room_id=room_id, agent_manager=agent_manager)
 
         # Create a processing task for this room
         logger.info(
             f"🚀 STARTING AGENT PROCESSING | Room: {room_id} | Agents: {len(non_interrupt_agents)} "
-            f"| Interrupt Agents: {len(interrupt_agents)} | Critics: {len(critic_agents)}"
+            f"| Interrupt Agents: {len(interrupt_agents)} | Final Response: {len(final_response_agents)} | Critics: {len(critic_agents)}"
         )
         processing_task = asyncio.create_task(
             self._process_agent_responses(
                 orch_context=orch_context,
                 agents=non_interrupt_agents,
                 interrupt_agents=interrupt_agents,
+                final_response_agents=final_response_agents,
                 critic_agents=critic_agents,
                 user_message_content=message_data["content"],
+                mentioned_agent_id=mentioned_agent_id,
             )
         )
 
@@ -274,8 +286,10 @@ class ChatOrchestrator:
         orch_context: OrchestrationContext,
         agents: List,
         interrupt_agents: List,
+        final_response_agents: List,
         critic_agents: List,
         user_message_content: str,
+        mentioned_agent_id: int = None,
     ):
         """
         Internal method to process all agent responses using tape-based scheduling.
@@ -283,6 +297,7 @@ class ChatOrchestrator:
         This can be cancelled if a new user message arrives.
         Critics are processed separately and their feedback is stored but not broadcast.
         Interrupt agents respond after every single message.
+        Final response agents get one more turn when the conversation limit is reached.
         """
         logger.info(f"📝 _process_agent_responses called | Room: {orch_context.room_id}")
 
@@ -291,7 +306,7 @@ class ChatOrchestrator:
         agents_by_id = {a.id: a for a in all_agents}
 
         # Create tape generator and executor
-        generator = TapeGenerator(agents, interrupt_agents)
+        generator = TapeGenerator(agents, interrupt_agents, mentioned_agent_id=mentioned_agent_id)
         executor = TapeExecutor(
             response_generator=self.response_generator,
             agents_by_id=agents_by_id,
@@ -308,42 +323,68 @@ class ChatOrchestrator:
         )
         logger.info(f"✅ Initial tape complete | Responses: {result.total_responses} | Skips: {result.total_skips}")
 
-        # Stop if paused, interrupted, or limit reached
-        if result.was_paused or result.was_interrupted or result.reached_limit:
+        # Track if we need to run final response agents
+        should_run_final_response = False
+
+        # Stop if paused or interrupted (but track limit reached for final response)
+        if result.was_paused or result.was_interrupted:
             return
+        if result.reached_limit:
+            should_run_final_response = True
 
         # Follow-up rounds: Agents respond to each other (only in multi-agent rooms)
         # Skip if all interrupt agents are transparent
-        all_interrupt_transparent = interrupt_agents and all(
-            getattr(a, "transparent", 0) == 1 for a in interrupt_agents
-        )
+        if not should_run_final_response:
+            all_interrupt_transparent = interrupt_agents and all(
+                getattr(a, "transparent", 0) == 1 for a in interrupt_agents
+            )
 
-        if all_interrupt_transparent:
-            logger.info("👻 All interrupt agents are transparent, skipping follow-up rounds")
-        elif len(all_agents) > 1:
-            total_messages = result.total_responses
+            if all_interrupt_transparent:
+                logger.info("👻 All interrupt agents are transparent, skipping follow-up rounds")
+            elif len(all_agents) > 1:
+                total_messages = result.total_responses
 
-            for round_num in range(self.max_follow_up_rounds):
-                logger.info(f"🔄 Follow-up round {round_num + 1}...")
-                follow_up_tape = generator.generate_follow_up_round(round_num)
+                for round_num in range(self.max_follow_up_rounds):
+                    logger.info(f"🔄 Follow-up round {round_num + 1}...")
+                    follow_up_tape = generator.generate_follow_up_round(round_num)
 
-                result = await executor.execute(
-                    tape=follow_up_tape,
-                    orch_context=orch_context,
-                    user_message_content=None,
-                    current_total=total_messages,
-                )
+                    result = await executor.execute(
+                        tape=follow_up_tape,
+                        orch_context=orch_context,
+                        user_message_content=None,
+                        current_total=total_messages,
+                    )
 
-                total_messages += result.total_responses
+                    total_messages += result.total_responses
 
-                # Stop conditions
-                if result.was_paused or result.was_interrupted or result.reached_limit:
-                    break
+                    # Stop conditions
+                    if result.was_paused or result.was_interrupted:
+                        break
+                    if result.reached_limit:
+                        should_run_final_response = True
+                        break
 
-                if result.all_skipped:
-                    logger.info(f"🏁 All agents skipped in room {orch_context.room_id}. Marking as finished.")
-                    await crud.mark_room_as_finished(orch_context.db, orch_context.room_id)
-                    break
+                    if result.all_skipped:
+                        logger.info(f"🏁 All agents skipped in room {orch_context.room_id}. Marking as finished.")
+                        await crud.mark_room_as_finished(orch_context.db, orch_context.room_id)
+                        break
+
+        # Process final response agents (they get one more turn when limit is reached)
+        if should_run_final_response and final_response_agents:
+            logger.info(f"🏁 Running final response for {len(final_response_agents)} agent(s)...")
+            for agent in final_response_agents:
+                try:
+                    responded = await self.response_generator.generate_response(
+                        orch_context=orch_context,
+                        agent=agent,
+                        user_message_content=None,
+                    )
+                    if responded:
+                        logger.info(f"✅ Final response from {agent.name}")
+                    else:
+                        logger.info(f"⏭️ Final response skipped by {agent.name}")
+                except Exception as e:
+                    logger.error(f"❌ Final response error from {agent.name}: {e}")
 
         # Process critic feedback (after conversation rounds complete)
         if critic_agents:

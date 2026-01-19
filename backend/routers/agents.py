@@ -4,12 +4,11 @@ from typing import List
 
 import crud
 import schemas
-from core import AgentManager
-from core.auth import require_admin
-from core.dependencies import RequestIdentity, get_agent_manager, get_request_identity
-from crud import delete_agent_with_cleanup
-from database import get_db
+from core import RequestIdentity, get_agent_manager, get_request_identity, require_admin
+from core.agent_service import delete_agent_with_cleanup
+from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -50,12 +49,21 @@ async def delete_agent(
 @router.get("/{agent_id}/direct-room", response_model=schemas.Room)
 async def get_agent_direct_room(
     agent_id: int,
+    provider: str = "claude",
     identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get or create a direct 1-on-1 room with an agent."""
+    """Get or create a direct 1-on-1 room with an agent.
+
+    Args:
+        agent_id: ID of the agent
+        provider: AI provider - "claude" (default) or "codex"
+    """
+    if provider not in ("claude", "codex"):
+        raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")
+
     owner_id = "admin" if identity.role == "admin" else identity.user_id
-    room = await crud.get_or_create_direct_room(db, agent_id, owner_id=owner_id)
+    room = await crud.get_or_create_direct_room(db, agent_id, owner_id=owner_id, provider=provider)
     if room is None:
         raise HTTPException(status_code=404, detail="Agent not found")
 

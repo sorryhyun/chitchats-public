@@ -9,34 +9,19 @@ from typing import List, Optional
 import schemas
 from config import list_available_configs, parse_agent_config
 from domain.agent_config import AgentConfigData
-from infrastructure.database import Agent
+from infrastructure.database import models
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from .helpers import merge_agent_configs, persist_agent_to_filesystem, save_base64_profile_pic
+from .helpers import merge_agent_configs, save_base64_profile_pic
 
 logger = logging.getLogger("CRUD")
 
 
-async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
+async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.Agent:
     """Create an agent as an independent entity (not tied to any room initially)."""
-    config_file = agent.config_file
-
-    # If no config_file provided but custom fields are given, persist to filesystem first
-    if not config_file and (agent.in_a_nutshell or agent.characteristics):
-        config_file = persist_agent_to_filesystem(
-            agent_name=agent.name,
-            group=agent.group,
-            in_a_nutshell=agent.in_a_nutshell or "",
-            characteristics=agent.characteristics or "",
-            recent_events=agent.recent_events,
-            profile_pic_base64=agent.profile_pic
-            if agent.profile_pic and agent.profile_pic.startswith("data:")
-            else None,
-        )
-
     # Parse config file if provided to populate fields
-    file_config = parse_agent_config(config_file) if config_file else None
+    file_config = parse_agent_config(agent.config_file) if agent.config_file else None
 
     # Create AgentConfigData from provided values
     provided_config = AgentConfigData(
@@ -48,9 +33,6 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
 
     # For profile_pic: use provided value, or fall back to file config
     profile_pic = agent.profile_pic
-    # Clear base64 data from DB field if saved to filesystem
-    if profile_pic and profile_pic.startswith("data:"):
-        profile_pic = None
     if not profile_pic and file_config:
         profile_pic = file_config.profile_pic
 
@@ -59,10 +41,11 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
 
     system_prompt = build_system_prompt(agent.name, final_config)
 
-    # Load group config to get interrupt_every_turn, priority, and transparent if agent belongs to a group
+    # Load group config to get interrupt_every_turn, priority, transparent, and final_response if agent belongs to a group
     interrupt_every_turn = agent.interrupt_every_turn  # Use provided value by default
     priority = agent.priority  # Use provided value by default
     transparent = agent.transparent  # Use provided value by default
+    final_response = getattr(agent, "final_response", False)  # Use provided value by default
 
     if agent.group:
         from config import get_group_config
@@ -75,11 +58,13 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
             priority = group_config["priority"]
         if "transparent" in group_config:
             transparent = group_config["transparent"]
+        if "final_response" in group_config:
+            final_response = group_config["final_response"]
 
-    db_agent = Agent(
+    db_agent = models.Agent(
         name=agent.name,
         group=agent.group,
-        config_file=config_file,
+        config_file=agent.config_file,
         profile_pic=profile_pic,
         in_a_nutshell=final_config.in_a_nutshell,
         characteristics=final_config.characteristics,
@@ -89,6 +74,7 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
         interrupt_every_turn=bool(interrupt_every_turn),
         priority=priority,
         transparent=bool(transparent),
+        final_response=bool(final_response),
     )
     db.add(db_agent)
     await db.commit()
@@ -96,13 +82,13 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> Agent:
     return db_agent
 
 
-async def get_all_agents(db: AsyncSession) -> List[Agent]:
+async def get_all_agents(db: AsyncSession) -> List[models.Agent]:
     """Get all agents globally."""
-    result = await db.execute(select(Agent))
+    result = await db.execute(select(models.Agent))
     return result.scalars().all()
 
 
-async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[Agent]:
+async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[models.Agent]:
     """
     Get agents by a list of IDs.
 
@@ -117,19 +103,19 @@ async def get_agents_by_ids(db: AsyncSession, agent_ids: List[int]) -> List[Agen
     """
     if not agent_ids:
         return []
-    result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+    result = await db.execute(select(models.Agent).where(models.Agent.id.in_(agent_ids)))
     return list(result.scalars().all())
 
 
-async def get_agent(db: AsyncSession, agent_id: int) -> Optional[Agent]:
+async def get_agent(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:
     """Get a specific agent by ID."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
     return result.scalar_one_or_none()
 
 
 async def delete_agent(db: AsyncSession, agent_id: int) -> bool:
     """Delete an agent permanently."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if agent:
         await db.delete(agent)
@@ -138,9 +124,9 @@ async def delete_agent(db: AsyncSession, agent_id: int) -> bool:
     return False
 
 
-async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.AgentUpdate) -> Optional[Agent]:
+async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.AgentUpdate) -> Optional[models.Agent]:
     """Update an agent's nutshell, characteristics, backgrounds, memory, or recent events and rebuild system prompt."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
@@ -182,9 +168,9 @@ async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.Ag
     return agent
 
 
-async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[Agent]:
+async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:
     """Reload an agent's data from its config file and rebuild system prompt."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
@@ -195,9 +181,9 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
         raise ValueError(f"Agent {agent.name} does not have a config file to reload from")
 
     # Load config using service
-    from config import AgentConfigIO
+    from core import AgentConfigService
 
-    config_data = AgentConfigIO.load_agent_config(agent.config_file)
+    config_data = AgentConfigService.load_agent_config(agent.config_file)
 
     if not config_data:
         raise ValueError(f"Failed to load config from {agent.config_file}")
@@ -211,7 +197,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
     # Auto-detect if agent is a critic based on name
     agent.is_critic = agent.name.lower() == "critic"
 
-    # Load group config to update interrupt_every_turn, priority, and transparent if agent belongs to a group
+    # Load group config to update interrupt_every_turn, priority, transparent, and final_response if agent belongs to a group
     if agent.group:
         from config import get_group_config
 
@@ -230,11 +216,17 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
             agent.transparent = bool(group_config["transparent"])
         else:
             agent.transparent = False  # Reset to default if not in group config
+
+        if "final_response" in group_config:
+            agent.final_response = bool(group_config["final_response"])
+        else:
+            agent.final_response = False  # Reset to default if not in group config
     else:
         # Reset to defaults if no group
         agent.interrupt_every_turn = False
         agent.priority = 0
         agent.transparent = False
+        agent.final_response = False
 
     # Rebuild system prompt from updated values using centralized helper
     from config import build_system_prompt
@@ -255,7 +247,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
     return agent
 
 
-async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str) -> Optional[Agent]:
+async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str) -> Optional[models.Agent]:
     """
     Append a new memory entry to an agent's recent_events file.
     FILESYSTEM-PRIMARY: Only writes to filesystem, database is cache.
@@ -268,10 +260,10 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
     Returns:
         Agent object (unchanged) or None if agent not found
     """
-    from config import AgentConfigIO
+    from core import AgentConfigService
 
     # Get the agent
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
     agent = result.scalar_one_or_none()
 
     if not agent:
@@ -281,7 +273,7 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
     # Database will be loaded fresh from filesystem on next read via get_config_data()
     if agent.config_file:
         timestamp = datetime.utcnow()
-        success = AgentConfigIO.append_to_recent_events(
+        success = AgentConfigService.append_to_recent_events(
             config_file=agent.config_file, memory_entry=memory_entry, timestamp=timestamp
         )
         if success:
@@ -312,7 +304,7 @@ async def seed_agents_from_configs(db: AsyncSession) -> None:
         group_name = config_info["group"]
 
         # Check if agent already exists
-        result = await db.execute(select(Agent).where(Agent.name == agent_name))
+        result = await db.execute(select(models.Agent).where(models.Agent.name == agent_name))
         existing_agent = result.scalar_one_or_none()
 
         if not existing_agent:

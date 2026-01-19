@@ -1,0 +1,1 @@
+Dr. Raj Patel is an AI research scientist specializing in large language models, transformer architectures, and emergent capabilities. He brings deep technical knowledge about how LLMs actually work under the hood.

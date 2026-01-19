@@ -1,6 +1,6 @@
 import { useState, FormEvent, KeyboardEvent, ClipboardEvent, useRef, DragEvent, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Agent, ParticipantType } from '../../types';
+import type { Agent, ParticipantType, ImageItem } from '../../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ interface ImageData {
 
 interface MessageInputProps {
   isConnected: boolean;
-  onSendMessage: (message: string, participantType: ParticipantType, characterName?: string, imageData?: string, imageMediaType?: string, mentionedAgentIds?: number[]) => void;
+  onSendMessage: (message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => void;
   roomAgents?: Agent[];
 }
 
@@ -26,13 +26,14 @@ export interface MessageInputHandle {
 // Allowed image types
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
+const MAX_IMAGES = 5;  // Maximum number of images per message
 
 export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({ isConnected, onSendMessage, roomAgents = [] }, ref) => {
   const { t } = useTranslation('chat');
   const [inputMessage, setInputMessage] = useState('');
   const [participantType, setParticipantType] = useState<ParticipantType>('user');
   const [characterName, setCharacterName] = useState('');
-  const [attachedImage, setAttachedImage] = useState<ImageData | null>(null);
+  const [attachedImages, setAttachedImages] = useState<ImageData[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
   // State to toggle the persona menu
@@ -69,7 +70,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
     });
   };
 
-  // Handle file selection
+  // Handle file selection (adds to existing images, respects MAX_IMAGES limit)
   const handleFileSelect = async (file: File) => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       alert('Please select a valid image file (PNG, JPEG, GIF, or WebP)');
@@ -79,20 +80,60 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
       alert('Image size must be less than 10MB');
       return;
     }
+    if (attachedImages.length >= MAX_IMAGES) {
+      alert(`Maximum ${MAX_IMAGES} images allowed`);
+      return;
+    }
     try {
       const imageData = await fileToBase64(file);
-      setAttachedImage(imageData);
+      setAttachedImages(prev => [...prev, imageData].slice(0, MAX_IMAGES));
     } catch (error) {
       console.error('Error converting image:', error);
       alert('Failed to process image');
     }
   };
 
-  // Handle file input change
+  // Handle multiple file selection
+  const handleMultipleFileSelect = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const remainingSlots = MAX_IMAGES - attachedImages.length;
+
+    if (remainingSlots <= 0) {
+      alert(`Maximum ${MAX_IMAGES} images allowed`);
+      return;
+    }
+
+    const filesToProcess = fileArray.slice(0, remainingSlots);
+    const validFiles = filesToProcess.filter(file => {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        console.warn(`Skipping invalid file type: ${file.type}`);
+        return false;
+      }
+      if (file.size > MAX_IMAGE_SIZE) {
+        console.warn(`Skipping file too large: ${file.name}`);
+        return false;
+      }
+      return true;
+    });
+
+    try {
+      const newImages = await Promise.all(validFiles.map(file => fileToBase64(file)));
+      setAttachedImages(prev => [...prev, ...newImages].slice(0, MAX_IMAGES));
+    } catch (error) {
+      console.error('Error converting images:', error);
+      alert('Failed to process some images');
+    }
+  };
+
+  // Handle file input change (supports multiple files)
   const handleFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileSelect(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      if (files.length === 1) {
+        handleFileSelect(files[0]);
+      } else {
+        handleMultipleFileSelect(files);
+      }
     }
     // Reset input so same file can be selected again
     e.target.value = '';
@@ -121,51 +162,74 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
     e.stopPropagation();
     setIsDragging(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      handleFileSelect(file);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      // Filter for image files only
+      const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+      if (imageFiles.length === 1) {
+        handleFileSelect(imageFiles[0]);
+      } else if (imageFiles.length > 1) {
+        handleMultipleFileSelect(imageFiles);
+      }
     }
   };
 
-  // Handle paste from clipboard (Ctrl+V)
+  // Handle paste from clipboard (Ctrl+V) - supports multiple images
   const handlePaste = (e: ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
+    const imageFiles: File[] = [];
     for (const item of items) {
       if (item.type.startsWith('image/')) {
-        e.preventDefault();
         const file = item.getAsFile();
         if (file) {
-          handleFileSelect(file);
+          imageFiles.push(file);
         }
-        return;
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      if (imageFiles.length === 1) {
+        handleFileSelect(imageFiles[0]);
+      } else {
+        handleMultipleFileSelect(imageFiles);
       }
     }
     // If no image, allow default paste behavior for text
   };
 
-  // Remove attached image
-  const removeImage = () => {
-    setAttachedImage(null);
+  // Remove attached image by index
+  const removeImage = (index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Clear all images
+  const clearAllImages = () => {
+    setAttachedImages([]);
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if ((inputMessage.trim() || attachedImage) && isConnected) {
+    if ((inputMessage.trim() || attachedImages.length > 0) && isConnected) {
       // Extract mentions and get clean content
       const { cleanContent, mentionedAgentIds } = mention.extractMentionsAndClean(inputMessage);
+
+      // Convert to ImageItem format for API
+      const images = attachedImages.length > 0
+        ? attachedImages.map(img => ({ data: img.data, media_type: img.mediaType }))
+        : undefined;
 
       onSendMessage(
         cleanContent || inputMessage, // Use clean content if mentions were found
         participantType,
         participantType === 'character' ? characterName : undefined,
-        attachedImage?.data,
-        attachedImage?.mediaType,
+        images,
         mentionedAgentIds.length > 0 ? mentionedAgentIds : undefined
       );
       setInputMessage('');
-      setAttachedImage(null);
+      setAttachedImages([]);
     }
   };
 
@@ -194,20 +258,24 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
     // Submit on Ctrl+Enter
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      if ((inputMessage.trim() || attachedImage) && isConnected) {
+      if ((inputMessage.trim() || attachedImages.length > 0) && isConnected) {
         // Extract mentions and get clean content
         const { cleanContent, mentionedAgentIds } = mention.extractMentionsAndClean(inputMessage);
+
+        // Convert to ImageItem format for API
+        const images = attachedImages.length > 0
+          ? attachedImages.map(img => ({ data: img.data, media_type: img.mediaType }))
+          : undefined;
 
         onSendMessage(
           cleanContent || inputMessage,
           participantType,
           participantType === 'character' ? characterName : undefined,
-          attachedImage?.data,
-          attachedImage?.mediaType,
+          images,
           mentionedAgentIds.length > 0 ? mentionedAgentIds : undefined
         );
         setInputMessage('');
-        setAttachedImage(null);
+        setAttachedImages([]);
       }
     }
     // Allow Enter to create line breaks (default behavior)
@@ -245,38 +313,57 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Drop image here
+            Drop images here (up to {MAX_IMAGES - attachedImages.length} more)
           </div>
         </div>
       )}
 
-      {/* Hidden file input */}
+      {/* Hidden file input - supports multiple files */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/png,image/jpeg,image/gif,image/webp"
         onChange={handleFileInputChange}
         className="hidden"
+        multiple
       />
 
-      {/* Image Preview */}
-      {attachedImage && (
-        <div className="mb-3 relative inline-block">
-          <img
-            src={attachedImage.preview}
-            alt="Attached"
-            className="max-h-32 max-w-xs rounded-lg border border-slate-200 shadow-sm"
-          />
-          <button
-            type="button"
-            onClick={removeImage}
-            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
-            title="Remove image"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      {/* Image Preview Grid */}
+      {attachedImages.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-slate-500">{attachedImages.length}/{MAX_IMAGES} images</span>
+            {attachedImages.length > 1 && (
+              <button
+                type="button"
+                onClick={clearAllImages}
+                className="text-xs text-red-500 hover:text-red-600 transition-colors"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {attachedImages.map((image, index) => (
+              <div key={index} className="relative inline-block">
+                <img
+                  src={image.preview}
+                  alt={`Attached ${index + 1}`}
+                  className="h-20 w-20 object-cover rounded-lg border border-slate-200 shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(index)}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
+                  title="Remove image"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -336,9 +423,9 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={!isConnected}
+          disabled={!isConnected || attachedImages.length >= MAX_IMAGES}
           className="flex-shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-all disabled:bg-slate-50 disabled:text-slate-300"
-          title="Attach image"
+          title={attachedImages.length >= MAX_IMAGES ? `Maximum ${MAX_IMAGES} images` : `Attach images (${attachedImages.length}/${MAX_IMAGES})`}
         >
           <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -385,7 +472,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
         {/* Icon-Only Send Button (Saves width) */}
         <Button
           type="submit"
-          disabled={!isConnected || (!inputMessage.trim() && !attachedImage)}
+          disabled={!isConnected || (!inputMessage.trim() && attachedImages.length === 0)}
           size="icon"
           className="flex-shrink-0 w-9 h-9 sm:w-12 sm:h-12 rounded-full"
         >

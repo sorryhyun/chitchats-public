@@ -20,8 +20,6 @@
   "configFile": "Config File",
   "custom": "Custom",
   "agentName": "Agent name",
-  "groupName": "Group name (optional)",
-  "groupPlaceholder": "e.g., Steins;Gate, Frieren",
   "selectConfigFile": "Select a config file...",
   "noConfigFiles": "No config files found",
   "inANutshell": "In a Nutshell",

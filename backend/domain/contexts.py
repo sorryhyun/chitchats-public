@@ -11,8 +11,8 @@ from .agent_config import AgentConfigData
 from .task_identifier import TaskIdentifier
 
 if TYPE_CHECKING:
-    from core import AgentManager
-    from infrastructure.database import Agent
+    from core.manager import AgentManager
+    from infrastructure.database import models
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -32,7 +32,7 @@ class MessageContext:
 
     db: "AsyncSession"
     room_id: int
-    agent: "Agent"
+    agent: "models.Agent"
 
 
 @dataclass
@@ -106,8 +106,7 @@ class AgentResponseContext:
         task_id: Optional unique identifier for tracking this task (for interruption)
         conversation_started: Optional timestamp when the conversation started
         has_situation_builder: Whether the room has a situation builder participant
-        provider: AI provider to use ('claude' or 'codex'), defaults to 'claude'
-        full_conversation_for_recovery: Full conversation history for session recovery (Codex)
+        provider: AI provider to use ('claude' or 'codex')
     """
 
     system_prompt: str
@@ -122,5 +121,4 @@ class AgentResponseContext:
     task_id: Optional[TaskIdentifier] = None
     conversation_started: Optional[str] = None
     has_situation_builder: bool = False
-    provider: str = "claude"  # AI provider: 'claude' or 'codex'
-    full_conversation_for_recovery: Optional[List[dict]] = None  # For Codex session recovery
+    provider: str = "claude"

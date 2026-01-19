@@ -1,22 +1,24 @@
 import { useState } from 'react';
-import type { Agent, ProviderType } from '../../types';
+import type { Agent } from '../../types';
 import { AgentAvatar } from '../AgentAvatar';
 import { useAuth } from '../../contexts/AuthContext';
+
+type Provider = 'claude' | 'codex';
 
 interface AgentListPanelProps {
   agents: Agent[];
   selectedAgentId: number | null;
-  onViewProfile: (agent: Agent) => void;
+  onSelectAgent: (agentId: number, provider: Provider) => void;
   onDeleteAgent: (agentId: number) => Promise<void>;
-  onQuickChat?: (agent: Agent, provider: ProviderType) => Promise<void>;
+  onViewProfile: (agent: Agent) => void;
 }
 
 export const AgentListPanel = ({
   agents,
   selectedAgentId,
-  onViewProfile,
+  onSelectAgent,
   onDeleteAgent,
-  onQuickChat,
+  onViewProfile,
 }: AgentListPanelProps) => {
   const { isAdmin } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -54,59 +56,54 @@ export const AgentListPanel = ({
   const renderAgent = (agent: Agent) => (
     <div
       key={agent.id}
+      onClick={() => onViewProfile(agent)}
       className={`group relative flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-lg cursor-pointer transition-all min-h-[52px] touch-manipulation ${
         selectedAgentId === agent.id
           ? 'bg-slate-100 border border-slate-300'
           : 'hover:bg-slate-50 active:bg-slate-100'
       }`}
     >
-      <div
-        onClick={() => onViewProfile(agent)}
-        className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0"
+      <AgentAvatar
+        agent={agent}
+        size="md"
+        className={`flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 ${
+          selectedAgentId === agent.id
+            ? 'ring-2 ring-slate-400'
+            : 'group-hover:ring-2 group-hover:ring-slate-300'
+        }`}
+      />
+      {/* Agent name - hidden on hover when action buttons shown */}
+      <span
+        className={`font-medium truncate text-sm sm:text-base flex-1 min-w-0 sm:group-hover:hidden ${
+          selectedAgentId === agent.id ? 'text-slate-800' : 'text-slate-700'
+        }`}
       >
-        <AgentAvatar
-          agent={agent}
-          size="md"
-          className={`w-10 h-10 sm:w-11 sm:h-11 ${
-            selectedAgentId === agent.id
-              ? 'ring-2 ring-slate-400'
-              : 'group-hover:ring-2 group-hover:ring-slate-300'
-          }`}
-        />
-        <span
-          className={`font-medium truncate text-sm sm:text-base ${
-            selectedAgentId === agent.id ? 'text-slate-800' : 'text-slate-700'
-          }`}
+        {agent.name}
+      </span>
+      {/* Action buttons - shown on hover */}
+      <div className="hidden sm:group-hover:flex gap-1 flex-1 justify-end">
+        {/* Codex button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectAgent(agent.id, 'codex');
+          }}
+          className="p-2 hover:bg-green-100 active:bg-green-200 rounded text-green-600 hover:text-green-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation font-bold text-sm"
+          title="Chat with Codex"
         >
-          {agent.name}
-        </span>
-      </div>
-      {/* Quick Chat Buttons - always visible */}
-      <div className="flex gap-0.5 flex-shrink-0">
-        {onQuickChat && (
-          <>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuickChat(agent, 'claude');
-              }}
-              className="p-1.5 hover:bg-amber-100 active:bg-amber-200 rounded text-amber-600 hover:text-amber-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-sm"
-              title="Chat with Claude"
-            >
-              c
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuickChat(agent, 'codex');
-              }}
-              className="p-1.5 hover:bg-green-100 active:bg-green-200 rounded text-green-600 hover:text-green-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-sm"
-              title="Chat with Codex"
-            >
-              x
-            </button>
-          </>
-        )}
+          x
+        </button>
+        {/* Claude button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectAgent(agent.id, 'claude');
+          }}
+          className="p-2 hover:bg-orange-100 active:bg-orange-200 rounded text-orange-600 hover:text-orange-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation font-bold text-sm"
+          title="Chat with Claude Code"
+        >
+          c
+        </button>
         {isAdmin && (
           <button
             onClick={(e) => {
@@ -115,10 +112,10 @@ export const AgentListPanel = ({
                 onDeleteAgent(agent.id);
               }
             }}
-            className="p-1.5 hover:bg-red-100 active:bg-red-200 rounded text-red-500 hover:text-red-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-2 hover:bg-red-100 active:bg-red-200 rounded text-red-500 hover:text-red-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
             title="Delete agent"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

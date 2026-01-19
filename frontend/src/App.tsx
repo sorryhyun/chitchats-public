@@ -7,7 +7,6 @@ import { MainSidebar } from './components/sidebar/MainSidebar';
 import { ChatRoom } from './components/chat-room/ChatRoom';
 import { AgentProfileModal } from './components/AgentProfileModal';
 import { HowToDocsModal } from './components/HowToDocsModal';
-import { ExportModal } from './components/sidebar/ExportModal';
 import { Login } from './components/Login';
 import { BREAKPOINTS } from './config/breakpoints';
 
@@ -52,7 +51,6 @@ function AppContent() {
   });
   const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.lg);
   const [showDocsModal, setShowDocsModal] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
 
   // Track window size for responsive behavior
   useEffect(() => {
@@ -88,6 +86,10 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
+
+  const handleSelectAgent = async (agentId: number, provider: 'claude' | 'codex') => {
+    await agentContext.selectAgent(agentId, provider);
+  };
 
   const handleSelectRoom = (roomId: number) => {
     agentContext.clearSelection();
@@ -185,8 +187,8 @@ function AppContent() {
       >
         <MainSidebar
           onSelectRoom={handleSelectRoom}
+          onSelectAgent={handleSelectAgent}
           onOpenDocs={() => setShowDocsModal(true)}
-          onOpenExport={() => setShowExportModal(true)}
         />
       </div>
 
@@ -213,12 +215,6 @@ function AppContent() {
       {showDocsModal && (
         <HowToDocsModal onClose={() => setShowDocsModal(false)} />
       )}
-
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-      />
     </div>
   );
 }

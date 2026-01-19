@@ -5,32 +5,11 @@ This module provides type-safe access to environment variables with validation.
 All settings are loaded once at application startup.
 """
 
-import sys
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
-
-
-def _is_frozen() -> bool:
-    """Check if running as a PyInstaller bundle."""
-    return getattr(sys, "frozen", False)
-
-
-def _get_base_path() -> Path:
-    """Get the base path for bundled resources (handles both dev and bundled modes)."""
-    if _is_frozen():
-        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
-    return Path(__file__).parent.parent.parent  # backend/core -> backend -> project_root
-
-
-def _get_work_dir() -> Path:
-    """Get the working directory for user data (agents, .env, etc.)."""
-    if _is_frozen():
-        return Path(sys.executable).parent
-    return Path(__file__).parent.parent.parent  # backend/core -> backend -> project_root
-
 
 # ============================================================================
 # Application Constants
@@ -41,29 +20,6 @@ DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."
 
 # Skip message text (displayed when agent chooses not to respond)
 SKIP_MESSAGE_TEXT = "(무시함)"
-
-# Claude Agent SDK Tool Configuration
-# These are the built-in tools provided by Claude Agent SDK that we want to disallow
-# to ensure agents stay in character and use only their character-specific tools
-# BUILTIN_TOOLS = [
-#     "Task",
-#     "Bash",
-#     "Glob",
-#     "Grep",
-#     "ExitPlanMode",
-#     "Read",
-#     "Edit",
-#     "Write",
-#     "NotebookEdit",
-#     "WebFetch",
-#     "TodoWrite",
-#     "WebSearch",
-#     "BashOutput",
-#     "KillShell",
-#     "Skill",
-#     "SlashCommand",
-#     "ListMcpResources",
-# ]
 
 # Character-specific MCP tool names organized by group
 # These are the tools available to each agent for character-based interactions
@@ -113,11 +69,7 @@ class Settings(BaseSettings):
     frontend_url: Optional[str] = None
     vercel_url: Optional[str] = None
 
-    # Memory system
-    recall_memory_file: str = "consolidated_memory"
-
     # Guidelines system
-    read_guideline_by: Literal["description", "active_tool"] = "active_tool"
     guidelines_file: str = "guidelines_3rd"
 
     # Model configuration
@@ -126,27 +78,14 @@ class Settings(BaseSettings):
     # Debug configuration
     debug_agents: bool = False
 
+    # Experimental features
+    experimental_custom_cli: bool = False
+
     # Background scheduler configuration
     max_concurrent_rooms: int = 5
 
-    # Deprecated settings (kept for backwards compatibility warnings)
-    enable_recall_tool: Optional[str] = None
-    enable_memory_tool: Optional[str] = None
-
-    @field_validator("read_guideline_by", mode="before")
-    @classmethod
-    def validate_guideline_mode(cls, v: Optional[str]) -> str:
-        """Validate and normalize READ_GUIDELINE_BY setting."""
-        if not v:
-            return "active_tool"
-        v_lower = v.lower()
-        if v_lower in ("description", "active_tool"):
-            return v_lower
-        # Invalid value - log warning and default to active_tool
-        import logging
-
-        logging.warning(f"Invalid READ_GUIDELINE_BY value: {v}. Defaulting to 'active_tool' mode.")
-        return "active_tool"
+    # Codex provider configuration
+    codex_model: str = "gpt-5.2"  # Default model for Codex provider
 
     @field_validator("enable_guest_login", mode="before")
     @classmethod
@@ -178,6 +117,16 @@ class Settings(BaseSettings):
             return v.lower() == "true"
         return False
 
+    @field_validator("experimental_custom_cli", mode="before")
+    @classmethod
+    def validate_experimental_custom_cli(cls, v: Optional[str]) -> bool:
+        """Parse experimental_custom_cli from string to bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return False
+
     def get_priority_agent_names(self) -> List[str]:
         """
         Get the list of priority agent names from the PRIORITY_AGENTS setting.
@@ -195,27 +144,20 @@ class Settings(BaseSettings):
         """
         Get the project root directory (parent of backend/).
 
-        In bundled mode, returns the working directory (where the exe is located).
-        In dev mode, returns the parent of the backend directory.
-
         Returns:
             Path to the project root directory
         """
-        return _get_work_dir()
+        backend_dir = Path(__file__).parent.parent
+        return backend_dir.parent
 
     @property
     def backend_dir(self) -> Path:
         """
         Get the backend directory.
 
-        In bundled mode, this is the temp extraction directory.
-        In dev mode, this is the actual backend directory.
-
         Returns:
             Path to the backend directory
         """
-        if _is_frozen():
-            return _get_base_path()
         return Path(__file__).parent.parent
 
     @property
@@ -223,40 +165,30 @@ class Settings(BaseSettings):
         """
         Get the agents configuration directory.
 
-        In bundled mode, agents are in the working directory (copied from bundle on first run).
-        In dev mode, agents are in the project root.
-
         Returns:
             Path to the agents directory
         """
-        return _get_work_dir() / "agents"
-
-    @property
-    def bundled_agents_dir(self) -> Path | None:
-        """
-        Get the bundled agents directory (fallback for bundled mode).
-
-        Returns:
-            Path to bundled agents directory in frozen mode, None in dev mode
-        """
-        if _is_frozen():
-            return _get_base_path() / "agents"
-        return None
+        return self.project_root / "agents"
 
     @property
     def config_dir(self) -> Path:
         """
-        Get the configuration files directory.
-
-        In bundled mode, config is at the base path (extraction directory).
-        In dev mode, config is in backend/config.
+        Get the general configuration files directory.
 
         Returns:
-            Path to config directory
+            Path to backend/config directory (for debug.yaml, conversation_context.yaml)
         """
-        if _is_frozen():
-            return _get_base_path() / "config"
-        return Path(__file__).parent.parent / "config"
+        return self.backend_dir / "config"
+
+    @property
+    def mcp_servers_config_dir(self) -> Path:
+        """
+        Get the MCP servers configuration directory.
+
+        Returns:
+            Path to backend/mcp_servers/config directory (for tools.yaml, guidelines)
+        """
+        return self.backend_dir / "mcp_servers" / "config"
 
     @property
     def tools_config_path(self) -> Path:
@@ -266,19 +198,7 @@ class Settings(BaseSettings):
         Returns:
             Path to tools.yaml
         """
-        return self.config_dir / "tools.yaml"
-
-    def get_provider_tools_config_path(self, provider: str) -> Path:
-        """
-        Get the path to provider-specific tools configuration file.
-
-        Args:
-            provider: Provider name ('claude' or 'codex')
-
-        Returns:
-            Path to provider-specific tools.yaml (e.g., claude_tools.yaml)
-        """
-        return self.config_dir / f"{provider}_tools.yaml"
+        return self.mcp_servers_config_dir / "tools.yaml"
 
     @property
     def debug_config_path(self) -> Path:
@@ -301,14 +221,24 @@ class Settings(BaseSettings):
         return self.config_dir / "conversation_context.yaml"
 
     @property
-    def guidelines_config_path(self) -> Path:
+    def system_prompt_config_path(self) -> Path:
         """
-        Get the path to the guidelines configuration file.
+        Get the path to the system prompt configuration file.
 
         Returns:
-            Path to the guidelines YAML file (e.g., guidelines_3rd.yaml)
+            Path to system_prompt.yaml in backend/config/
         """
-        return self.config_dir / f"{self.guidelines_file}.yaml"
+        return self.config_dir / "system_prompt.yaml"
+
+    @property
+    def guidelines_config_path(self) -> Path:
+        """
+        Get the path to the guidelines tool configuration file.
+
+        Returns:
+            Path to guidelines.yaml
+        """
+        return self.mcp_servers_config_dir / "guidelines.yaml"
 
     def get_cors_origins(self) -> List[str]:
         """
@@ -344,23 +274,6 @@ class Settings(BaseSettings):
 
         return origins
 
-    def log_deprecation_warnings(self) -> None:
-        """Log deprecation warnings for old environment variables."""
-        import logging
-
-        logger = logging.getLogger("Settings")
-
-        if self.enable_recall_tool:
-            logger.warning(
-                "ENABLE_RECALL_TOOL is deprecated and can be removed. The recall tool is now always enabled."
-            )
-
-        if self.enable_memory_tool:
-            logger.warning(
-                "ENABLE_MEMORY_TOOL is deprecated. Memory recording is available regardless of mode. "
-                "See .env.example for details."
-            )
-
     class Config:
         """Pydantic configuration."""
 
@@ -393,9 +306,6 @@ def get_settings() -> Settings:
         # Reload settings with explicit env file path if it exists
         if env_path.exists():
             _settings = Settings(_env_file=str(env_path))
-
-        # Log deprecation warnings
-        _settings.log_deprecation_warnings()
 
     return _settings
 

@@ -1,48 +1,40 @@
 """
-Standalone MCP server for action tools (skip, memorize, recall).
+Shared MCP Action Server for ChitChats.
 
-This server runs as a separate process for Codex CLI integration,
-communicating via stdio using the MCP protocol.
+This server exposes action tools (skip, memorize, recall) via the MCP protocol.
+It can be used by any AI provider (Claude SDK, Codex CLI, etc.).
 
 Usage:
-    python -m mcp_servers.action_server
+    # Factory mode (in-process)
+    from mcp_servers import create_action_server
+    server = create_action_server(agent_name="TestAgent", provider="claude")
 
-Environment Variables:
+    # Subprocess mode (stdio)
+    AGENT_NAME=TestAgent python -m mcp_servers.action_server
+
+Environment variables (for subprocess mode):
     AGENT_NAME: Name of the agent (required)
-    AGENT_GROUP: Group name for config overrides (optional)
-    AGENT_ID: Agent ID for context (optional)
-    CONFIG_FILE: Path to agent config directory (optional, relative to WORK_DIR)
-    WORK_DIR: Working directory for resolving relative paths (optional, defaults to cwd)
-    PROVIDER: AI provider name ('claude' or 'codex') for provider-specific configs (optional)
+    AGENT_GROUP: Group name for tool config overrides (optional)
+    AGENT_ID: Agent ID for cache invalidation (optional)
+    CONFIG_FILE: Path to agent config folder (optional, for memorize)
 """
 
 import asyncio
 import logging
 import os
-import sys
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Optional
 
-# Ensure backend is in path
-backend_path = Path(__file__).parent.parent
-if str(backend_path) not in sys.path:
-    sys.path.insert(0, str(backend_path))
-
-import mcp.types as types
-from config import (
-    clear_cache,
-    get_tool_description,
-    get_tool_response,
-    is_tool_enabled,
-    parse_long_term_memory,
-)
-from core import get_settings
 from domain.action_models import MemorizeInput, RecallInput, SkipInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.types import Resource, ResourceTemplate, TextContent, Tool
+from pydantic import AnyUrl
 
-logger = logging.getLogger("ActionMCPServer")
+from .config import get_tool_description, get_tool_response, is_tool_enabled
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ActionServer")
 
 
 def create_action_server(
@@ -53,59 +45,68 @@ def create_action_server(
     long_term_memory_index: Optional[dict[str, str]] = None,
     provider: str = "claude",
 ) -> Server:
-    """Create an MCP server with action tools."""
-    server = Server("action")
-    memory_index = long_term_memory_index or {}
+    """
+    Create an MCP server with action tools (skip, memorize, recall).
+
+    Args:
+        agent_name: Name of the agent
+        agent_group: Optional group name for tool config overrides
+        agent_id: Optional agent ID for cache invalidation
+        config_file: Path to agent config folder (for memorize tool)
+        long_term_memory_index: Optional dict mapping memory subtitles to content
+        provider: AI provider ("claude" or "codex")
+
+    Returns:
+        Configured MCP Server instance
+    """
+    server = Server("chitchats_action")
+
+    # Use provided memory index or load from config file
+    memory_index = long_term_memory_index or _load_memory_index(config_file)
 
     @server.list_tools()
-    async def handle_list_tools() -> list[types.Tool]:
-        """Return list of available tools."""
+    async def list_tools():
+        """List available action tools."""
         tools = []
-        subtitles = list(memory_index.keys())
-        memory_subtitles = ", ".join(subtitles) if subtitles else "None available"
 
-        if is_tool_enabled("skip"):
+        # Skip tool
+        if is_tool_enabled("skip", group_name=agent_group, provider=provider):
+            description = get_tool_description("skip", agent_name=agent_name, group_name=agent_group, provider=provider)
             tools.append(
-                types.Tool(
+                Tool(
                     name="skip",
-                    description=get_tool_description(
-                        "skip",
-                        agent_name=agent_name,
-                        group_name=agent_group,
-                        provider=provider,
-                    )
-                    or "Skip responding to the current message.",
+                    description=description or "Skip this turn",
                     inputSchema=SkipInput.model_json_schema(),
                 )
             )
 
-        if is_tool_enabled("memorize"):
+        # Memorize tool
+        if is_tool_enabled("memorize", group_name=agent_group, provider=provider):
+            description = get_tool_description(
+                "memorize", agent_name=agent_name, group_name=agent_group, provider=provider
+            )
             tools.append(
-                types.Tool(
+                Tool(
                     name="memorize",
-                    description=get_tool_description(
-                        "memorize",
-                        agent_name=agent_name,
-                        group_name=agent_group,
-                        provider=provider,
-                    )
-                    or "Record a new memory or observation for future reference.",
+                    description=description or "Record a memory",
                     inputSchema=MemorizeInput.model_json_schema(),
                 )
             )
 
-        if is_tool_enabled("recall"):
+        # Recall tool - only if we have memory index
+        if is_tool_enabled("recall", group_name=agent_group, provider=provider) and memory_index:
+            memory_subtitles = ", ".join(f"'{s}'" for s in memory_index.keys())
+            description = get_tool_description(
+                "recall",
+                agent_name=agent_name,
+                memory_subtitles=memory_subtitles,
+                group_name=agent_group,
+                provider=provider,
+            )
             tools.append(
-                types.Tool(
+                Tool(
                     name="recall",
-                    description=get_tool_description(
-                        "recall",
-                        agent_name=agent_name,
-                        memory_subtitles=memory_subtitles,
-                        group_name=agent_group,
-                        provider=provider,
-                    )
-                    or f"Retrieve long-term memories by subtitle. Available: {memory_subtitles}",
+                    description=description or "Recall a memory",
                     inputSchema=RecallInput.model_json_schema(),
                 )
             )
@@ -113,196 +114,215 @@ def create_action_server(
         return tools
 
     @server.call_tool()
-    async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    async def call_tool(name: str, arguments: dict):
         """Handle tool calls."""
         if name == "skip":
-            response_text = get_tool_response("skip", group_name=agent_group, provider=provider)
-            return [types.TextContent(type="text", text=response_text)]
+            return _handle_skip(agent_group, provider)
 
         elif name == "memorize":
-            validated = MemorizeInput(**arguments)
-            memory_entry = validated.memory_entry
-
-            # Write to recent_events.md if config_file is provided
-            if config_file:
-                config_path = Path(config_file)
-                recent_events_path = config_path / "recent_events.md"
-
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_entry = f"\n- [{timestamp}] {memory_entry}"
-
-                try:
-                    if not recent_events_path.exists():
-                        recent_events_path.write_text(f"# Recent Events\n{new_entry}\n", encoding="utf-8")
-                    else:
-                        with open(recent_events_path, "a", encoding="utf-8") as f:
-                            f.write(new_entry + "\n")
-
-                    # Clear config cache so changes are picked up
-                    clear_cache()
-
-                    response_text = get_tool_response("memorize", group_name=agent_group, provider=provider)
-                except Exception as e:
-                    logger.error(f"Failed to write memory: {e}")
-                    response_text = f"Failed to record memory: {e}"
-            else:
-                response_text = get_tool_response("memorize", group_name=agent_group, provider=provider)
-
-            return [types.TextContent(type="text", text=response_text)]
+            return await _handle_memorize(arguments, config_file, agent_id, agent_group, provider)
 
         elif name == "recall":
-            validated = RecallInput(**arguments)
-            subtitle = validated.subtitle
-
-            # Strip brackets if agent included them (e.g., "[memory_name]" -> "memory_name")
-            if subtitle.startswith("[") and subtitle.endswith("]"):
-                subtitle = subtitle[1:-1]
-
-            if subtitle in memory_index:
-                memory_content = memory_index[subtitle]
-                response_text = get_tool_response("recall", group_name=agent_group, provider=provider)
-                if "{memory_content}" in response_text:
-                    response_text = response_text.replace("{memory_content}", memory_content)
-                else:
-                    response_text = f"{response_text}\n\n{memory_content}"
-            else:
-                available = list(memory_index.keys())
-                response_text = f"Memory not found for subtitle '{subtitle}'. Available: {available}"
-
-            return [types.TextContent(type="text", text=response_text)]
+            return _handle_recall(arguments, memory_index, agent_group, provider)
 
         else:
-            raise ValueError(f"Unknown tool: {name}")
+            return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
+    # Resources for memory access
     @server.list_resources()
-    async def handle_list_resources() -> list[types.Resource]:
-        """Return list of available resources."""
-        from pydantic import AnyUrl
-
+    async def list_resources():
+        """List available memory resources."""
         resources = []
 
-        # Expose consolidated memory sections as a resource
-        if memory_index:
-            subtitles = list(memory_index.keys())
+        for subtitle in memory_index.keys():
             resources.append(
-                types.Resource(
-                    uri=AnyUrl(f"memory://{agent_name}/consolidated"),  # type: ignore[arg-type]
-                    name=f"{agent_name}'s Long-Term Memories",
-                    description=f"Consolidated memories with sections: {', '.join(subtitles)}",
-                    mimeType="text/markdown",
+                Resource(
+                    uri=AnyUrl(f"memory://{agent_name}/{subtitle}"),
+                    name=subtitle,
+                    description=f"Memory: {subtitle}",
+                    mimeType="text/plain",
                 )
             )
-
-        # Expose recent events if available
-        if config_file:
-            config_path = Path(config_file)
-            recent_events_path = config_path / "recent_events.md"
-            if recent_events_path.exists():
-                resources.append(
-                    types.Resource(
-                        uri=AnyUrl(f"memory://{agent_name}/recent_events"),  # type: ignore[arg-type]
-                        name=f"{agent_name}'s Recent Events",
-                        description="Recent events and observations recorded by the agent",
-                        mimeType="text/markdown",
-                    )
-                )
 
         return resources
 
     @server.read_resource()
-    async def handle_read_resource(uri) -> str:  # type: ignore[type-arg]
-        """Read resource content by URI."""
-        # Convert AnyUrl to string for easier parsing
+    async def read_resource(uri: AnyUrl) -> str:
+        """Read a memory resource by URI."""
         uri_str = str(uri)
-        # Parse the URI to determine which resource to read
-        # Format: memory://{agent_name}/{resource_type}
-        if uri_str.startswith(f"memory://{agent_name}/"):
-            resource_type = uri_str.split("/")[-1]
+        prefix = f"memory://{agent_name}/"
+        if not uri_str.startswith(prefix):
+            raise ValueError(f"Invalid resource URI: {uri_str}")
 
-            if resource_type == "consolidated":
-                # Return all memory sections formatted as markdown
-                if not memory_index:
-                    return "No consolidated memories available."
+        subtitle = uri_str[len(prefix) :]
 
-                sections = []
-                for subtitle, content in memory_index.items():
-                    sections.append(f"## [{subtitle}]\n{content}")
-                return "\n\n".join(sections)
+        if subtitle not in memory_index:
+            raise ValueError(f"Memory not found: {subtitle}")
 
-            elif resource_type == "recent_events":
-                # Read recent events file
-                if config_file:
-                    config_path = Path(config_file)
-                    recent_events_path = config_path / "recent_events.md"
-                    if recent_events_path.exists():
-                        return recent_events_path.read_text(encoding="utf-8")
-                return "No recent events recorded."
+        return memory_index[subtitle]
 
-        raise ValueError(f"Unknown resource URI: {uri_str}")
+    @server.list_resource_templates()
+    async def list_resource_templates():
+        """List resource templates for dynamic memory access."""
+        templates = []
+
+        if memory_index:
+            available = ", ".join(memory_index.keys())
+            templates.append(
+                ResourceTemplate(
+                    uriTemplate=f"memory://{agent_name}/{{subtitle}}",
+                    name="Agent Memory",
+                    description=f"Access {agent_name}'s memories. Available: {available}",
+                    mimeType="text/plain",
+                )
+            )
+
+        return templates
 
     return server
 
 
-async def main():
-    """Main entry point for the action MCP server."""
-    # Configure logging to stderr
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        stream=sys.stderr,
-    )
+# =============================================================================
+# Tool Handlers
+# =============================================================================
 
-    # Get configuration from environment
-    agent_name = os.environ.get("AGENT_NAME", "Agent")
-    agent_group = os.environ.get("AGENT_GROUP")
-    agent_id_str = os.environ.get("AGENT_ID")
-    config_file = os.environ.get("CONFIG_FILE")
-    work_dir = os.environ.get("WORK_DIR")
-    provider = os.environ.get("PROVIDER", "claude")
 
-    agent_id = int(agent_id_str) if agent_id_str else None
+def _handle_skip(group_name: Optional[str], provider: str) -> list[TextContent]:
+    """Handle skip tool call."""
+    response_text = get_tool_response("skip", group_name=group_name)
+    return [TextContent(type="text", text=response_text)]
 
-    # Resolve config_file to absolute path using WORK_DIR
-    # In bundled mode, WORK_DIR is where the exe is located (where agents folder lives)
-    if config_file and work_dir:
-        config_file = str(Path(work_dir) / config_file)
-    elif config_file and not Path(config_file).is_absolute():
-        # Fallback: use backend_path.parent (works in dev mode)
-        config_file = str(backend_path.parent / config_file)
 
-    logger.info(f"Starting action MCP server for agent: {agent_name} (provider: {provider})")
+async def _handle_memorize(
+    arguments: dict,
+    config_file: Optional[str],
+    agent_id: Optional[int],
+    group_name: Optional[str],
+    provider: str,
+) -> list[TextContent]:
+    """Handle memorize tool call."""
+    memory_entry = arguments.get("memory_entry", "")
+    if not memory_entry.strip():
+        return [TextContent(type="text", text="Error: Memory entry cannot be empty")]
+
     if config_file:
-        logger.info(f"Config file path: {config_file}")
+        success = _append_to_recent_events(config_file, memory_entry)
+        if success:
+            # Invalidate cache if agent_id is available
+            if agent_id:
+                try:
+                    from infrastructure.cache import agent_config_key, get_cache
 
-    # Load long-term memory index from config file
-    long_term_memory_index: dict[str, str] = {}
-    if config_file:
-        settings = get_settings()
-        memory_filename = f"{settings.recall_memory_file}.md"
-        memory_file_path = Path(config_file) / memory_filename
-        long_term_memory_index = parse_long_term_memory(memory_file_path)
-        if long_term_memory_index:
-            logger.info(f"Loaded {len(long_term_memory_index)} memories from {memory_file_path}")
+                    cache = get_cache()
+                    cache.invalidate(agent_config_key(agent_id))
+                except Exception as e:
+                    logger.warning(f"Failed to invalidate cache: {e}")
+
+            response_text = get_tool_response("memorize", group_name=group_name, memory_entry=memory_entry)
         else:
-            logger.info(f"No memories found at {memory_file_path}")
+            response_text = f"Failed to record memory: {memory_entry}"
+    else:
+        response_text = f"Memory noted (no config file): {memory_entry}"
 
-    # Create server
+    return [TextContent(type="text", text=response_text)]
+
+
+def _handle_recall(
+    arguments: dict,
+    memory_index: dict[str, str],
+    group_name: Optional[str],
+    provider: str,
+) -> list[TextContent]:
+    """Handle recall tool call."""
+    subtitle = arguments.get("subtitle", "")
+    if not subtitle.strip():
+        return [TextContent(type="text", text="Error: Subtitle cannot be empty")]
+
+    if subtitle in memory_index:
+        memory_content = memory_index[subtitle]
+        response_text = get_tool_response("recall", group_name=group_name, memory_content=memory_content)
+    else:
+        available = ", ".join(f"'{s}'" for s in memory_index.keys())
+        response_text = f"Memory subtitle '{subtitle}' not found. Available: {available}"
+
+    return [TextContent(type="text", text=response_text)]
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _load_memory_index(config_file: Optional[str]) -> dict[str, str]:
+    """Load memory index from agent's config folder."""
+    if not config_file:
+        return {}
+
+    try:
+        from config.parser import parse_long_term_memory
+        from core import AgentConfigService
+
+        project_root = AgentConfigService.get_project_root()
+        config_path = project_root / config_file
+
+        for filename in ["consolidated_memory.md", "long_term_memory.md"]:
+            memory_file = config_path / filename
+            if memory_file.exists():
+                return parse_long_term_memory(memory_file)
+    except Exception as e:
+        logger.warning(f"Failed to load memory index: {e}")
+
+    return {}
+
+
+def _append_to_recent_events(config_file: str, memory_entry: str) -> bool:
+    """Append memory entry to recent_events.md."""
+    try:
+        from core import AgentConfigService
+
+        timestamp = datetime.now(timezone.utc)
+        return AgentConfigService.append_to_recent_events(
+            config_file=config_file,
+            memory_entry=memory_entry,
+            timestamp=timestamp,
+        )
+    except Exception as e:
+        logger.error(f"Failed to append to recent_events: {e}")
+        return False
+
+
+# =============================================================================
+# Standalone Server Entry Point
+# =============================================================================
+
+
+def _get_env_config() -> dict:
+    """Get configuration from environment variables."""
+    return {
+        "agent_name": os.environ.get("AGENT_NAME", "Agent"),
+        "agent_group": os.environ.get("AGENT_GROUP"),
+        "agent_id": int(os.environ["AGENT_ID"]) if os.environ.get("AGENT_ID") else None,
+        "config_file": os.environ.get("CONFIG_FILE"),
+        "provider": os.environ.get("PROVIDER", "claude"),
+    }
+
+
+async def main():
+    """Run the MCP server as a standalone process."""
+    config = _get_env_config()
+    logger.info("Starting ChitChats Action MCP Server")
+    logger.info(f"Agent: {config['agent_name']}, Group: {config['agent_group']}, Provider: {config['provider']}")
+
     server = create_action_server(
-        agent_name=agent_name,
-        agent_group=agent_group,
-        agent_id=agent_id,
-        config_file=config_file,
-        long_term_memory_index=long_term_memory_index,
-        provider=provider,
+        agent_name=config["agent_name"],
+        agent_group=config["agent_group"],
+        agent_id=config["agent_id"],
+        config_file=config["config_file"],
+        provider=config["provider"],
     )
 
-    # Run with stdio transport
     async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options(),
-        )
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
 if __name__ == "__main__":

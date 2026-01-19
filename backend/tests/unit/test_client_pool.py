@@ -1,53 +1,36 @@
 """
-Tests for ClientPool - AI client lifecycle management.
+Tests for ClientPool - Claude SDK client lifecycle management.
 
-This module tests the BaseClientPool class and provider-specific pools
-which manage pooling and lifecycle of AIClient instances.
+This module tests the ClientPool class which manages pooling and lifecycle
+of ClaudeSDKClient instances.
 """
 
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from core.client_pool import BaseClientPool
+from core.client_pool import ClientPool
 from domain.task_identifier import TaskIdentifier
-from providers.base import AIClient
-
-
-class TestClientPool(BaseClientPool):
-    """Concrete test implementation of BaseClientPool."""
-
-    def __init__(self):
-        super().__init__()
-        self.create_client_mock = AsyncMock()
-        self.created_clients = []
-
-    async def _create_client(self, options) -> AIClient:
-        """Create a mock client for testing."""
-        client = await self.create_client_mock(options)
-        self.created_clients.append(client)
-        return client
 
 
 @pytest.fixture
 def client_pool():
-    """Create a fresh TestClientPool instance for each test."""
-    return TestClientPool()
+    """Create a fresh ClientPool instance for each test."""
+    return ClientPool()
 
 
 @pytest.fixture
 def mock_options():
-    """Create a mock options object."""
+    """Create a mock ClaudeAgentOptions."""
     options = Mock()
     options.resume = None
-    options.thread_id = None
     return options
 
 
 @pytest.fixture
 def mock_client():
-    """Create a mock AIClient."""
-    client = AsyncMock(spec=AIClient)
+    """Create a mock ClaudeSDKClient."""
+    client = AsyncMock()
     client.connect = AsyncMock()
     client.disconnect = AsyncMock()
     client.options = Mock()
@@ -56,41 +39,46 @@ def mock_client():
 
 
 @pytest.mark.asyncio
-async def test_get_or_create_new_client(client_pool, mock_options, mock_client):
+async def test_get_or_create_new_client(client_pool, mock_options):
     """Test creating a new client."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    # Configure mock to return the mock client
-    mock_client.options = mock_options
-    client_pool.create_client_mock.return_value = mock_client
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    client, is_new = await client_pool.get_or_create(task_id, mock_options)
+        client, is_new = await client_pool.get_or_create(task_id, mock_options)
 
-    assert is_new is True
-    assert task_id in client_pool.pool
-    assert client_pool.pool[task_id] == mock_client
-    client_pool.create_client_mock.assert_called_once_with(mock_options)
+        assert is_new is True
+        assert task_id in client_pool.pool
+        assert client_pool.pool[task_id] == mock_client
+        mock_client.connect.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_get_or_create_reuse_existing(client_pool, mock_options, mock_client):
+async def test_get_or_create_reuse_existing(client_pool, mock_options):
     """Test reusing existing client."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    mock_client.options = mock_options
-    client_pool.create_client_mock.return_value = mock_client
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    # First call - creates new client
-    client1, is_new1 = await client_pool.get_or_create(task_id, mock_options)
+        # First call - creates new client
+        client1, is_new1 = await client_pool.get_or_create(task_id, mock_options)
 
-    # Second call - should reuse
-    client2, is_new2 = await client_pool.get_or_create(task_id, mock_options)
+        # Second call - should reuse
+        client2, is_new2 = await client_pool.get_or_create(task_id, mock_options)
 
-    assert is_new1 is True
-    assert is_new2 is False
-    assert client1 is client2
-    # _create_client should only be called once
-    assert client_pool.create_client_mock.call_count == 1
+        assert is_new1 is True
+        assert is_new2 is False
+        assert client1 is client2
+        # Connect should only be called once (for the new client)
+        assert mock_client.connect.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -101,54 +89,62 @@ async def test_session_change_triggers_new_client(client_pool):
     # First options with no session
     options1 = Mock()
     options1.resume = None
-    options1.thread_id = None
 
     # Second options with session ID
     options2 = Mock()
     options2.resume = "sess_123"
-    options2.thread_id = None
 
-    # Create two different mock clients
-    mock_client1 = AsyncMock(spec=AIClient)
-    mock_client1.options = options1
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client1 = AsyncMock()
+        mock_client1.connect = AsyncMock()
+        mock_client1.disconnect = AsyncMock()
+        mock_client1.options = options1
 
-    mock_client2 = AsyncMock(spec=AIClient)
-    mock_client2.options = options2
+        mock_client2 = AsyncMock()
+        mock_client2.connect = AsyncMock()
+        mock_client2.options = options2
 
-    client_pool.create_client_mock.side_effect = [mock_client1, mock_client2]
+        mock_sdk_client_class.side_effect = [mock_client1, mock_client2]
 
-    # First call - creates client with no session
-    client1, is_new1 = await client_pool.get_or_create(task_id, options1)
-    assert is_new1 is True
+        # First call - creates client with no session
+        client1, is_new1 = await client_pool.get_or_create(task_id, options1)
+        assert is_new1 is True
 
-    # Second call - session changed, should create new client
-    client2, is_new2 = await client_pool.get_or_create(task_id, options2)
-    assert is_new2 is True
-    assert client1 is not client2
+        # Second call - session changed, should create new client
+        client2, is_new2 = await client_pool.get_or_create(task_id, options2)
+        assert is_new2 is True
+        assert client1 is not client2
+
+        # First client should have been cleaned up
+        # Note: disconnect is called in background task, so we can't easily assert it here
 
 
 @pytest.mark.asyncio
-async def test_cleanup_client(client_pool, mock_options, mock_client):
+async def test_cleanup_client(client_pool, mock_options):
     """Test cleanup removes client and schedules disconnect."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    mock_client.options = mock_options
-    client_pool.create_client_mock.return_value = mock_client
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    # Create a client
-    client, _ = await client_pool.get_or_create(task_id, mock_options)
+        # Create a client
+        client, _ = await client_pool.get_or_create(task_id, mock_options)
 
-    # Cleanup the client
-    await client_pool.cleanup(task_id)
+        # Cleanup the client
+        await client_pool.cleanup(task_id)
 
-    # Client should be removed from pool immediately
-    assert task_id not in client_pool.pool
+        # Client should be removed from pool immediately
+        assert task_id not in client_pool.pool
 
-    # Wait a bit for background task to run
-    await asyncio.sleep(0.1)
+        # Wait a bit for background task to run
+        await asyncio.sleep(0.1)
 
-    # Disconnect should be called (in background task)
-    mock_client.disconnect.assert_called_once()
+        # Disconnect should be called (in background task)
+        mock_client.disconnect.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -161,57 +157,59 @@ async def test_cleanup_nonexistent_client(client_pool):
 
 
 @pytest.mark.asyncio
-async def test_cleanup_room(client_pool, mock_options, mock_client):
+async def test_cleanup_room(client_pool, mock_options):
     """Test cleanup all clients in a room."""
     task1 = TaskIdentifier(room_id=1, agent_id=1)
     task2 = TaskIdentifier(room_id=1, agent_id=2)
     task3 = TaskIdentifier(room_id=2, agent_id=1)
 
-    mock_client.options = mock_options
-    # Return new mock for each call
-    client_pool.create_client_mock.side_effect = [
-        AsyncMock(spec=AIClient, options=mock_options, disconnect=AsyncMock()),
-        AsyncMock(spec=AIClient, options=mock_options, disconnect=AsyncMock()),
-        AsyncMock(spec=AIClient, options=mock_options, disconnect=AsyncMock()),
-    ]
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    # Create clients in different rooms
-    await client_pool.get_or_create(task1, mock_options)
-    await client_pool.get_or_create(task2, mock_options)
-    await client_pool.get_or_create(task3, mock_options)
+        # Create clients in different rooms
+        await client_pool.get_or_create(task1, mock_options)
+        await client_pool.get_or_create(task2, mock_options)
+        await client_pool.get_or_create(task3, mock_options)
 
-    # Cleanup room 1
-    await client_pool.cleanup_room(room_id=1)
+        # Cleanup room 1
+        await client_pool.cleanup_room(room_id=1)
 
-    # Room 1 clients should be removed
-    assert task1 not in client_pool.pool
-    assert task2 not in client_pool.pool
-    # Room 2 client should still exist
-    assert task3 in client_pool.pool
+        # Room 1 clients should be removed
+        assert task1 not in client_pool.pool
+        assert task2 not in client_pool.pool
+        # Room 2 client should still exist
+        assert task3 in client_pool.pool
 
 
 @pytest.mark.asyncio
-async def test_get_keys_for_agent(client_pool, mock_options, mock_client):
+async def test_get_keys_for_agent(client_pool, mock_options):
     """Test filtering pool keys by agent_id."""
     task1 = TaskIdentifier(room_id=1, agent_id=5)
     task2 = TaskIdentifier(room_id=2, agent_id=5)
     task3 = TaskIdentifier(room_id=1, agent_id=6)
 
-    mock_client.options = mock_options
-    client_pool.create_client_mock.return_value = mock_client
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    # Create clients for different agents
-    await client_pool.get_or_create(task1, mock_options)
-    await client_pool.get_or_create(task2, mock_options)
-    await client_pool.get_or_create(task3, mock_options)
+        # Create clients for different agents
+        await client_pool.get_or_create(task1, mock_options)
+        await client_pool.get_or_create(task2, mock_options)
+        await client_pool.get_or_create(task3, mock_options)
 
-    # Get keys for agent 5
-    keys = client_pool.get_keys_for_agent(agent_id=5)
+        # Get keys for agent 5
+        keys = client_pool.get_keys_for_agent(agent_id=5)
 
-    assert len(keys) == 2
-    assert task1 in keys
-    assert task2 in keys
-    assert task3 not in keys
+        assert len(keys) == 2
+        assert task1 in keys
+        assert task2 in keys
+        assert task3 not in keys
 
 
 @pytest.mark.asyncio
@@ -220,23 +218,24 @@ async def test_shutdown_all(client_pool, mock_options):
     task1 = TaskIdentifier(room_id=1, agent_id=1)
     task2 = TaskIdentifier(room_id=1, agent_id=2)
 
-    # Return new mock for each call
-    client_pool.create_client_mock.side_effect = [
-        AsyncMock(spec=AIClient, options=mock_options, disconnect=AsyncMock()),
-        AsyncMock(spec=AIClient, options=mock_options, disconnect=AsyncMock()),
-    ]
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    # Create clients
-    await client_pool.get_or_create(task1, mock_options)
-    await client_pool.get_or_create(task2, mock_options)
+        # Create clients
+        await client_pool.get_or_create(task1, mock_options)
+        await client_pool.get_or_create(task2, mock_options)
 
-    # Shutdown all
-    await client_pool.shutdown_all()
+        # Shutdown all
+        await client_pool.shutdown_all()
 
-    # Pool should be empty
-    assert len(client_pool.pool) == 0
-    # Cleanup tasks should be done
-    assert len(client_pool._cleanup_tasks) == 0
+        # Pool should be empty
+        assert len(client_pool.pool) == 0
+        # Cleanup tasks should be done
+        assert len(client_pool._cleanup_tasks) == 0
 
 
 @pytest.mark.asyncio
@@ -246,34 +245,35 @@ async def test_concurrent_client_creation(client_pool, mock_options):
 
     call_count = 0
 
-    async def mock_create_client(options):
-        """Mock create with delay to simulate race condition."""
+    async def mock_connect_delay():
+        """Mock connect with delay to simulate race condition."""
         nonlocal call_count
         call_count += 1
-        await asyncio.sleep(0.05)
-        client = AsyncMock(spec=AIClient)
-        client.options = options
-        return client
+        await asyncio.sleep(0.05)  # Small delay to allow concurrent calls
 
-    client_pool.create_client_mock = mock_create_client
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = mock_connect_delay
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    # Simulate concurrent calls
-    results = await asyncio.gather(
-        client_pool.get_or_create(task_id, mock_options),
-        client_pool.get_or_create(task_id, mock_options),
-        client_pool.get_or_create(task_id, mock_options),
-    )
+        # Simulate concurrent calls
+        results = await asyncio.gather(
+            client_pool.get_or_create(task_id, mock_options),
+            client_pool.get_or_create(task_id, mock_options),
+            client_pool.get_or_create(task_id, mock_options),
+        )
 
-    # Only one should be new, others reused
-    new_count = sum(1 for _, is_new in results if is_new)
-    assert new_count == 1
+        # Only one should be new, others reused
+        new_count = sum(1 for _, is_new in results if is_new)
+        assert new_count == 1
 
-    # All should return same client
-    clients = [client for client, _ in results]
-    assert clients[0] is clients[1] is clients[2]
+        # All should return same client
+        clients = [client for client, _ in results]
+        assert clients[0] is clients[1] is clients[2]
 
-    # Only one client should be created (due to lock)
-    assert call_count == 1
+        # Only one client should be created (due to lock)
+        assert call_count == 1
 
 
 @pytest.mark.asyncio
@@ -328,31 +328,32 @@ async def test_disconnect_client_background_logs_other_errors(client_pool):
 
 
 @pytest.mark.asyncio
-async def test_retry_on_process_transport_error(client_pool, mock_options, mock_client):
+async def test_retry_on_process_transport_error(client_pool, mock_options):
     """Test retry logic for ProcessTransport errors."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    # First two attempts fail with ProcessTransport error
-    call_count = 0
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        # First two attempts fail with ProcessTransport error
+        mock_client1 = AsyncMock()
+        mock_client1.connect = AsyncMock(side_effect=Exception("ProcessTransport is not ready for writing"))
 
-    async def mock_create_with_retry(options):
-        nonlocal call_count
-        call_count += 1
-        if call_count < 3:
-            raise Exception("ProcessTransport is not ready for writing")
-        client = AsyncMock(spec=AIClient)
-        client.options = options
-        return client
+        mock_client2 = AsyncMock()
+        mock_client2.connect = AsyncMock(side_effect=Exception("ProcessTransport is not ready for writing"))
 
-    client_pool.create_client_mock = mock_create_with_retry
+        # Third attempt succeeds
+        mock_client3 = AsyncMock()
+        mock_client3.connect = AsyncMock()
+        mock_client3.options = mock_options
 
-    # Should succeed on third attempt
-    client, is_new = await client_pool.get_or_create(task_id, mock_options)
+        mock_sdk_client_class.side_effect = [mock_client1, mock_client2, mock_client3]
 
-    assert is_new is True
-    assert task_id in client_pool.pool
-    # Should have tried 3 times
-    assert call_count == 3
+        # Should succeed on third attempt
+        client, is_new = await client_pool.get_or_create(task_id, mock_options)
+
+        assert is_new is True
+        assert task_id in client_pool.pool
+        # Should have tried 3 times
+        assert mock_sdk_client_class.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -360,14 +361,15 @@ async def test_retry_exhausted_raises_error(client_pool, mock_options):
     """Test that retries exhausted raises the error."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    async def mock_always_fail(options):
-        raise Exception("ProcessTransport is not ready for writing")
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        # All attempts fail
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(side_effect=Exception("ProcessTransport is not ready for writing"))
+        mock_sdk_client_class.return_value = mock_client
 
-    client_pool.create_client_mock = mock_always_fail
-
-    # Should raise after max retries
-    with pytest.raises(Exception, match="ProcessTransport is not ready"):
-        await client_pool.get_or_create(task_id, mock_options)
+        # Should raise after max retries
+        with pytest.raises(Exception, match="ProcessTransport is not ready"):
+            await client_pool.get_or_create(task_id, mock_options)
 
 
 @pytest.mark.asyncio
@@ -375,37 +377,36 @@ async def test_non_transport_error_raises_immediately(client_pool, mock_options)
     """Test that non-transport errors raise immediately without retry."""
     task_id = TaskIdentifier(room_id=1, agent_id=2)
 
-    call_count = 0
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(side_effect=ValueError("Invalid options"))
+        mock_sdk_client_class.return_value = mock_client
 
-    async def mock_fail_immediately(options):
-        nonlocal call_count
-        call_count += 1
-        raise ValueError("Invalid options")
+        # Should raise immediately, not retry
+        with pytest.raises(ValueError, match="Invalid options"):
+            await client_pool.get_or_create(task_id, mock_options)
 
-    client_pool.create_client_mock = mock_fail_immediately
-
-    # Should raise immediately, not retry
-    with pytest.raises(ValueError, match="Invalid options"):
-        await client_pool.get_or_create(task_id, mock_options)
-
-    # Should only be called once (no retries)
-    assert call_count == 1
+        # Should only be called once (no retries)
+        assert mock_sdk_client_class.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_keys_method_returns_pool_keys(client_pool, mock_options, mock_client):
+async def test_keys_method_returns_pool_keys(client_pool, mock_options):
     """Test that keys() method returns pool keys."""
     task1 = TaskIdentifier(room_id=1, agent_id=1)
     task2 = TaskIdentifier(room_id=2, agent_id=2)
 
-    mock_client.options = mock_options
-    client_pool.create_client_mock.return_value = mock_client
+    with patch("core.client_pool.ClaudeSDKClient") as mock_sdk_client_class:
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.options = mock_options
+        mock_sdk_client_class.return_value = mock_client
 
-    await client_pool.get_or_create(task1, mock_options)
-    await client_pool.get_or_create(task2, mock_options)
+        await client_pool.get_or_create(task1, mock_options)
+        await client_pool.get_or_create(task2, mock_options)
 
-    keys = client_pool.keys()
+        keys = client_pool.keys()
 
-    assert task1 in keys
-    assert task2 in keys
-    assert len(list(keys)) == 2
+        assert task1 in keys
+        assert task2 in keys
+        assert len(list(keys)) == 2

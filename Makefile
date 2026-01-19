@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev prod stop clean generate-hash simulate test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full extract-signature
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -7,22 +7,25 @@ help:
 	@echo "ChitChats - Available commands:"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev               - Run backend + frontend (PostgreSQL)"
-	@echo "  make dev-win           - Run backend + frontend (Windows, clean Ctrl+C)"
-	@echo "  make dev-sqlite        - Run backend + frontend (SQLite)"
+	@echo "  make dev               - Run backend + frontend (local development)"
 	@echo "  make install           - Install all dependencies (backend + frontend)"
 	@echo "  make run-backend       - Run backend server only"
 	@echo "  make run-frontend      - Run frontend server only"
 	@echo ""
-	@echo "Build:"
-	@echo "  make build-exe         - Build Windows executable (requires PowerShell)"
-	@echo ""
 	@echo "Setup:"
-	@echo "  make env               - Create .env file (prompts for password)"
 	@echo "  make generate-hash     - Generate password hash for authentication"
 	@echo ""
-	@echo "Simulation:"
+	@echo "Testing & Simulation:"
 	@echo "  make simulate          - Run chatroom simulation (requires args)"
+	@echo "  make test-agents       - Test agent capabilities (THINKING=1 to show thinking, CHECK_ANT=1 to show model)"
+	@echo "  make evaluate-agents   - Evaluate agent authenticity (sequential)"
+	@echo "  make evaluate-agents-cross - Cross-evaluate two agents (SLOWER=1, SPEAKER=user|{char}, PROVIDER=claude|codex)"
+	@echo "  make load-test         - Run network load test (requires args)"
+	@echo ""
+	@echo "Humanness Evaluation:"
+	@echo "  make test-jane         - Test answer humanness (pairs 5-9 sampled, SAMPLED=0 for full)"
+	@echo "  make test-jane-questions - Legacy: Test question generation quality"
+	@echo "  make evaluate-jane-full - Run full evaluation on all datasets"
 	@echo ""
 	@echo "Deployment (Cloudflare tunnels for remote access):"
 	@echo "  make prod              - Start tunnel + auto-update Vercel env + redeploy"
@@ -32,6 +35,7 @@ help:
 	@echo "Maintenance:"
 	@echo "  make stop              - Stop all running servers"
 	@echo "  make clean             - Clean build artifacts and caches"
+	@echo "  make extract-signature - Extract thinking signatures from session files"
 
 install:
 	@echo "Installing Claude Code CLI globally..."
@@ -59,6 +63,7 @@ run-tunnel-frontend:
 	cloudflared tunnel --url http://localhost:5173
 
 dev:
+	@mkdir -p /tmp/claude-empty
 	@echo "Starting backend and frontend..."
 	@echo "Backend will run on http://localhost:8000"
 	@echo "Frontend will run on http://localhost:5173"
@@ -66,18 +71,6 @@ dev:
 	@echo "Press Ctrl+C to stop all servers"
 # 	@$(MAKE) -j3 run-backend run-frontend run-tunnel-backend
 	@$(MAKE) -j3 run-backend run-frontend
-
-dev-win:
-	@echo "Starting backend and frontend (Windows)..."
-	@powershell.exe -ExecutionPolicy Bypass -File scripts/windows/dev.ps1
-
-dev-sqlite:
-	@echo "Starting backend and frontend with SQLite..."
-	@echo "Backend will run on http://localhost:8000"
-	@echo "Frontend will run on http://localhost:5173"
-	@echo "SQLite database: ./chitchats.db"
-	@echo "Press Ctrl+C to stop all servers"
-	USE_SQLITE=true $(MAKE) -j3 run-backend run-frontend
 
 prod:
 	@echo "Starting production deployment..."
@@ -111,10 +104,6 @@ clean:
 	rm -rf frontend/node_modules/.vite
 	@echo "Clean complete!"
 
-env:
-	@echo "Creating .env file..."
-	@uv run python scripts/setup/create_env.py
-
 generate-hash:
 	@echo "Generating password hash..."
 	uv run python scripts/setup/generate_hash.py
@@ -128,29 +117,130 @@ simulate:
 		./scripts/simulation/simulate_chatroom.sh $(ARGS); \
 	fi
 
-# Windows executable build
-# Requires PowerShell (pwsh on Linux/macOS, powershell.exe on Windows)
-build-exe:
-	@echo "Building Windows executable..."
-	@if command -v pwsh >/dev/null 2>&1; then \
-		echo "Using PowerShell Core (pwsh)..."; \
-		pwsh -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
-	elif command -v powershell.exe >/dev/null 2>&1; then \
-		echo "Using Windows PowerShell via WSL..."; \
-		powershell.exe -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
+test-agents:
+	@echo "Testing agent capabilities..."
+	@if [ -n "$(THINKING)" ]; then \
+		CHECK_ANT=$(CHECK_ANT) ./scripts/testing/test_agent_questions.sh --quiet --thinking; \
 	else \
-		echo ""; \
-		echo "PowerShell not found. To build the Windows executable:"; \
-		echo ""; \
-		echo "  Option 1: Install PowerShell Core"; \
-		echo "    Ubuntu/Debian: sudo apt install powershell"; \
-		echo "    macOS: brew install powershell"; \
-		echo ""; \
-		echo "  Option 2: Run directly on Windows"; \
-		echo "    .\\scripts\\windows\\build_exe.ps1"; \
-		echo ""; \
-		echo "  Options:"; \
-		echo "    -Clean         Clean build artifacts first"; \
-		echo "    -SkipFrontend  Skip frontend build (use existing dist)"; \
-		exit 1; \
+		CHECK_ANT=$(CHECK_ANT) ./scripts/testing/test_agent_questions.sh --quiet; \
 	fi
+
+evaluate-agents:
+	@echo "Evaluating agent authenticity..."
+	@echo "Usage: make evaluate-agents ARGS='--target-agent \"프리렌\" --evaluator \"페른\" --questions 3'"
+	@if [ -z "$(ARGS)" ]; then \
+		./scripts/evaluation/evaluate_authenticity.sh --help; \
+	else \
+		./scripts/evaluation/evaluate_authenticity.sh $(ARGS); \
+	fi
+
+evaluate-agents-cross:
+	@echo "Cross-evaluating agents (both directions)..."
+	@echo "Usage: make evaluate-agents-cross AGENT1=\"프리렌\" AGENT2=\"페른\" QUESTIONS=7 [SLOWER=1] [PARALLEL=5] [SPEAKER=user|{character}] [PROVIDER=claude|codex]"
+	@if [ -z "$(AGENT1)" ] || [ -z "$(AGENT2)" ]; then \
+		echo "Error: Both AGENT1 and AGENT2 must be specified."; \
+		echo "Example: make evaluate-agents-cross AGENT1=\"프리렌\" AGENT2=\"페른\" QUESTIONS=7"; \
+		exit 1; \
+	fi; \
+	QUESTIONS=$${QUESTIONS:-7}; \
+	PARALLEL_LIMIT=$${PARALLEL:-7}; \
+	SPEAKER_ARG=""; \
+	if [ -n "$(SPEAKER)" ]; then \
+		SPEAKER_ARG="--speaker $(SPEAKER)"; \
+	fi; \
+	PROVIDER_ARG=""; \
+	if [ -n "$(PROVIDER)" ]; then \
+		PROVIDER_ARG="--provider $(PROVIDER)"; \
+	fi; \
+	if [ -n "$(SLOWER)" ]; then \
+		echo "Running $(AGENT1) → $(AGENT2) and $(AGENT2) → $(AGENT1) evaluations sequentially..."; \
+		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT2)" --evaluator "$(AGENT1)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG $$PROVIDER_ARG; \
+		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT1)" --evaluator "$(AGENT2)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG $$PROVIDER_ARG; \
+	else \
+		echo "Running $(AGENT1) → $(AGENT2) and $(AGENT2) → $(AGENT1) evaluations in parallel..."; \
+		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT2)" --evaluator "$(AGENT1)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG $$PROVIDER_ARG & \
+		PID1=$$!; \
+		./scripts/evaluation/evaluate_parallel.sh --target-agent "$(AGENT1)" --evaluator "$(AGENT2)" --questions $$QUESTIONS --parallel-limit $$PARALLEL_LIMIT $$SPEAKER_ARG $$PROVIDER_ARG & \
+		PID2=$$!; \
+		wait $$PID1 $$PID2; \
+	fi; \
+	echo "Both evaluations completed!"
+
+load-test:
+	@echo "Running network load test..."
+	@echo "Usage: make load-test ARGS='--password \"yourpass\" --users 10 --rooms 2 --duration 60'"
+	@if [ -z "$(ARGS)" ]; then \
+		uv run python scripts/testing/load_test_network.py --help; \
+	else \
+		uv run python scripts/testing/load_test_network.py $(ARGS); \
+	fi
+
+# Humanness Evaluation Pipeline
+# Usage: make test-jane DATASET=workforce AGENTS=jane LIMIT=10 MIN_PAIR=5 MAX_PAIR=10 SAMPLED=1
+# Tests which answer (AI vs human) looks most human
+DATASET ?= workforce
+AGENTS ?= jane
+PARALLEL ?= 5
+MIN_PAIR ?= 5
+MAX_PAIR ?= 10
+SAMPLED ?= 1
+
+test-jane:
+	@echo "Testing answer humanness..."
+	@echo "Dataset: $(DATASET)"
+	@echo "Agents:  $(AGENTS)"
+	@echo "Pair range: $(MIN_PAIR)-$$(( $(MAX_PAIR) - 1 ))"
+	@if [ "$(SAMPLED)" = "1" ]; then \
+		echo "Mode: Sampled (20 pairs)"; \
+		./scripts/evaluation/parse_transcripts.sh --dataset $(DATASET) --sample 20 --min-pair $(MIN_PAIR) --max-pair $(MAX_PAIR); \
+	else \
+		echo "Mode: Full dataset"; \
+		./scripts/evaluation/parse_transcripts.sh --dataset $(DATASET) --min-pair $(MIN_PAIR) --max-pair $(MAX_PAIR); \
+	fi
+	@echo ""
+	@echo "Running humanness evaluation..."
+	@RESULTS=$$(./scripts/evaluation/evaluate_humanness.sh --dataset $(DATASET) --agents "$(AGENTS)" --parallel $(PARALLEL) $(if $(LIMIT),--limit $(LIMIT),) $(if $(NO_HUMAN),--no-human,)); \
+	echo ""; \
+	echo "Analyzing results..."; \
+	uv run python scripts/evaluation/analyze_results.py "$$RESULTS"
+
+# Legacy question evaluation (evaluates question quality, not humanness)
+test-jane-questions:
+	@echo "Testing Jane's question generation..."
+	@echo "Dataset: $(DATASET)"
+	@echo "Parallel: $(PARALLEL)"
+	@if [ "$(SAMPLED)" = "1" ]; then \
+		echo "Mode: Sampled (20 pairs)"; \
+		./scripts/evaluation/parse_transcripts.sh --dataset $(DATASET) --sample 20; \
+	else \
+		echo "Mode: Full dataset"; \
+		./scripts/evaluation/parse_transcripts.sh --dataset $(DATASET); \
+	fi
+	@echo ""
+	@echo "Running question evaluation ($(PARALLEL) parallel)..."
+	@RESULTS=$$(./scripts/evaluation/evaluate_questions.sh --dataset $(DATASET) --parallel $(PARALLEL) $(if $(LIMIT),--limit $(LIMIT),)); \
+	echo ""; \
+	echo "Analyzing results..."; \
+	uv run python scripts/evaluation/analyze_results.py "$$RESULTS"
+
+evaluate-jane-full:
+	@echo "Running full evaluation on all datasets..."
+	@echo "This will evaluate: creatives, scientists, workforce"
+	@echo "Warning: This may take several hours!"
+	@echo ""
+	@for dataset in creatives scientists workforce; do \
+		echo "========================================"; \
+		echo "Evaluating: $$dataset"; \
+		echo "========================================"; \
+		$(MAKE) test-jane DATASET=$$dataset; \
+		echo ""; \
+	done
+	@echo "All evaluations complete!"
+	@echo ""
+	@echo "Comparing results..."
+	@uv run python scripts/evaluation/analyze_results.py --compare results/evaluations/*.json 2>/dev/null || echo "Run individual analyses with: uv run python scripts/evaluation/analyze_results.py results/evaluations/<file>.json"
+
+extract-signature:
+	@echo "Extracting thinking signatures from session files..."
+	@python3 scripts/collect_thinking_signatures.py > scripts/output.py
+	@echo "Saved to scripts/output.py"

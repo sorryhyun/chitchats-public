@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import type { RoomSummary, Room, RoomCreate } from '../types';
+import type { ProviderType, RoomSummary, Room } from '../types';
 import { useRooms } from '../hooks/useRooms';
 
 interface RoomContextValue {
@@ -10,7 +10,7 @@ interface RoomContextValue {
 
   // Room actions
   selectRoom: (roomId: number) => void;
-  createRoom: (data: RoomCreate) => Promise<Room>;
+  createRoom: (name: string, provider?: ProviderType) => Promise<Room>;
   deleteRoom: (roomId: number) => Promise<void>;
   renameRoom: (roomId: number, name: string) => Promise<Room>;
   refreshRooms: () => Promise<void>;
@@ -49,8 +49,8 @@ export function RoomProvider({ children }: RoomProviderProps) {
     setSelectedRoomId(roomId);
   };
 
-  const createRoom = async (data: RoomCreate) => {
-    return await createRoomHook(data);
+  const createRoom = async (name: string, provider?: ProviderType) => {
+    return await createRoomHook(name, provider);
   };
 
   const deleteRoom = async (roomId: number) => {

@@ -18,8 +18,7 @@
     "keyConcepts": "Key Concepts",
     "conceptAgents": "AI characters with unique personalities configured via markdown files",
     "conceptRooms": "Chat spaces where you and agents can have conversations",
-    "conceptThirdPerson": "Agent configs use third-person perspective (e.g., \"Alice is...\" not \"You are...\")",
-    "conceptHotReload": "Edit agent files directly and changes apply immediately"
+    "conceptThirdPerson": "Agent configs use third-person perspective (e.g., \"Alice is...\" not \"You are...\")"
   },
   "agentConfig": {
     "folderStructure": "Agent Folder Structure",
@@ -92,8 +91,7 @@
     "shortcuts": {
       "escape": "Escape - Close modals and sidebars",
       "enter": "Enter - Send message",
-      "shiftEnter": "Shift + Enter - New line in message",
-      "f5": "F5 - Reset conversation (with confirmation)"
+      "shiftEnter": "Shift + Enter - New line in message"
     }
   }
 }

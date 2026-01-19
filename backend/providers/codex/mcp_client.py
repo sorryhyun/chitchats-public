@@ -4,8 +4,8 @@ Codex MCP client implementation.
 This module provides a client that communicates with Codex via the MCP server,
 implementing the AIClient interface for the provider abstraction.
 
-Unlike the CLI-based CodexClient that spawns a subprocess per query,
-this client uses a persistent MCP server connection managed by CodexMCPServerManager.
+The client uses a persistent MCP server connection managed by CodexMCPServerManager,
+providing efficient communication without subprocess spawn overhead per query.
 """
 
 import asyncio
@@ -33,7 +33,6 @@ class CodexMCPOptions:
         sandbox: Sandbox mode - "danger-full-access", "workspace-write", "read-only"
         extra_config: Additional config options to pass to the tool (feature settings, etc.)
         cwd: Working directory for the session (use empty dir to avoid picking up AGENTS.md)
-        full_conversation: Full conversation history for session recovery (when thread is lost)
     """
 
     system_prompt: str = ""
@@ -44,7 +43,6 @@ class CodexMCPOptions:
     sandbox: str = "danger-full-access"
     extra_config: Dict[str, Any] = field(default_factory=dict)
     cwd: Optional[str] = None
-    full_conversation: Optional[str] = None
 
 
 class CodexMCPClient(AIClient):
@@ -178,7 +176,6 @@ class CodexMCPClient(AIClient):
                 approval_policy=self._options.approval_policy,
                 sandbox=self._options.sandbox,
                 cwd=self._options.cwd,
-                full_conversation=self._options.full_conversation,
             )
 
             # Extract thread_id from result

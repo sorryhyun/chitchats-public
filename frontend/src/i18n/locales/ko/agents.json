@@ -20,8 +20,6 @@
   "configFile": "설정 파일",
   "custom": "직접 입력",
   "agentName": "에이전트 이름",
-  "groupName": "그룹 이름 (선택사항)",
-  "groupPlaceholder": "예: 슈타게, 프리렌",
   "selectConfigFile": "설정 파일 선택...",
   "noConfigFiles": "설정 파일이 없습니다",
   "inANutshell": "한 줄 요약",

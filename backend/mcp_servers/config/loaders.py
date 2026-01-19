@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from .cache import get_cached_config
+from config.cache import get_cached_config
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,9 @@ def get_guidelines_file() -> str:
 
     Returns:
         Guidelines file name (without .yaml extension)
+
+    Note: This is deprecated. Guidelines are now split into
+    system_prompt.yaml and guidelines.yaml.
     """
     from core import get_settings
 
@@ -36,6 +39,18 @@ def get_guidelines_config_path() -> Path:
     from core import get_settings
 
     return get_settings().guidelines_config_path
+
+
+def get_system_prompt_config_path() -> Path:
+    """
+    Get the path to the system prompt config file.
+
+    Returns:
+        Path to system_prompt.yaml
+    """
+    from core import get_settings
+
+    return get_settings().system_prompt_config_path
 
 
 # Backward compatibility: module-level constants that delegate to settings
@@ -72,36 +87,6 @@ def get_tools_config() -> Dict[str, Any]:
     return get_cached_config(get_settings().tools_config_path)
 
 
-def get_provider_tools_config(provider: str) -> Dict[str, Any]:
-    """
-    Load provider-specific tools configuration.
-
-    Args:
-        provider: Provider name ('claude' or 'codex')
-
-    Returns:
-        Dictionary containing provider-specific tool overrides, or empty dict if not found
-    """
-    if not provider:
-        return {}
-
-    from core import get_settings
-
-    provider_config_path = get_settings().get_provider_tools_config_path(provider)
-
-    if not provider_config_path.exists():
-        logger.debug(f"No provider config found for '{provider}' at {provider_config_path}")
-        return {}
-
-    try:
-        config = get_cached_config(provider_config_path)
-        logger.debug(f"Loaded provider config for '{provider}': {list(config.keys())}")
-        return config
-    except Exception as e:
-        logger.warning(f"Error loading provider config for '{provider}': {e}")
-        return {}
-
-
 def get_guidelines_config() -> Dict[str, Any]:
     """
     Load the guidelines configuration from guidelines.yaml.
@@ -110,6 +95,16 @@ def get_guidelines_config() -> Dict[str, Any]:
         Dictionary containing guideline templates
     """
     return get_cached_config(get_guidelines_config_path())
+
+
+def get_system_prompt_config() -> Dict[str, Any]:
+    """
+    Load the system prompt configuration from system_prompt.yaml.
+
+    Returns:
+        Dictionary containing system prompt templates
+    """
+    return get_cached_config(get_system_prompt_config_path())
 
 
 def get_debug_config() -> Dict[str, Any]:

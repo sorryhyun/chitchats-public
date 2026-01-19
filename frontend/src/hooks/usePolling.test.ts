@@ -156,8 +156,7 @@ describe('usePolling', () => {
       'Test',
       'situation_builder',
       'Builder',
-      'base64data',
-      'image/png'
+      [{ data: 'base64data', media_type: 'image/png' }]
     )
 
     await waitFor(() => {
@@ -171,8 +170,7 @@ describe('usePolling', () => {
         role: 'user',
         participant_type: 'situation_builder',
         participant_name: 'Builder',
-        image_data: 'base64data',
-        image_media_type: 'image/png',
+        images: [{ data: 'base64data', media_type: 'image/png' }],
       })
     })
   })

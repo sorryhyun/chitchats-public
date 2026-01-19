@@ -4,19 +4,19 @@ from typing import List
 
 import crud
 import schemas
-from core import AgentManager
-from core.auth import require_admin
-from core.dependencies import (
+from core import (
     RequestIdentity,
+    RoomAlreadyExistsError,
     ensure_room_access,
     get_agent_manager,
     get_chat_orchestrator,
     get_request_identity,
+    require_admin,
 )
-from core.exceptions import RoomAlreadyExistsError
-from crud import clear_room_messages_with_cleanup, delete_room_with_cleanup
-from database import get_db
+from core.agent_service import clear_room_messages_with_cleanup, delete_room_with_cleanup
+from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database import get_db
 from orchestration import ChatOrchestrator
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # Input Models
 class SkipInput(BaseModel):
-    """Input model for skip tool - currently takes no arguments."""
+    """Input model for skip tool - takes no arguments."""
 
     pass
 

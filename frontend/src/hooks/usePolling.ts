@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Message } from '../types';
+import type { Message, ImageItem } from '../types';
 import { getApiKey, API_BASE_URL } from '../services';
 
 interface UsePollingReturn {
   messages: Message[];
-  sendMessage: (content: string, participant_type?: string, participant_name?: string, image_data?: string, image_media_type?: string, mentioned_agent_ids?: number[]) => void;
+  sendMessage: (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => void;
   isConnected: boolean;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   resetMessages: () => Promise<void>;
 }
 
-const POLL_INTERVAL = 2000; // Poll every 2 seconds
-const STATUS_POLL_INTERVAL = 1500; // Poll agent status every 1.5 seconds (faster for typing indicators)
+const POLL_INTERVAL = 500; // Poll every 500ms
+const STATUS_POLL_INTERVAL = 500; // Poll agent status every 500ms (for typing indicators)
 
 export const usePolling = (roomId: number | null): UsePollingReturn => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -87,10 +87,11 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
 
         if (newMessages.length > 0) {
           setMessages((prev) => {
-            // Deduplicate to handle race conditions between immediate and regular polls
+            // Deduplicate: only add messages not already in state
             const existingIds = new Set(prev.map(m => m.id));
             const uniqueNewMessages = newMessages.filter((m: Message) => !existingIds.has(m.id));
-            return uniqueNewMessages.length > 0 ? [...prev, ...uniqueNewMessages] : prev;
+            if (uniqueNewMessages.length === 0) return prev;
+            return [...prev, ...uniqueNewMessages];
           });
           // Update last message ID
           lastMessageIdRef.current = newMessages[newMessages.length - 1].id;
@@ -237,7 +238,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     };
   }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents]);
 
-  const sendMessage = async (content: string, participant_type?: string, participant_name?: string, image_data?: string, image_media_type?: string, mentioned_agent_ids?: number[]) => {
+  const sendMessage = async (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => {
     if (!roomId) return;
 
     try {
@@ -261,11 +262,8 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       if (participant_name) {
         messageData.participant_name = participant_name;
       }
-      if (image_data) {
-        messageData.image_data = image_data;
-      }
-      if (image_media_type) {
-        messageData.image_media_type = image_media_type;
+      if (images && images.length > 0) {
+        messageData.images = images;
       }
       if (mentioned_agent_ids && mentioned_agent_ids.length > 0) {
         messageData.mentioned_agent_ids = mentioned_agent_ids;

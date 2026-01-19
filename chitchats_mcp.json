@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "chitchats": {
+      "type": "sse",
+      "url": "http://localhost:8001/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_JWT_TOKEN>"
+      }
+    }
+  }
+}

@@ -1,14 +1,17 @@
 """Shared dependencies for FastAPI endpoints."""
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import crud
 from fastapi import HTTPException, Request
-from orchestration import ChatOrchestrator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core import AgentManager
-from core.exceptions import RoomNotFoundError
+from .exceptions import RoomNotFoundError
+
+if TYPE_CHECKING:
+    from orchestration import ChatOrchestrator
+
+    from core.manager import AgentManager
 
 
 class RequestIdentity(NamedTuple):
@@ -35,7 +38,7 @@ async def ensure_room_access(db: AsyncSession, room_id: int, identity: RequestId
     return room
 
 
-def get_agent_manager(request: Request) -> AgentManager:
+def get_agent_manager(request: Request) -> "AgentManager":
     """
     Dependency to get the agent manager instance from app state.
 
@@ -44,7 +47,7 @@ def get_agent_manager(request: Request) -> AgentManager:
     return request.app.state.agent_manager
 
 
-def get_chat_orchestrator(request: Request) -> ChatOrchestrator:
+def get_chat_orchestrator(request: Request) -> "ChatOrchestrator":
     """
     Dependency to get the chat orchestrator instance from app state.
 

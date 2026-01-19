@@ -331,6 +331,7 @@ class TestProcessAgentResponses:
                 orch_context=mock_orch_context,
                 agents=[mock_agent1, mock_agent2],
                 interrupt_agents=[],
+                final_response_agents=[],
                 critic_agents=[],
                 user_message_content="Hello",
             )
@@ -380,6 +381,7 @@ class TestProcessAgentResponses:
                 orch_context=mock_orch_context,
                 agents=[mock_agent],  # Only one agent
                 interrupt_agents=[],
+                final_response_agents=[],
                 critic_agents=[],
                 user_message_content="Hello",
             )
@@ -425,6 +427,7 @@ class TestProcessAgentResponses:
                 orch_context=mock_orch_context,
                 agents=[mock_agent],
                 interrupt_agents=[],
+                final_response_agents=[],
                 critic_agents=[mock_critic],
                 user_message_content="Hello",
             )

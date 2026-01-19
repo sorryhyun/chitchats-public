@@ -5,73 +5,68 @@ FastAPI + SQLAlchemy (async) + PostgreSQL backend for multi-agent chat orchestra
 ## Quick Start
 
 ```bash
-make install  # Install dependencies
-make dev      # Run backend + frontend
+make install && make dev    # From project root
 
 # Backend only
-cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8001
 
-See [../SETUP.md](../SETUP.md) for authentication setup.
+# Tests
+uv run pytest --cov=backend
+```
 
 ## Directory Structure
 
 ```
 backend/
-├── main.py                  # Entry point
-├── core/                    # App core + agent infrastructure
-│   ├── manager.py           # AgentManager
-│   ├── client_pool.py       # Client lifecycle
-│   ├── config/              # YAML config loading
-│   └── memory/              # Memory parsing
-├── config/tools/            # YAML configuration files
-├── crud/                    # Database operations
-├── domain/                  # Domain models
-├── orchestration/           # Multi-agent conversation logic
-├── routers/                 # REST API endpoints
-├── providers/               # AI provider implementations
-│   ├── claude/              # Claude SDK provider
-│   └── codex/               # Codex CLI provider
-├── mcp_servers/             # Standalone MCP servers
-├── services/                # Business logic
-├── infrastructure/          # Utilities (scheduler, cache, db)
-└── tests/                   # Test suite
+├── main.py                 # FastAPI entry point
+├── schemas.py              # Pydantic models
+├── config/                 # YAML configs (tools.yaml, guidelines_3rd.yaml, debug.yaml)
+├── core/                   # App factory, auth, settings, AgentManager
+├── crud/                   # Database operations
+├── domain/                 # Domain models (TaskIdentifier, AgentConfigData)
+├── mcp_servers/            # MCP server tools and config
+├── orchestration/          # Multi-agent conversation orchestration
+├── providers/              # AI provider abstraction (Claude, Codex)
+├── routers/                # REST API endpoints
+├── infrastructure/         # Database, caching, logging utilities
+└── tests/                  # Test suite
 ```
+
+## API Endpoints
+
+| Group | Endpoints |
+|-------|-----------|
+| Auth | `POST /auth/login`, `GET /auth/verify`, `GET /health` |
+| Rooms | `GET/POST /rooms`, `GET/PATCH/DELETE /rooms/{id}`, `POST /rooms/{id}/pause\|resume` |
+| Agents | `GET/POST /agents`, `GET/PATCH/DELETE /agents/{id}`, `POST /agents/{id}/reload` |
+| Room-Agents | `GET/POST/DELETE /rooms/{room_id}/agents/{agent_id}` |
+| Messages | `GET/POST /rooms/{room_id}/messages`, `GET /rooms/{room_id}/messages/poll` |
+
+All endpoints except `/auth/*`, `/health`, `/docs` require `X-API-Key` header.
+
+## Environment Variables
+
+**Required:**
+- `DATABASE_URL` - PostgreSQL connection (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats`)
+- `API_KEY_HASH` - Bcrypt hash of admin password
+- `JWT_SECRET` - Secret for JWT signing
+
+**Optional:**
+- `DEBUG_AGENTS=true` - Verbose agent logging
+- `USE_HAIKU=true` - Use Haiku instead of Opus
+- `FRONTEND_URL` - CORS allowed origin
+
+See [../SETUP.md](../SETUP.md) for full configuration.
 
 ## Key Concepts
 
-- **Filesystem-primary**: Agent configs loaded from `agents/` directory, DB is cache
-- **Hot-reloading**: Config changes apply immediately
-- **Multi-provider**: Supports Claude and Codex backends
-- **Session isolation**: Each agent has separate session per room
+- **Filesystem-Primary:** Agent configs loaded from `agents/` directory, DB is cache
+- **Third-Person Configs:** Agent files use third-person ("프리렌은..."), system prompt uses `{agent_name}` placeholders
+- **Session Isolation:** Each agent has separate SDK session per room
+- **Memory System:** Short-term (`recent_events.md`) + long-term (`consolidated_memory.md`)
 
-## Configuration
+## Debugging
 
-**Environment variables** (`.env`):
+Enable with `DEBUG_AGENTS=true` in `.env` or edit `config/tools/debug.yaml`.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `API_KEY_HASH` | Yes | Bcrypt hash of admin password (`make generate-hash`) |
-| `JWT_SECRET` | Yes | JWT signing secret |
-| `DATABASE_URL` | No | PostgreSQL connection (default: `postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats`) |
-| `USER_NAME` | No | Display name for user messages (default: "User") |
-| `DEBUG_AGENTS` | No | Enable verbose agent logging |
-| `USE_HAIKU` | No | Use Haiku model instead of Opus |
-| `PRIORITY_AGENTS` | No | Comma-separated agent names for priority responding |
-| `MAX_CONCURRENT_ROOMS` | No | Max rooms for background scheduler (default: 5) |
-| `ENABLE_GUEST_LOGIN` | No | Enable/disable guest login (default: true) |
-| `FRONTEND_URL` | No | CORS allowed origin for production |
-
-See [../SETUP.md](../SETUP.md) for authentication setup.
-
-## Development
-
-**Add DB field**: Update `infrastructure/database/models.py` + add migration
-
-**Add endpoint**: Define schema → add CRUD → create router
-
-**Update system prompt**: Edit `config/tools/guidelines_3rd.yaml`
-
-## Caching
-
-See [CACHING.md](CACHING.md) for in-memory caching details.
+For caching details, see [CACHING.md](CACHING.md).

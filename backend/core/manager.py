@@ -1,12 +1,10 @@
 """
-Agent manager for handling multi-provider AI client lifecycle and response generation.
+Agent manager for handling AI client lifecycle and response generation.
 
 This module provides the AgentManager class which orchestrates agent responses,
 manages client interruption, and handles conversation sessions.
 
-Supports multiple AI providers:
-- Claude: Uses Claude Agent SDK with MCP tools
-- Codex: Uses Codex CLI subprocess with MCP config
+Supports multiple AI providers (Claude, Codex) through the provider abstraction layer.
 """
 
 from __future__ import annotations
@@ -14,15 +12,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import AsyncIterator, List
+from typing import AsyncIterator
 
 from config import get_debug_config
 from domain.contexts import AgentResponseContext
 from domain.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
-from providers import AIClient, AIClientOptions, AIProvider, ProviderType, get_provider
-from providers.claude import ClaudeClientPool
+from providers import (
+    AIClient,
+    AIClientOptions,
+    ClientPoolInterface,
+    ProviderType,
+    get_provider,
+)
 
 # Configure from settings
 DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)
@@ -36,23 +39,55 @@ logger = logging.getLogger("AgentManager")
 class AgentManager:
     """Manages AI clients for agent response generation and interruption.
 
-    Supports multiple providers:
-    - Claude: Uses Claude Agent SDK with MCP tools
-    - Codex: Uses Codex CLI subprocess with MCP config
+    Supports multiple providers (Claude, Codex) through the provider abstraction layer.
+    Each provider has its own client pool for managing connection lifecycle.
     """
 
     def __init__(self):
-        # Note: Authentication can be configured in two ways:
-        # 1. Set CLAUDE_API_KEY environment variable with your Anthropic API key
-        # 2. Use Claude Code web authentication (when running through Claude Code with subscription)
-        # If CLAUDE_API_KEY is not set, the SDK will use Claude Code authentication.
-        # For Codex: Uses Codex CLI with existing authentication
+        # Active clients for interruption support (keyed by task identifier)
         self.active_clients: dict[TaskIdentifier, AIClient] = {}
-        # Client pool for managing SDK client lifecycle (Claude-specific)
-        # TODO: Phase 3 will add per-provider pool management
-        self.client_pool = ClaudeClientPool()
+        # Client pools per provider type (lazy-loaded)
+        self._client_pools: dict[ProviderType, ClientPoolInterface] = {}
         # Streaming state: tracks current thinking text per task during generation
         self.streaming_state: dict[TaskIdentifier, dict] = {}
+
+    def _get_pool(self, provider_type: ProviderType) -> ClientPoolInterface:
+        """Get or create client pool for a provider.
+
+        Args:
+            provider_type: The provider type to get pool for
+
+        Returns:
+            ClientPoolInterface for the provider
+        """
+        if provider_type not in self._client_pools:
+            provider = get_provider(provider_type)
+            self._client_pools[provider_type] = provider.get_client_pool()
+        return self._client_pools[provider_type]
+
+    def get_keys_for_agent(self, agent_id: int) -> list[TaskIdentifier]:
+        """Get all pool keys for a specific agent across all providers.
+
+        Args:
+            agent_id: Agent ID to filter
+
+        Returns:
+            List of task identifiers for this agent
+        """
+        keys = []
+        for pool in self._client_pools.values():
+            keys.extend(pool.get_keys_for_agent(agent_id))
+        return keys
+
+    async def cleanup_client(self, pool_key: TaskIdentifier):
+        """Cleanup a specific client across all provider pools.
+
+        Args:
+            pool_key: The task identifier for the client to cleanup
+        """
+        for pool in self._client_pools.values():
+            if pool_key in pool.pool:
+                await pool.cleanup(pool_key)
 
     async def interrupt_all(self):
         """Interrupt all currently active agent responses."""
@@ -73,8 +108,10 @@ class AgentManager:
         """
         logger.info("🛑 Shutting down AgentManager")
 
-        # Delegate to client pool
-        await self.client_pool.shutdown_all()
+        # Shutdown all provider pools
+        for provider_type, pool in self._client_pools.items():
+            logger.info(f"  Shutting down {provider_type.value} pool...")
+            await pool.shutdown_all()
 
         logger.info("✅ AgentManager shutdown complete")
 
@@ -140,150 +177,14 @@ class AgentManager:
 
         return result
 
-    # ========== Helper Methods for Response Generation (Phase 4 Refactoring) ==========
-
-    def _setup_task_identifiers(self, context: AgentResponseContext) -> tuple[TaskIdentifier, str]:
-        """
-        Generate task identifier and temporary streaming ID.
-
-        Args:
-            context: Agent response context
-
-        Returns:
-            Tuple of (task_id, temp_id)
-        """
-        task_id = context.task_id or TaskIdentifier(room_id=context.room_id, agent_id=context.agent_id)
-        temp_id = f"temp_{task_id}_{uuid.uuid4().hex[:8]}"
-        return task_id, temp_id
-
-    def _build_final_system_prompt(self, context: AgentResponseContext) -> str:
-        """
-        Build final system prompt with optional timestamp.
-
-        Args:
-            context: Agent response context
-
-        Returns:
-            System prompt with timestamp appended if conversation_started exists
-        """
-        if context.conversation_started:
-            return f"{context.system_prompt}\n\n---\n\nCurrent time: {context.conversation_started}"
-        return context.system_prompt
-
-    def _cleanup_streaming_task(self, task_id: TaskIdentifier, log_message: str | None = None) -> None:
-        """
-        Unregister client and clear streaming state for task.
-
-        Args:
-            task_id: Task identifier to clean up
-            log_message: Optional custom log message
-        """
-        if task_id in self.active_clients:
-            del self.active_clients[task_id]
-            if log_message:
-                logger.debug(log_message)
-
-        if task_id in self.streaming_state:
-            del self.streaming_state[task_id]
-
-    def _build_stream_end_event(
-        self,
-        temp_id: str,
-        response_text: str,
-        thinking_text: str,
-        session_id: str | None,
-        memory_entries: list[str],
-        anthropic_calls: list[str],
-        skip_used: bool,
-    ) -> dict:
-        """
-        Build stream_end event from response state.
-
-        Args:
-            temp_id: Temporary streaming ID
-            response_text: Final response text
-            thinking_text: Final thinking text
-            session_id: Session ID
-            memory_entries: List of memory entries
-            anthropic_calls: List of anthropic calls
-            skip_used: Whether skip tool was used
-
-        Returns:
-            Stream end event dictionary
-        """
-        # Determine final response (None if skipped or empty)
-        final_response = None
-        if response_text and not skip_used:
-            final_response = response_text
-
-        return {
-            "type": "stream_end",
-            "temp_id": temp_id,
-            "response_text": final_response,
-            "thinking_text": thinking_text,
-            "session_id": session_id,
-            "memory_entries": memory_entries,
-            "anthropic_calls": anthropic_calls,
-            "skipped": skip_used,
-        }
-
-    def _build_cancellation_event(self, temp_id: str, context: AgentResponseContext) -> dict:
-        """
-        Build stream_end event for cancelled/interrupted tasks.
-
-        Args:
-            temp_id: Temporary streaming ID
-            context: Original request context
-
-        Returns:
-            Stream end event indicating interruption
-        """
-        return {
-            "type": "stream_end",
-            "temp_id": temp_id,
-            "response_text": None,
-            "thinking_text": "",
-            "session_id": context.session_id,
-            "memory_entries": [],
-            "anthropic_calls": [],
-            "skipped": True,
-        }
-
-    def _build_error_event(self, temp_id: str, context: AgentResponseContext, error: Exception) -> dict:
-        """
-        Build stream_end event for errors.
-
-        Args:
-            temp_id: Temporary streaming ID
-            context: Original request context
-            error: Exception that occurred
-
-        Returns:
-            Stream end event with error message
-        """
-        return {
-            "type": "stream_end",
-            "temp_id": temp_id,
-            "response_text": f"Error generating response: {str(error)}",
-            "thinking_text": "",
-            "session_id": context.session_id,
-            "memory_entries": [],
-            "anthropic_calls": [],
-            "skipped": False,
-        }
-
-    # ========== End Helper Methods ==========
-
     async def generate_sdk_response(self, context: AgentResponseContext) -> AsyncIterator[dict]:
         """
-        Generate a response from an agent using the appropriate AI provider.
+        Generate a response from an agent using the AI provider with session persistence.
         This is an async generator that yields streaming events as the response is generated.
         Agent can choose to skip responding by calling the 'skip' tool.
-        Agent can record memories by calling the 'memorize' tool (if ENABLE_MEMORY_TOOL=true).
+        Agent can record memories by calling the 'memorize' tool.
 
-        Supports multiple providers:
-        - Claude: Uses Claude Agent SDK with MCP tools
-        - Codex: Uses Codex CLI subprocess with MCP config
+        Supports multiple providers (Claude, Codex) based on context.provider setting.
 
         Args:
             context: AgentResponseContext containing all parameters for response generation
@@ -296,24 +197,24 @@ class AgentManager:
             - {"type": "stream_end", "response_text": Optional[str], "thinking_text": str,
                "session_id": str, "memory_entries": list[str], "anthropic_calls": list[str]}
         """
-        # Determine provider and route to appropriate implementation
-        provider_type = context.provider or "claude"
+
+        # Create task identifier from room and agent IDs
+        task_id = context.task_id or TaskIdentifier(room_id=context.room_id, agent_id=context.agent_id)
+
+        # Generate a temporary ID for this streaming response
+        temp_id = f"temp_{task_id}_{uuid.uuid4().hex[:8]}"
+
+        # Get provider for this context
+        provider_type = ProviderType(context.provider)
         provider = get_provider(provider_type)
+        logger.info(f"Using provider: {provider_type.value}")
 
-        if provider.provider_type == ProviderType.CODEX:
-            # Use Codex CLI-based implementation
-            async for event in self._generate_codex_response(context, provider):
-                yield event
-            return
-
-        # Claude provider: continue with existing SDK implementation below
-
-        # Setup task identifiers
-        task_id, temp_id = self._setup_task_identifiers(context)
+        # Get the pool for this provider (before try block for exception handler access)
+        pool = self._get_pool(provider_type)
 
         # Log what the agent is receiving
         logger.info(
-            f"🤖 Agent generating response | Session: {context.session_id or 'NEW'} | Task: {task_id} | Temp ID: {temp_id}"
+            f"🤖 Agent generating response | Provider: {provider_type.value} | Session: {context.session_id or 'NEW'} | Task: {task_id} | Temp ID: {temp_id}"
         )
         logger.debug(f"System prompt (first 100 chars): {context.system_prompt[:100]}...")
         logger.debug(f"User message: {context.user_message}")
@@ -328,7 +229,9 @@ class AgentManager:
             }
 
             # Build final system prompt
-            final_system_prompt = self._build_final_system_prompt(context)
+            final_system_prompt = context.system_prompt
+            if context.conversation_started:
+                final_system_prompt = f"{context.system_prompt}\n\n---\n\nCurrent time: {context.conversation_started}"
 
             response_text = ""
             thinking_text = ""
@@ -338,20 +241,36 @@ class AgentManager:
             anthropic_calls = []  # Track anthropic tool calls (via hook)
             skip_tool_capture = []  # Track skip tool calls (via hook)
 
-            # Build provider-agnostic options, then convert via provider
-            provider = get_provider(provider_type)
+            # Determine model based on provider
+            from core import get_settings
+
+            settings = get_settings()
+            model = ""
+            if provider_type == ProviderType.CODEX and settings.codex_model:
+                model = settings.codex_model
+
+            # Build provider-agnostic options
             base_options = AIClientOptions(
                 system_prompt=final_system_prompt,
-                model="",  # Use provider default
+                model=model,
                 session_id=context.session_id,
                 agent_name=context.agent_name,
                 agent_id=context.agent_id,
-                config_file=context.config.config_file if context.config else None,
+                config_file=context.config.config_file,
                 group_name=context.group_name,
                 has_situation_builder=context.has_situation_builder,
+                long_term_memory_index=context.config.long_term_memory_index,
+                mcp_tools={
+                    "agent_name": context.agent_name,
+                    "agent_group": context.group_name or "default",
+                    "agent_id": context.agent_id,
+                    "room_id": context.room_id,
+                    "config_file": context.config.config_file,
+                },
             )
+
+            # Build provider-specific options with tool capture hooks
             options = provider.build_options(base_options, anthropic_calls, skip_tool_capture)
-            parser = provider.get_parser()
 
             # Build the message content - can be string or list of content blocks
             # Content blocks may include inline images within <conversation_so_far>
@@ -371,10 +290,10 @@ class AgentManager:
                 if context.conversation_history:
                     message_to_send = f"{context.conversation_history}\n\n{context.user_message}"
 
-            # Get or create client from pool (reuses client for same room-agent pair)
+            # Get or create client from provider pool (reuses client for same room-agent pair)
             # This prevents creating hundreds of agent session files
             pool_key = task_id
-            client, _ = await self.client_pool.get_or_create(pool_key, options)
+            client, _ = await pool.get_or_create(pool_key, options)
 
             # Register this client for interruption support
             self.active_clients[task_id] = client
@@ -412,7 +331,7 @@ class AgentManager:
             )
 
             try:
-                # Build query content
+                # Build query content based on message type
                 if isinstance(message_to_send, list) and has_images:
                     # SDK requires async generator for multimodal content
                     async def multimodal_message_generator():
@@ -439,10 +358,13 @@ class AgentManager:
                 logger.error(f"⏰ Timeout sending message to agent | Task: {context.task_id}")
                 raise Exception("Timeout sending message to agent")
 
+            # Get the parser for this provider
+            stream_parser = provider.get_parser()
+
             # Receive and stream the response
             async for message in client.receive_response():
-                # Parse the message using provider's parser
-                parsed = parser.parse_message(message, response_text, thinking_text)
+                # Parse the message using provider's stream parser
+                parsed = stream_parser.parse_message(message, response_text, thinking_text)
 
                 # Calculate deltas for yielding
                 content_delta = parsed.response_text[len(response_text) :]
@@ -515,8 +437,14 @@ class AgentManager:
                         if not (is_system_init and skip_system_init):
                             logger.debug(f"📨 Received message:\n{format_message_for_debug(message)}")
 
-            # Cleanup streaming task
-            self._cleanup_streaming_task(task_id, f"Unregistered client for task: {task_id}")
+            # Unregister the client when done
+            if context.task_id and context.task_id in self.active_clients:
+                del self.active_clients[context.task_id]
+                logger.debug(f"Unregistered client for task: {context.task_id}")
+
+            # Clean up streaming state
+            if task_id in self.streaming_state:
+                del self.streaming_state[task_id]
 
             # Log response summary
             final_response = response_text if response_text else None
@@ -542,234 +470,83 @@ class AgentManager:
             )
 
             # Yield stream_end event with final data
-            yield self._build_stream_end_event(
-                temp_id=temp_id,
-                response_text=response_text,
-                thinking_text=thinking_text,
-                session_id=new_session_id,
-                memory_entries=memory_entries,
-                anthropic_calls=anthropic_calls,
-                skip_used=skip_tool_called,
-            )
+            yield {
+                "type": "stream_end",
+                "temp_id": temp_id,
+                "response_text": final_response,
+                "thinking_text": thinking_text,
+                "session_id": new_session_id,
+                "memory_entries": memory_entries,
+                "anthropic_calls": anthropic_calls,
+                "skipped": skip_tool_called,
+            }
 
         except asyncio.CancelledError:
             # Task was cancelled due to interruption - this is expected
-            self._cleanup_streaming_task(task_id)
-            logger.info(f"🛑 Agent response interrupted | Task: {task_id}")
-            yield self._build_cancellation_event(temp_id, context)
+            # Clean up client from active_clients (but keep it in pool for reuse)
+            if context.task_id and context.task_id in self.active_clients:
+                del self.active_clients[context.task_id]
+                logger.debug(f"Unregistered client for task (interrupted): {context.task_id}")
+
+            # Clean up streaming state
+            if task_id in self.streaming_state:
+                del self.streaming_state[task_id]
+
+            logger.info(f"🛑 Agent response interrupted | Task: {context.task_id}")
+            # Yield stream_end to indicate interruption
+            yield {
+                "type": "stream_end",
+                "temp_id": temp_id,
+                "response_text": None,
+                "thinking_text": "",
+                "session_id": context.session_id,
+                "memory_entries": [],
+                "anthropic_calls": [],
+                "skipped": True,
+            }
 
         except Exception as e:
             # Clean up client on error
-            self._cleanup_streaming_task(task_id)
+            if context.task_id and context.task_id in self.active_clients:
+                del self.active_clients[context.task_id]
+                logger.debug(f"Unregistered client for task (error cleanup): {context.task_id}")
+
+            # Clean up streaming state
+            if task_id in self.streaming_state:
+                del self.streaming_state[task_id]
 
             # Check if this is an interruption-related error
             error_str = str(e).lower()
             if "interrupt" in error_str or "cancelled" in error_str:
-                logger.info(f"🛑 Agent response interrupted | Task: {task_id}")
-                yield self._build_cancellation_event(temp_id, context)
+                logger.info(f"🛑 Agent response interrupted | Task: {context.task_id}")
+                # Yield stream_end to indicate interruption
+                yield {
+                    "type": "stream_end",
+                    "temp_id": temp_id,
+                    "response_text": None,
+                    "thinking_text": "",
+                    "session_id": context.session_id,
+                    "memory_entries": [],
+                    "anthropic_calls": [],
+                    "skipped": True,
+                }
                 return
 
             # Remove client from pool on any error to ensure fresh client next time
-            if task_id in self.client_pool.pool:
-                await self.client_pool.cleanup(task_id)
+            # task_id was already created at the beginning of the function
+            if task_id in pool.pool:
+                # Use cleanup to properly disconnect in background task
+                await pool.cleanup(task_id)
 
             logger.error(f"❌ Error generating response: {str(e)}", exc_info=DEBUG_MODE)
-            yield self._build_error_event(temp_id, context, e)
-
-    async def _generate_codex_response(
-        self,
-        context: AgentResponseContext,
-        provider: AIProvider,
-    ) -> AsyncIterator[dict]:
-        """Generate response using Codex CLI with MCP tools.
-
-        This method handles the Codex-specific response generation flow:
-        1. Build provider-agnostic options with MCP tool config
-        2. Create Codex client via provider
-        3. Stream response and parse events
-        4. Handle skip/memorize tools via stream parsing
-
-        Args:
-            context: AgentResponseContext with all parameters
-            provider: The Codex AIProvider instance
-
-        Yields:
-            Streaming events matching the same format as Claude:
-            - stream_start, content_delta, thinking_delta, stream_end
-        """
-        # Setup task identifiers
-        task_id, temp_id = self._setup_task_identifiers(context)
-
-        logger.info(f"🤖 [Codex] Agent generating response | Session: {context.session_id or 'NEW'} | Task: {task_id}")
-
-        yield {"type": "stream_start", "temp_id": temp_id}
-
-        try:
-            # Build final system prompt with timestamp
-            final_system_prompt = self._build_final_system_prompt(context)
-
-            # Build provider-agnostic options
-            # MCP tools will be configured via TOML config generation
-            base_options = AIClientOptions(
-                system_prompt=final_system_prompt,
-                model="",  # Use Codex default
-                session_id=context.session_id,
-                mcp_tools={
-                    "agent_name": context.agent_name,
-                    "agent_group": context.group_name or "default",
-                    "agent_id": context.agent_id,
-                    "config_file": context.config.config_file if context.config else None,
-                },
-                agent_name=context.agent_name,
-                agent_id=context.agent_id,
-                group_name=context.group_name,
-                has_situation_builder=context.has_situation_builder,
-            )
-
-            # Build message content first (needed for session recovery)
-            message_content = self._build_codex_message_content(context)
-
-            # Build full conversation for session recovery (when thread is lost)
-            # This includes more history than the regular message_content
-            full_conversation = None
-            if context.full_conversation_for_recovery:
-                full_conversation = self._content_blocks_to_text(context.full_conversation_for_recovery)
-                logger.debug(f"[Codex] Full conversation for recovery: {len(full_conversation)} chars, message_content: {len(message_content)} chars")
-            else:
-                logger.debug(f"[Codex] No full_conversation_for_recovery available")
-
-            # Build Codex-specific options via provider
-            # Include full_conversation for session recovery when thread is lost
-            codex_options = provider.build_options(base_options)
-            codex_options.full_conversation = full_conversation or message_content
-            client = provider.create_client(codex_options)
-            parser = provider.get_parser()
-
-            # Connect and register for interruption
-            await client.connect()
-            self.active_clients[task_id] = client
-            self.streaming_state[task_id] = {"thinking_text": "", "response_text": ""}
-
-            logger.info(f"📤 [Codex] Sending message | Task: {task_id} | Length: {len(message_content)}")
-            await client.query(message_content)
-
-            response_text = ""
-            thinking_text = ""
-            new_session_id = context.session_id
-            skip_used = False
-            memory_entries: list[str] = []
-            anthropic_calls: list[str] = []
-
-            # Stream and parse response
-            async for raw_event in client.receive_response():
-                parsed = parser.parse_message(raw_event, response_text, thinking_text)
-
-                # Calculate deltas
-                content_delta = parsed.response_text[len(response_text) :]
-                thinking_delta = parsed.thinking_text[len(thinking_text) :]
-
-                # Update session if found
-                if parsed.session_id:
-                    new_session_id = parsed.session_id
-
-                # Track tool usage
-                if parsed.skip_used:
-                    skip_used = True
-                memory_entries.extend(parsed.memory_entries)
-                anthropic_calls.extend(parsed.anthropic_calls)
-
-                # Update accumulated text
-                response_text = parsed.response_text
-                thinking_text = parsed.thinking_text
-
-                # Update streaming state
-                if task_id in self.streaming_state:
-                    if skip_used:
-                        self.streaming_state[task_id]["thinking_text"] = thinking_text
-                        self.streaming_state[task_id]["response_text"] = ""
-                        self.streaming_state[task_id]["skip_used"] = True
-                    else:
-                        self.streaming_state[task_id]["thinking_text"] = thinking_text
-                        self.streaming_state[task_id]["response_text"] = response_text
-
-                # Yield deltas
-                if content_delta and not skip_used:
-                    yield {"type": "content_delta", "delta": content_delta, "temp_id": temp_id}
-                if thinking_delta:
-                    yield {"type": "thinking_delta", "delta": thinking_delta, "temp_id": temp_id}
-
-            # Cleanup
-            self._cleanup_streaming_task(task_id)
-            await client.disconnect()
-
-            # Log summary
-            if skip_used:
-                logger.info(f"⏭️  [Codex] Agent skipped | Session: {new_session_id}")
-            else:
-                logger.info(
-                    f"✅ [Codex] Response generated | Length: {len(response_text)} chars | Session: {new_session_id}"
-                )
-
-            yield self._build_stream_end_event(
-                temp_id=temp_id,
-                response_text=response_text,
-                thinking_text=thinking_text,
-                session_id=new_session_id,
-                memory_entries=memory_entries,
-                anthropic_calls=anthropic_calls,
-                skip_used=skip_used,
-            )
-
-        except asyncio.CancelledError:
-            # Task was cancelled
-            self._cleanup_streaming_task(task_id)
-            logger.info(f"🛑 [Codex] Agent response interrupted | Task: {task_id}")
-            yield self._build_cancellation_event(temp_id, context)
-
-        except Exception as e:
-            # Cleanup on error
-            self._cleanup_streaming_task(task_id)
-            logger.error(f"❌ [Codex] Error generating response: {str(e)}", exc_info=DEBUG_MODE)
-            yield self._build_error_event(temp_id, context, e)
-
-    def _build_codex_message_content(self, context: AgentResponseContext) -> str:
-        """Build message content string for Codex CLI.
-
-        Codex CLI expects a simple string message (no multimodal support via CLI).
-
-        Args:
-            context: AgentResponseContext with user_message
-
-        Returns:
-            String message content
-        """
-        if isinstance(context.user_message, list):
-            # Extract text from content blocks
-            text_parts = []
-            for block in context.user_message:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text_parts.append(block.get("text", ""))
-            message = "\n".join(text_parts)
-        else:
-            message = str(context.user_message)
-
-        # Prepend conversation history if present
-        if context.conversation_history:
-            message = f"{context.conversation_history}\n\n{message}"
-
-        return message
-
-    def _content_blocks_to_text(self, content_blocks: List[dict]) -> str:
-        """Convert content blocks to plain text string.
-
-        Args:
-            content_blocks: List of content blocks (text/image dicts)
-
-        Returns:
-            String with text content extracted from blocks
-        """
-        text_parts = []
-        for block in content_blocks:
-            if isinstance(block, dict) and block.get("type") == "text":
-                text_parts.append(block.get("text", ""))
-        return "\n".join(text_parts)
+            # Yield error as stream_end
+            yield {
+                "type": "stream_end",
+                "temp_id": temp_id,
+                "response_text": f"Error generating response: {str(e)}",
+                "thinking_text": "",
+                "session_id": context.session_id,
+                "memory_entries": [],
+                "anthropic_calls": [],
+                "skipped": False,
+            }

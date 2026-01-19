@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ChitChats is a multi-agent chat room application where multiple AI agents with different personalities can interact in real-time chat rooms. The application supports multiple AI providers (Claude and Codex) with provider selection at room creation time.
+ChitChats is a multi-Claude chat room application where multiple Claude AI agents with different personalities can interact in real-time chat rooms.
 
 **Tech Stack:**
 - Backend: FastAPI + SQLAlchemy (async) + PostgreSQL
 - Frontend: React + TypeScript + Vite + Tailwind CSS
-- AI Integration: Multi-provider support (Claude Agent SDK, OpenAI Codex)
+- AI Integration: Anthropic Claude Agent SDK
 - Real-time Communication: HTTP Polling (2-second intervals)
 - Background Processing: APScheduler for autonomous agent interactions
 
@@ -22,7 +22,7 @@ make stop          # Stop all servers
 make clean         # Clean build artifacts
 
 # Backend only
-cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8001
 
 # Frontend only
 cd frontend && npm run dev
@@ -35,20 +35,19 @@ uv run pytest --cov=backend --cov-report=term-missing
 
 ### Backend
 - **FastAPI** application with REST API and polling endpoints
-- **Multi-provider architecture** with abstraction layer for Claude and Codex
+- **Multi-agent orchestration** with Claude SDK integration
 - **PostgreSQL** database with async SQLAlchemy (asyncpg)
 - **Background scheduler** for autonomous agent conversations
 - **In-memory caching** for performance optimization
 - **Domain layer** with Pydantic models for type-safe business logic
 - **Key features:**
-  - **Multi-provider support** - Choose between Claude or Codex when creating rooms (immutable after creation)
   - Agents are independent entities that persist across rooms
   - Room-specific conversation sessions per agent
   - Auto-seeding agents from `agents/` directory
   - Recent events auto-update based on conversation history
   - Agents continue conversations in background when user is not in room
   - Cached database queries and filesystem reads (70-90% performance improvement)
-  - Modular tool architecture (action_tools, guidelines_tools)
+  - Modular tool architecture (action_tools, guidelines_tools, brain_tools)
 
 **For detailed backend documentation**, see [backend/README.md](backend/README.md) which includes:
 - Complete API reference
@@ -59,11 +58,11 @@ uv run pytest --cov=backend --cov-report=term-missing
 - Phase 5 refactored SDK integration (AgentManager, ClientPool, StreamParser)
 - Debugging guides
 
-**For multi-provider implementation details**, see [plan.md](plan.md) which documents:
-- Provider abstraction layer (`backend/providers/`)
-- Immutable provider architecture (provider set at room creation)
-- Claude and Codex provider implementations
-- Provider health check endpoints
+**For Phase 5 refactoring details**, see [plan.md](plan.md) which documents:
+- AgentManager split into focused components (TaskIdentifier, ClientPool, StreamParser)
+- SDK best practices integration
+- 172 lines reduced, improved testability
+- All phases completed (0-4)
 
 **For caching system details**, see [backend/CACHING.md](backend/CACHING.md).
 
@@ -78,43 +77,6 @@ uv run pytest --cov=backend --cov-report=term-missing
   - HTTP polling for live message updates (2-second intervals)
   - Typing indicators
   - Agent thinking process display
-
-### Multi-Provider Architecture
-
-ChitChats supports multiple AI providers with an **immutable provider** design:
-
-**Supported Providers:**
-- **Claude** (default) - Anthropic Claude via Agent SDK
-- **Codex** - OpenAI Codex via CLI
-
-**Key Design Decisions:**
-- Provider is selected at room creation and **cannot be changed** afterward
-- Each room uses a single provider for all conversations
-- Provider indicator shown in room list and header (amber for Claude, green for Codex)
-- Session management is provider-specific (Claude uses sessions, Codex uses threads)
-
-**Provider Selection:**
-```
-Create Room Dialog:
-┌─────────────────────────────┐
-│ Room Name: [____________]   │
-│                             │
-│ Provider:                   │
-│ [🟠 Claude] [🟢 Codex]      │
-│                             │
-│ [Create Room]               │
-└─────────────────────────────┘
-```
-
-**Debug Endpoints:**
-- `GET /debug/providers` - List supported providers
-- `GET /debug/providers/health` - Check provider availability
-
-**Provider Implementation:**
-- Base classes in `backend/providers/base.py`
-- Provider factory in `backend/providers/factory.py`
-- Claude implementation in `backend/providers/claude/`
-- Codex implementation in `backend/providers/codex/`
 
 ## Agent Configuration
 
@@ -135,7 +97,7 @@ agents/
 - ✅ Correct: "Dr. Chen is a seasoned data scientist..." or "프리렌은 엘프 마법사로..."
 - ❌ Wrong: "You are Dr. Chen..." or "당신은 엘프 마법사로..."
 
-**Profile Pictures:** Add image files (png/jpg/jpeg/gif/webp/svg) to agent folders. Common names: `profile.*`, `avatar.*`, `picture.*`, `photo.*`. Changes apply immediately.
+**Profile Pictures:** Add image files (png/jpg/jpeg/gif/webp/svg) to agent folders. Common names: `profile.*`, `avatar.*`, `picture.*`, `photo.*`.
 
 ### Filesystem-Primary Architecture
 
@@ -143,7 +105,6 @@ agents/
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
 - System prompt: `backend/config/tools/guidelines_3rd.yaml` (`system_prompt` field)
 - Tool configurations: `backend/config/tools/*.yaml` files
-- Changes apply immediately on next agent response (hot-reloading)
 - File locking prevents concurrent write conflicts
 - See `backend/utils/file_locking.py` for implementation
 
@@ -155,7 +116,6 @@ Tool descriptions and debug settings are configured via YAML files in `backend/c
 - Defines available tools (skip, memorize, guidelines, configuration)
 - Tool descriptions support template variables (`{agent_name}`, `{config_sections}`)
 - Enable/disable tools individually
-- Changes apply immediately (no restart required)
 
 ### Group-Specific Tool Overrides
 
@@ -187,7 +147,6 @@ tools:
 **Features:**
 - **Follows `tools.yaml` structure** - Any field from `tools.yaml` can be overridden (response, description, etc.)
 - **Group-wide application** - Applies to all agents in `group_*` folder
-- **Hot-reloaded** - Changes apply immediately on next agent response
 - **Selective overrides** - Only override what you need, inherit the rest from global config
 
 **Use Cases:**
@@ -314,8 +273,8 @@ debug:
 
 5. **Access application:**
    - Frontend: http://localhost:5173
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
+   - Backend API: http://localhost:8001
+   - API Docs: http://localhost:8001/docs
 
    Login with the password you used to generate the hash.
 
@@ -331,8 +290,7 @@ debug:
 **Optional:**
 - `USER_NAME` - Display name for user messages in chat (default: "User")
 - `DEBUG_AGENTS` - Set to "true" for verbose agent logging
-- `RECALL_MEMORY_FILE` - Memory file for recall tool: `consolidated_memory` (default) or `long_term_memory`
-- `READ_GUIDELINE_BY` - Guideline delivery mode: `active_tool` (default) or `description`
+- `RECALL_MEMORY_FILE` - Memory file for recall mode: `consolidated_memory` (default) or `long_term_memory`
 - `USE_HAIKU` - Set to "true" to use Haiku model instead of Opus (default: false)
 - `PRIORITY_AGENTS` - Comma-separated agent names for priority responding
 - `MAX_CONCURRENT_ROOMS` - Max rooms for background scheduler (default: 5)
@@ -361,13 +319,13 @@ debug:
 
 **Create agent:** Add folder in `agents/` with required `.md` files using third-person perspective (e.g., "Alice is..." not "You are..."), restart backend
 
-**Update agent:** Edit `.md` files directly (changes apply immediately)
+**Update agent:** Edit `.md` files directly
 
-**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
+**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml`
 
-**Update tool descriptions:** Edit YAML files in `backend/config/tools/` (changes apply immediately)
+**Update tool descriptions:** Edit YAML files in `backend/config/tools/`
 
-**Update guidelines:** Edit `v1/v2/v3.template` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
+**Update guidelines:** Edit `v1/v2/v3.template` section in `backend/config/tools/guidelines_3rd.yaml`
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/tools/debug.yaml`
 
@@ -401,4 +359,6 @@ Or use the script directly:
 - Auto-detects conversation completion
 - Supports custom room names, max interactions, and output files
 
-**Scripts Location:** `scripts/simulation/`
+**Scripts Location:** `scripts/simulation/` and `scripts/testing/`
+
+**See [SIMULATIONS.md](SIMULATIONS.md) for complete guide.**

@@ -10,13 +10,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import crud
-from database import get_db, init_db
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
+from infrastructure.database import get_db, init_db
 from infrastructure.scheduler import BackgroundScheduler
 from orchestration import ChatOrchestrator
 
-from core import AgentManager, get_logger, get_settings
+from core import get_logger, get_settings
+from core.manager import AgentManager
 
 logger = get_logger("AppFactory")
 
@@ -29,7 +30,18 @@ def create_app() -> FastAPI:
         Configured FastAPI application instance
     """
     from fastapi.middleware.cors import CORSMiddleware
-    from routers import agent_management, agents, auth, debug, exports, mcp_tools, messages, room_agents, rooms
+    from routers import (
+        agent_management,
+        agents,
+        auth,
+        debug,
+        exports,
+        messages,
+        providers,
+        room_agents,
+        rooms,
+        serve_mcp,
+    )
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
     from slowapi.util import get_remote_address
@@ -84,18 +96,18 @@ def create_app() -> FastAPI:
         # Start background scheduler
         background_scheduler.start()
 
-        # Always start Codex MCP server (MCP is the only mode now)
+        # Initialize Codex MCP server
         codex_mcp_manager = None
         try:
             from providers.codex import CodexMCPServerManager
 
-            logger.info("🔌 Starting Codex MCP server...")
+            logger.info("🔧 Starting Codex MCP server...")
             codex_mcp_manager = await CodexMCPServerManager.get_instance()
             await codex_mcp_manager.ensure_started()
             logger.info("✅ Codex MCP server started")
         except Exception as e:
             logger.warning(f"⚠️ Failed to start Codex MCP server: {e}")
-            logger.warning("⚠️ Codex provider will not be available")
+            logger.warning("   Codex provider will not be available")
 
         logger.info("✅ Application startup complete")
 
@@ -106,8 +118,12 @@ def create_app() -> FastAPI:
 
         # Shutdown Codex MCP server if it was started
         if codex_mcp_manager is not None:
-            logger.info("🔌 Shutting down Codex MCP server...")
-            await codex_mcp_manager.shutdown()
+            try:
+                logger.info("🔧 Shutting down Codex MCP server...")
+                await codex_mcp_manager.shutdown()
+                logger.info("✅ Codex MCP server shutdown complete")
+            except Exception as e:
+                logger.warning(f"⚠️ Error shutting down Codex MCP server: {e}")
 
         background_scheduler.stop()
         await agent_manager.shutdown()
@@ -149,8 +165,9 @@ def create_app() -> FastAPI:
     app.include_router(room_agents.router, prefix="/rooms", tags=["Room-Agents"])
     app.include_router(messages.router, prefix="/rooms", tags=["Messages"])
     app.include_router(debug.router, prefix="/debug", tags=["Debug"])
+    app.include_router(providers.router, tags=["Providers"])
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])
-    app.include_router(mcp_tools.router, tags=["MCP Tools"])
+    app.include_router(serve_mcp.router, tags=["MCP Tools"])
 
     # Mount MCP server - exposes simplified tools for easy LLM integration
     # Only expose "MCP Tools" tag with clean, semantic tool names

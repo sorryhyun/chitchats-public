@@ -1,101 +1,110 @@
+"""
+Database configuration with lazy initialization and SQLite support.
+
+This module provides:
+- Lazy engine initialization (only connects when first used)
+- Automatic SQLite detection on Windows or when USE_SQLITE=true
+- Connection pooling for PostgreSQL
+- No pooling for SQLite (uses single connection)
+
+URL Priority:
+1. DATABASE_URL environment variable
+2. USE_SQLITE=true environment variable
+3. Windows auto-detection (defaults to SQLite)
+4. PostgreSQL default for Linux/Mac
+"""
+
 import logging
 import os
 import platform
 from pathlib import Path
+from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
 logger = logging.getLogger(__name__)
 
+# Lazy-initialized globals
+_engine: Optional[AsyncEngine] = None
+_session_maker: Optional[async_sessionmaker] = None
+
+# Declarative base for models
 Base = declarative_base()
-
-# Lazy initialization - engine created on first use
-_engine = None
-_async_session_maker = None
-
-
-def _is_sqlite_url(url: str) -> bool:
-    """Check if a database URL is for SQLite."""
-    return "sqlite" in url.lower()
 
 
 def _get_database_url() -> str:
     """
-    Determine the appropriate database URL.
+    Get the database URL with automatic fallback logic.
 
     Priority:
-    1. DATABASE_URL environment variable (explicit override)
-    2. USE_SQLITE=true environment variable
-    3. Windows platform auto-detection -> SQLite
-    4. Default to PostgreSQL
+    1. DATABASE_URL environment variable
+    2. USE_SQLITE=true environment variable → SQLite
+    3. Windows platform → SQLite (easier setup)
+    4. PostgreSQL default
     """
-    # Check for explicit DATABASE_URL first
-    db_url = os.getenv("DATABASE_URL")
-    if db_url:
+    # Check for explicit DATABASE_URL
+    if db_url := os.getenv("DATABASE_URL"):
         return db_url
 
-    # Check for USE_SQLITE flag or Windows platform
-    use_sqlite = os.getenv("USE_SQLITE", "").lower() == "true"
-    if use_sqlite or platform.system() == "Windows":
-        # Get project root (parent of backend directory)
+    # Check for explicit SQLite request
+    if os.getenv("USE_SQLITE", "").lower() == "true":
         project_root = Path(__file__).parent.parent
-        sqlite_path = project_root / "chitchats.db"
-        return f"sqlite+aiosqlite:///{sqlite_path}"
+        return f"sqlite+aiosqlite:///{project_root}/chitchats.db"
+
+    # Auto-detect Windows → use SQLite for easier development
+    if platform.system() == "Windows":
+        project_root = Path(__file__).parent.parent
+        return f"sqlite+aiosqlite:///{project_root}/chitchats.db"
 
     # Default to PostgreSQL
     return "postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats"
 
 
-def get_engine():
+def _create_engine() -> AsyncEngine:
+    """Create the async engine with appropriate settings."""
+    url = _get_database_url()
+
+    if "sqlite" in url:
+        logger.info(f"🗄️ Using SQLite database: {url}")
+        # SQLite: no pooling, use check_same_thread=False for async
+        return create_async_engine(
+            url,
+            echo=False,
+            connect_args={"check_same_thread": False},
+        )
+    else:
+        logger.info("🐘 Using PostgreSQL database")
+        # PostgreSQL: connection pooling
+        return create_async_engine(
+            url,
+            echo=False,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
+
+
+def get_engine() -> AsyncEngine:
     """Get or create the database engine (lazy initialization)."""
     global _engine
-
     if _engine is None:
-        database_url = _get_database_url()
-        is_sqlite = _is_sqlite_url(database_url)
-
-        if is_sqlite:
-            # SQLite configuration - no connection pooling
-            _engine = create_async_engine(
-                database_url,
-                echo=False,
-                connect_args={"check_same_thread": False},
-            )
-            logger.info(f"Database engine created: SQLite ({database_url})")
-        else:
-            # PostgreSQL configuration - with connection pooling
-            _engine = create_async_engine(
-                database_url,
-                echo=False,
-                pool_size=10,
-                max_overflow=20,
-                pool_pre_ping=True,
-                pool_recycle=3600,
-            )
-            logger.info("Database engine created: PostgreSQL (pooled)")
-
+        _engine = _create_engine()
     return _engine
 
 
-def get_session_maker():
+def get_session_maker() -> async_sessionmaker:
     """Get or create the session maker (lazy initialization)."""
-    global _async_session_maker
-
-    if _async_session_maker is None:
-        _async_session_maker = async_sessionmaker(
+    global _session_maker
+    if _session_maker is None:
+        _session_maker = async_sessionmaker(
             get_engine(),
             class_=AsyncSession,
             expire_on_commit=False,
             autoflush=False,
         )
-
-    return _async_session_maker
-
-
-def is_sqlite() -> bool:
-    """Check if the current database is SQLite."""
-    return _is_sqlite_url(_get_database_url())
+    return _session_maker
 
 
 async def get_db():
@@ -125,41 +134,93 @@ async def init_db():
     await run_migrations(engine)
 
 
+def is_sqlite() -> bool:
+    """Check if we're using SQLite."""
+    return "sqlite" in _get_database_url()
+
+
+# Legacy compatibility exports (for infrastructure.database.connection import pattern)
+engine = property(lambda self: get_engine())
+async_session_maker = property(lambda self: get_session_maker())
+
+
 # =============================================================================
-# Concurrency Utilities
+# SQLite Concurrency Helpers
 # =============================================================================
-# These functions handle database concurrency:
-# - PostgreSQL: No-ops (handles concurrency natively)
-# - SQLite: Could be re-enabled for write serialization if needed
+# These are re-implemented here for SQLite support while remaining no-ops
+# for PostgreSQL.
 
 
 def retry_on_db_lock(max_retries=5, initial_delay=0.1, backoff_factor=2):
-    """No-op decorator. PostgreSQL handles concurrency natively."""
+    """
+    Decorator to retry on database lock errors (SQLite only).
+    No-op for PostgreSQL which handles concurrency natively.
+    """
+    import asyncio
+    import functools
 
     def decorator(func):
-        return func
+        if not is_sqlite():
+            return func
+
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_error = None
+
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    if "database is locked" in str(e).lower():
+                        last_error = e
+                        await asyncio.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        raise
+
+            raise last_error
+
+        return wrapper
 
     return decorator
 
 
 class SerializedWrite:
-    """No-op async context manager. PostgreSQL handles concurrency natively."""
+    """
+    Async context manager for serialized writes (SQLite only).
+    No-op for PostgreSQL which handles concurrency natively.
+    """
+
+    _lock = None
 
     def __init__(self, lock_key=None):
-        pass
+        self.lock_key = lock_key
 
     async def __aenter__(self):
+        if is_sqlite():
+            import asyncio
+
+            if SerializedWrite._lock is None:
+                SerializedWrite._lock = asyncio.Lock()
+            await SerializedWrite._lock.acquire()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if is_sqlite() and SerializedWrite._lock is not None:
+            SerializedWrite._lock.release()
         return False
 
 
 def serialized_write(lock_key=None) -> SerializedWrite:
-    """No-op context manager. PostgreSQL handles concurrency natively."""
+    """Create a serialized write context manager."""
     return SerializedWrite(lock_key)
 
 
 async def serialized_commit(db: AsyncSession, lock_key=None) -> None:
-    """Direct commit. PostgreSQL handles concurrency natively."""
-    await db.commit()
+    """Commit with optional serialization for SQLite."""
+    if is_sqlite():
+        async with serialized_write(lock_key):
+            await db.commit()
+    else:
+        await db.commit()

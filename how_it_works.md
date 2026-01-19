@@ -188,7 +188,7 @@ This creates layered characterization: what happened (past) vs. how they feel ab
 
 ## Configuration Files
 
-All configuration is hot-reloaded (no restart needed):
+Configuration files:
 
 | What | Where |
 |------|-------|
@@ -205,6 +205,130 @@ All configuration is hot-reloaded (no restart needed):
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `USE_HAIKU` | Use Haiku model instead of Opus | `false` |
-| `RECALL_MEMORY_FILE` | Memory file for recall tool | `consolidated_memory` |
 
+---
+
+## Custom-Patched CLI (ccdecompose)
+
+ChitChats uses a custom-patched version of Claude Code's `cli.js` to enable features required for multi-agent roleplay that aren't available in the upstream CLI.
+
+### Why We Patch
+
+The upstream Claude Code CLI has limitations that conflict with ChitChats' architecture:
+
+1. **TodoWrite system reminders** - The upstream CLI injects reminders like "your todo list is currently empty" into agent context, breaking immersion
+2. **Default subagents** - Built-in agents (`general-purpose`, `Plan`, `Explore`, etc.) appear in agent listings, which is unnecessary for our use case
+3. **No assistant message injection** - The SDK input parser only accepts `role: "user"` messages, preventing conversation history seeding
+
+### Patches Applied
+
+Our patched `cli.js` is built using the [ccdecompose](../ccdecompose/) toolkit with these patches:
+
+#### 1. `disable-system-reminders`
+
+Suppresses upstream "system reminder" nudges:
+
+- Removes TodoWrite meta reminders (`todo`, `todo_reminder` attachments)
+- Removes `<system-reminder>` warnings for empty/out-of-range file reads
+- Disables TodoWrite-focused guidance blocks in the default system prompt
+
+```bash
+CCDECOMP_PATCH_DISABLE_SYSTEM_REMINDERS=1 make runnable
+```
+
+#### 2. `disable-built-in-agents`
+
+Drops built-in and policy-provided agents from the active agent list:
+
+- Agents with `source: "built-in"` (e.g., `general-purpose`, `Plan`, `Explore`)
+- Agents with `source: "policySettings"`
+
+```bash
+CCDECOMP_PATCH_DISABLE_BUILT_IN_AGENTS=1 make runnable
+```
+
+#### 3. `sdk-allow-assistant-messages`
+
+Extends the stream-JSON SDK input parser to accept `message.role: "assistant"`:
+
+- Assistant messages are appended to conversation history
+- Does **not** trigger a new prompt execution (history seeding only)
+- Preserves full message structure including `thinking` blocks with signatures
+
+This enables ChitChats to inject prior conversation turns when starting a session:
+
+```bash
+node cli.patched.js -p --input-format stream-json <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":"Hey! I'm Alice."}}
+{"type":"user","message":{"role":"user","content":"Hi Alice!"}}
+EOF
+```
+
+With thinking blocks:
+
+```json
+{
+  "type": "assistant",
+  "message": {
+    "role": "assistant",
+    "model": "claude-opus-4-5-20251101",
+    "content": [
+      {"type": "thinking", "thinking": "...", "signature": "<base64>"},
+      {"type": "text", "text": "..."}
+    ]
+  }
+}
+```
+
+### Building the Patched CLI
+
+```bash
+cd ../ccdecompose
+
+# Enable all ChitChats-required patches
+CCDECOMP_PATCH_DISABLE_SYSTEM_REMINDERS=1 \
+CCDECOMP_PATCH_DISABLE_BUILT_IN_AGENTS=1 \
+make runnable
+
+# Output: artifacts/runnable/cli.patched.js
+```
+
+### Additional Patches (Optional)
+
+| Patch | Purpose | Default |
+|-------|---------|---------|
+| `k11-attribution` | Override attribution header string | Enabled |
+| `auth-persistence` | Persist tokens for `--print` mode | Enabled |
+| `ripgrep-prefer-system` | Prefer system `rg` over bundled | Enabled |
+| `debug-phases` | Instrument `x9("action_*")` markers | Disabled |
+
+See [ccdecompose/patched_guide.md](../ccdecompose/patched_guide.md) for full documentation.
+
+---
+
+## Agent Evaluation
+
+We use cross-evaluation to compare agent configurations and prompt changes.
+
+### Cross-Evaluation (Simple)
+
+```bash
+make evaluate-agents-cross AGENT1="프리렌" AGENT2="페른" QUESTIONS=7
+```
+
+This is a basic **character-as-evaluator** approach: one agent evaluates another's responses. It generates side-by-side comparisons but lacks sophisticated metrics.
+
+### What We Measure
+
+Currently, we focus on **enjoyability** rather than hard metrics:
+
+- Does the response feel in-character?
+- Is the conversation engaging and natural?
+- Does the agent maintain consistent personality?
+
+This is intentionally subjective—we're optimizing for immersive roleplay experience, not benchmark scores.
+
+### Historical Note
+
+See [how_it_worked.md](how_it_worked.md#evaluation-learnings) for evaluation history and why A/B testing became less useful after prompt convergence.
 

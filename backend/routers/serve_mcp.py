@@ -9,16 +9,17 @@ from typing import Optional
 
 import crud
 import schemas
-from core import AgentManager, get_settings
-from core.dependencies import (
+from core import (
     RequestIdentity,
     ensure_room_access,
     get_agent_manager,
     get_chat_orchestrator,
     get_request_identity,
+    get_settings,
 )
-from database import get_db
+from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database import get_db
 from orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession

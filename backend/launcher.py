@@ -6,39 +6,15 @@ This is the entry point for the PyInstaller bundle. It:
 2. Runs first-time setup wizard if needed
 3. Starts the uvicorn server
 4. Opens the browser to the application
-
-MCP Server Mode:
-When launched with --mcp <server>, runs as an MCP server instead of web server.
-This allows the bundled exe to spawn itself as MCP tool servers.
-- ClaudeCodeRP.exe --mcp action      → runs action MCP server (skip, memorize, recall)
-- ClaudeCodeRP.exe --mcp guidelines  → runs guidelines MCP server (read, anthropic/openai)
 """
 
-import argparse
-import asyncio
-import atexit
 import getpass
 import os
 import secrets
-import subprocess
 import sys
 import webbrowser
 from pathlib import Path
 from threading import Timer
-
-# Windows detection
-IS_WINDOWS = sys.platform == "win32"
-
-# Track if we locked the Codex skills folder
-_codex_skills_was_locked = False
-
-# Windows asyncio subprocess fix - must be set before any async code runs
-if IS_WINDOWS:
-    # ProactorEventLoop is required for subprocess support on Windows
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-# Codex Windows executable name
-_CODEX_WINDOWS_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
 
 
 def get_base_path() -> Path:
@@ -91,182 +67,6 @@ def copy_default_agents():
 
         shutil.copytree(agents_src, agents_dest)
         print(f"기본 에이전트를 복사했습니다: {agents_dest}")
-
-
-def _get_bundled_codex_path() -> Path | None:
-    """Get the bundled Codex executable path on Windows.
-
-    Checks two locations:
-    1. Next to the main executable (for packaged builds)
-    2. In bundled/ folder (for development)
-    """
-    if not IS_WINDOWS:
-        return None
-
-    # Packaged builds: next to the executable
-    packaged_path = Path(sys.executable).parent / _CODEX_WINDOWS_EXE_NAME
-    if packaged_path.exists():
-        return packaged_path
-
-    # Development: bundled/ folder
-    dev_path = Path(__file__).parent.parent / "bundled" / _CODEX_WINDOWS_EXE_NAME
-    if dev_path.exists():
-        return dev_path
-
-    return None
-
-
-def _get_codex_skills_path() -> Path:
-    """Get the path to the Codex skills folder."""
-    return Path.home() / ".codex" / "skills"
-
-
-def lock_codex_skills() -> bool:
-    """Lock the Codex skills folder to prevent unnecessary prompts.
-
-    Uses icacls to save ACL and deny all access.
-    Returns True if the folder was locked, False otherwise.
-    """
-    global _codex_skills_was_locked
-
-    if not IS_WINDOWS:
-        return False
-
-    skills_path = _get_codex_skills_path()
-    if not skills_path.exists():
-        return False
-
-    acl_backup = Path(f"{skills_path}.acl.txt")
-
-    try:
-        # Save current ACL
-        result = subprocess.run(
-            ["icacls", str(skills_path), "/save", str(acl_backup), "/q"],
-            capture_output=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            print(f"경고: Codex skills ACL 저장 실패")
-            return False
-
-        # Deny all access (inheritance removed, deny Everyone full control)
-        result = subprocess.run(
-            ["icacls", str(skills_path), "/inheritance:r", "/deny", "*S-1-1-0:(OI)(CI)F", "/q"],
-            capture_output=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            _codex_skills_was_locked = True
-            print("Codex skills 폴더 잠금됨")
-            return True
-        else:
-            print(f"경고: Codex skills 폴더 잠금 실패")
-    except Exception as e:
-        print(f"경고: Codex skills 폴더 잠금 실패: {e}")
-
-    return False
-
-
-def unlock_codex_skills() -> bool:
-    """Unlock the Codex skills folder (restore access).
-
-    Restores the original ACL that was saved during lock.
-    Returns True if the folder was unlocked, False otherwise.
-    """
-    global _codex_skills_was_locked
-
-    if not IS_WINDOWS or not _codex_skills_was_locked:
-        return False
-
-    skills_path = _get_codex_skills_path()
-    parent_path = skills_path.parent  # icacls restore runs on parent directory
-    acl_backup = Path(f"{skills_path}.acl.txt")
-
-    if not skills_path.exists() or not acl_backup.exists():
-        return False
-
-    try:
-        # Restore ACL from backup (icacls restore runs on parent dir)
-        result = subprocess.run(
-            ["icacls", str(parent_path), "/restore", str(acl_backup), "/q"],
-            capture_output=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            _codex_skills_was_locked = False
-            # Clean up backup file
-            acl_backup.unlink(missing_ok=True)
-            print("Codex skills 폴더 잠금 해제됨")
-            return True
-        else:
-            print(f"경고: Codex skills 폴더 잠금 해제 실패")
-    except Exception as e:
-        print(f"경고: Codex skills 폴더 잠금 해제 실패: {e}")
-
-    return False
-
-
-def check_codex_logged_in() -> bool:
-    """Check if Codex is logged in (synchronous version for launcher)."""
-    if not IS_WINDOWS:
-        return True  # Skip on non-Windows
-
-    codex_exe = _get_bundled_codex_path()
-    if not codex_exe:
-        print("Codex 실행 파일을 찾을 수 없습니다.")
-        return False
-
-    try:
-        result = subprocess.run(
-            [str(codex_exe), "login", "status"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0 and "logged in" in result.stdout.lower():
-            return True
-        return False
-    except subprocess.TimeoutExpired:
-        print("Codex 인증 확인 시간 초과")
-        return False
-    except Exception as e:
-        print(f"Codex 인증 확인 실패: {e}")
-        return False
-
-
-def run_codex_login() -> bool:
-    """Run Codex login interactively (opens browser for OAuth)."""
-    if not IS_WINDOWS:
-        return True  # Skip on non-Windows
-
-    codex_exe = _get_bundled_codex_path()
-    if not codex_exe:
-        print("Codex 실행 파일을 찾을 수 없습니다.")
-        return False
-
-    print()
-    print("Codex 로그인을 시작합니다...")
-    print("브라우저에서 인증을 완료해주세요.")
-    print()
-
-    try:
-        # Run login interactively (don't capture output)
-        result = subprocess.run(
-            [str(codex_exe), "login"],
-            timeout=300,  # 5 minutes for OAuth
-        )
-        if result.returncode == 0:
-            print("Codex 로그인 성공!")
-            return True
-        else:
-            print(f"Codex 로그인 실패 (종료 코드: {result.returncode})")
-            return False
-    except subprocess.TimeoutExpired:
-        print("Codex 로그인 시간 초과 (5분)")
-        return False
-    except Exception as e:
-        print(f"Codex 로그인 실패: {e}")
-        return False
 
 
 def is_env_configured(env_file: Path) -> bool:
@@ -368,21 +168,6 @@ def setup_environment() -> bool:
     try:
         config = run_first_time_setup()
         create_env_file(env_file, config)
-
-        # Check and run Codex login if needed (Windows only)
-        if IS_WINDOWS and _get_bundled_codex_path():
-            print()
-            print("-" * 60)
-            print("Codex 인증 확인 중...")
-            if not check_codex_logged_in():
-                print("Codex 로그인이 필요합니다.")
-                if not run_codex_login():
-                    print()
-                    print("경고: Codex 로그인에 실패했습니다.")
-                    print("Codex 프로바이더를 사용하려면 나중에 로그인이 필요합니다.")
-            else:
-                print("Codex 이미 로그인되어 있습니다.")
-
         print()
         print("=" * 60)
         print("설정 완료! 애플리케이션을 시작합니다...")
@@ -399,63 +184,10 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 
-def run_mcp_server(server_type: str):
-    """Run an MCP server (action or guidelines).
-
-    This is called when the exe is launched with --mcp <server_type>.
-    The MCP server communicates via stdio with the parent process.
-    """
-    # Set up paths for imports (but don't change working directory)
-    base_path = get_base_path()
-    backend_path = base_path / "backend"
-    if backend_path.exists():
-        sys.path.insert(0, str(backend_path))
-    else:
-        sys.path.insert(0, str(Path(__file__).parent))
-
-    if server_type == "action":
-        from mcp_servers.action_server import main as action_main
-
-        asyncio.run(action_main())
-    elif server_type == "guidelines":
-        from mcp_servers.guidelines_server import main as guidelines_main
-
-        asyncio.run(guidelines_main())
-    else:
-        print(f"Unknown MCP server type: {server_type}", file=sys.stderr)
-        sys.exit(1)
-
-
-def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Claude Code Role Play",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "--mcp",
-        choices=["action", "guidelines"],
-        help="Run as MCP server instead of web server (used internally)",
-    )
-    return parser.parse_args()
-
-
 def main():
     """Main entry point."""
-    args = parse_args()
-
-    # If --mcp is specified, run as MCP server instead of web server
-    if args.mcp:
-        run_mcp_server(args.mcp)
-        return
-
     # Set up paths first
     setup_paths()
-
-    # Lock Codex skills folder to prevent unnecessary prompts
-    # Register cleanup on exit
-    lock_codex_skills()
-    atexit.register(unlock_codex_skills)
 
     # Run environment setup (including first-time wizard if needed)
     setup_was_run = setup_environment()
@@ -476,7 +208,6 @@ def main():
 
     # Import the app directly instead of using string path
     # This works better with PyInstaller bundling
-    # Note: main.py sets WindowsProactorEventLoopPolicy at import time
     from main import app
 
     # Run the server with the app object directly

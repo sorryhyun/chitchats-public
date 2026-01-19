@@ -1,38 +1,31 @@
 """
 Pydantic schemas for API request/response models.
 
-This package organizes schemas by domain entity. All schemas are re-exported
-at the package level for backwards compatibility with existing imports.
-
-Usage:
-    from schemas import Room, Agent, Message
-    # or
-    from schemas.room import Room
-    from schemas.agent import Agent
+Re-exports all schemas for backward compatibility with `from schemas import X`.
 """
 
 from .agent import Agent, AgentBase, AgentCreate, AgentUpdate
-from .base import TimestampSerializerMixin
+from .base import ImageItem, TimestampSerializerMixin
 from .message import Message, MessageBase, MessageCreate
-from .room import Room, RoomBase, RoomCreate, RoomSummary, RoomUpdate, RoomWithAgents
+from .room import Room, RoomBase, RoomCreate, RoomSummary, RoomUpdate
 
 __all__ = [
     # Base
     "TimestampSerializerMixin",
-    # Agent schemas
+    "ImageItem",
+    # Agent
     "AgentBase",
     "AgentCreate",
     "AgentUpdate",
     "Agent",
-    # Message schemas
+    # Message
     "MessageBase",
     "MessageCreate",
     "Message",
-    # Room schemas
+    # Room
     "RoomBase",
     "RoomCreate",
     "RoomUpdate",
     "Room",
-    "RoomWithAgents",
     "RoomSummary",
 ]

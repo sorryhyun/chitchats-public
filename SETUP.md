@@ -52,8 +52,8 @@ make dev
 
 Access:
 - Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+- Backend API: http://localhost:8001
+- API Docs: http://localhost:8001/docs
 
 Login with the password you used to generate the hash.
 
@@ -72,7 +72,8 @@ agents/agent_name/
   ├── in_a_nutshell.md           # ✅ Always loaded
   ├── characteristics.md          # ✅ Always loaded
   ├── consolidated_memory.md     # 📋 Parsed into recallable sections
-  └── recent_events.md           # ✅ Always loaded (optional)
+  ├── anti_pattern.md            # ✅ Always loaded
+  └── recent_events.md           # ✅ Always loaded
 ```
 
 **Memory file format:**
@@ -197,21 +198,31 @@ ChitChats uses JWT token-based authentication with bcrypt password hashing.
 make simulate ARGS='--password "yourpass" --scenario "Discuss AI ethics" --agents "alice,bob,charlie"'
 ```
 
+**See [SIMULATIONS.md](SIMULATIONS.md) for complete guide.**
+
+### Test Agent Capabilities
+
+```bash
+make test-agents ARGS='10 agent1 agent2 agent3'
+# 10 questions per agent
+```
+
 ### Scripts Location
 
 All scripts are now organized in `scripts/` directory:
 - `scripts/setup/` - Setup utilities (generate_hash.py)
 - `scripts/simulation/` - Simulation scripts
+- `scripts/testing/` - Testing scripts
 
 ## Common Tasks
 
 **Create agent:** Add folder in `agents/` with required `.md` files using third-person perspective (e.g., "Alice is..." not "You are..."), restart backend
 
-**Update agent:** Edit `.md` files directly (changes apply immediately)
+**Update agent:** Edit `.md` files directly
 
-**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml` (changes apply immediately)
+**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml`
 
-**Update tool descriptions:** Edit YAML files in `backend/config/tools/` (changes apply immediately)
+**Update tool descriptions:** Edit YAML files in `backend/config/tools/`
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/tools/debug.yaml`
 

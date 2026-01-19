@@ -6,10 +6,10 @@ from pathlib import Path
 import crud
 import schemas
 from config import list_available_configs
-from core.auth import require_admin
-from database import get_db
+from core import require_admin
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from infrastructure.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()

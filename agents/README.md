@@ -226,7 +226,6 @@ Add image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`) to agent fold
 - `picture.*`
 - `photo.*`
 
-Changes apply immediately without restart.
 
 ---
 

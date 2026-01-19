@@ -1,0 +1,14 @@
+# Configuration for 회의실_도구 group (voting, whiteboard, etc.)
+# Agents in this group are tools that respond at specific times
+
+# Final response: these agents get one last turn when the conversation limit is reached
+# This allows vote counters to report final results even when max_interactions is hit
+final_response: true
+
+# Transparent: these agents' messages don't trigger other agents to respond
+# This prevents infinite loops where a tool response triggers more discussion
+transparent: true
+
+# Negative priority: respond after all other agents (priority < 0 = last)
+# Order: priority agents (>0) -> regular agents (=0, shuffled) -> last agents (<0)
+priority: -1

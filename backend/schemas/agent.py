@@ -1,5 +1,3 @@
-"""Agent-related Pydantic schemas."""
-
 from datetime import datetime
 from typing import Optional
 
@@ -58,6 +56,10 @@ class Agent(AgentBase):
 
     @field_serializer("interrupt_every_turn")
     def serialize_interrupt_every_turn(self, value: int, _info):
+        return _serialize_bool(value)
+
+    @field_serializer("transparent")
+    def serialize_transparent(self, value: int, _info):
         return _serialize_bool(value)
 
     class Config:

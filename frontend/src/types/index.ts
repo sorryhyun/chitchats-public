@@ -40,6 +40,11 @@ export interface AgentConfig {
   [key: string]: string;
 }
 
+export interface ImageItem {
+  data: string;  // Base64-encoded image data
+  media_type: string;  // MIME type (e.g., 'image/png', 'image/webp')
+}
+
 export interface Message {
   id: number | string;  // Can be temp_id (string) during streaming or real DB id (number) after
   room_id?: number;
@@ -57,8 +62,10 @@ export interface Message {
   is_streaming?: boolean;  // True while message is being streamed
   temp_id?: string;  // Temporary ID for streaming messages
   is_skipped?: boolean;  // True when agent chose to skip/ignore the message
-  image_data?: string | null;  // Base64-encoded image data
-  image_media_type?: string | null;  // MIME type (e.g., 'image/png', 'image/jpeg')
+  images?: ImageItem[] | null;  // Multiple images (up to 5)
+  // DEPRECATED: Keep for backward compatibility
+  image_data?: string | null;
+  image_media_type?: string | null;
 }
 
 export interface MessageCreate {
@@ -66,8 +73,6 @@ export interface MessageCreate {
   role: string;
   agent_id?: number | null;
 }
-
-export type ProviderType = 'claude' | 'codex';
 
 export interface Room {
   id: number;
@@ -99,7 +104,7 @@ export interface RoomSummary {
 export interface RoomCreate {
   name: string;
   max_interactions?: number | null;
-  default_provider?: ProviderType;
+  provider?: ProviderType;
 }
 
 export interface RoomUpdate {
@@ -109,3 +114,15 @@ export interface RoomUpdate {
 }
 
 export type ParticipantType = 'user' | 'situation_builder' | 'character';
+
+export type ProviderType = 'claude' | 'codex';
+
+export interface ProviderInfo {
+  name: string;
+  available: boolean;
+}
+
+export interface ProvidersResponse {
+  providers: ProviderInfo[];
+  default: string;
+}

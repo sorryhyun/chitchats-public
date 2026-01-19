@@ -19,7 +19,7 @@ import bcrypt
 import jwt
 from fastapi import HTTPException, Request, status
 
-from core import get_settings
+from core.settings import get_settings
 
 logger = logging.getLogger("Auth")
 
@@ -259,12 +259,14 @@ class AuthMiddleware:
         "/redoc",
         "/auth/login",
         "/auth/health",
+        "/register",  # OAuth dynamic client registration (for MCP clients)
     }
 
     # Path prefixes that don't require authentication
     EXCLUDED_PREFIXES = (
         "/mcp",  # MCP endpoint (handles its own auth via MCP protocol)
         "/assets",  # Static assets (JS, CSS, images) for bundled mode
+        "/.well-known",  # OAuth/OpenID discovery (for MCP clients)
     )
 
     # API path prefixes (routes that require authentication)

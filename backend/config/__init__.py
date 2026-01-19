@@ -1,87 +1,103 @@
 """
-Configuration module for the backend application.
+Configuration module for ChitChats.
 
 This module provides:
-1. Agent configuration parsing (from markdown files)
-2. YAML configuration loading with caching (tools, guidelines, debug settings)
-3. Tool configuration functions (descriptions, responses, groupings)
-4. Memory parsing utilities
+- Agent configuration parsing (from agents/*.md files)
+- YAML configuration loading and caching (tools, guidelines, debug, etc.)
+- Tool configuration and descriptions
+- Memory parsing utilities
+- Prompt building utilities
+
+Note: Tool-related config has moved to mcp_servers.config but is re-exported here
+for backward compatibility.
 """
 
-# Agent configuration (markdown-based)
-from .agent_io import AgentConfigIO
 
-# YAML configuration caching
-from .cache import (
-    _config_cache,
-    _get_file_mtime,
-    _load_yaml_file,
-    clear_cache,
-    get_cached_config,
-)
-from .constants import (
-    DEFAULT_FALLBACK_PROMPT,
-    get_base_system_prompt,
-)
+# Lazy imports for all modules to avoid circular dependencies
+def __getattr__(name):
+    """Lazy import attributes to avoid circular imports."""
+    # Constants
+    if name == "get_base_system_prompt":
+        from . import constants
 
-# YAML configuration loaders
-from .loaders import (
-    get_conversation_context_config,
-    get_debug_config,
-    get_extreme_traits,
-    get_group_config,
-    get_guidelines_config,
-    get_guidelines_config_path,
-    get_guidelines_file,
-    get_provider_tools_config,
-    get_tools_config,
-    merge_tool_configs,
-)
+        return constants.get_base_system_prompt
 
-# Memory parsing
-from .memory_parser import (
-    get_memory_by_subtitle,
-    get_memory_subtitles,
-    parse_long_term_memory,
-)
-from .parser import list_available_configs, parse_agent_config
-from .prompt_builder import build_system_prompt
+    # Parser
+    if name in ("list_available_configs", "parse_agent_config"):
+        from . import parser
 
-# Tool configuration functions
-from .tool_config import (
-    get_situation_builder_note,
-    get_tool_description,
-    get_tool_group,
-    get_tool_names_by_group,
-    get_tool_response,
-    get_tools_by_group,
-    is_tool_enabled,
-)
+        return getattr(parser, name)
 
-# Configuration validation
-from .validation import (
-    log_config_validation,
-    reload_all_configs,
-    validate_config_schema,
-)
+    # Cache utilities
+    if name in ("_config_cache", "_get_file_mtime", "_load_yaml_file", "clear_cache", "get_cached_config"):
+        from . import cache
+
+        return getattr(cache, name)
+
+    # Loaders - now in mcp_servers.config
+    if name in (
+        "get_conversation_context_config",
+        "get_debug_config",
+        "get_extreme_traits",
+        "get_group_config",
+        "get_guidelines_config",
+        "get_guidelines_config_path",
+        "get_guidelines_file",
+        "get_tools_config",
+        "merge_tool_configs",
+    ):
+        from mcp_servers.config import loaders
+
+        return getattr(loaders, name)
+
+    # Tool config - now in mcp_servers.config
+    if name in (
+        "get_situation_builder_note",
+        "get_tool_description",
+        "get_tool_group",
+        "get_tool_names_by_group",
+        "get_tool_response",
+        "get_tools_by_group",
+        "is_tool_enabled",
+    ):
+        from mcp_servers.config import tool_config
+
+        return getattr(tool_config, name)
+
+    # Validation
+    if name in ("log_config_validation", "reload_all_configs", "validate_config_schema"):
+        from . import validation
+
+        return getattr(validation, name)
+
+    # Memory parsing (now in parser.py)
+    if name in ("get_memory_by_subtitle", "get_memory_subtitles", "parse_long_term_memory"):
+        from . import parser
+
+        return getattr(parser, name)
+
+    # Prompt builder
+    if name == "build_system_prompt":
+        from . import prompt_builder
+
+        return prompt_builder.build_system_prompt
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
-    # Agent configuration
+    # Agent config
     "parse_agent_config",
     "list_available_configs",
     "get_base_system_prompt",
-    "DEFAULT_FALLBACK_PROMPT",
-    "build_system_prompt",
-    "AgentConfigIO",
     # Cache
     "_config_cache",
     "_get_file_mtime",
     "_load_yaml_file",
     "clear_cache",
     "get_cached_config",
-    # Loaders
+    # Loaders (from mcp_servers.config)
     "get_tools_config",
-    "get_provider_tools_config",
     "get_guidelines_config",
     "get_guidelines_config_path",
     "get_guidelines_file",
@@ -90,7 +106,7 @@ __all__ = [
     "get_extreme_traits",
     "get_group_config",
     "merge_tool_configs",
-    # Tool config
+    # Tool config (from mcp_servers.config)
     "get_tool_description",
     "get_tool_response",
     "get_situation_builder_note",
@@ -102,8 +118,10 @@ __all__ = [
     "reload_all_configs",
     "validate_config_schema",
     "log_config_validation",
-    # Memory parsing
+    # Memory parser
     "parse_long_term_memory",
     "get_memory_subtitles",
     "get_memory_by_subtitle",
+    # Prompt builder
+    "build_system_prompt",
 ]

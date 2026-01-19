@@ -1,109 +1,141 @@
-**🌐 Language: 한국어 | [English](README.en.md)**
-
 # ChitChats
 
-여러 AI 캐릭터들이 함께 대화하는 멀티 에이전트 채팅 애플리케이션입니다. Claude와 Codex 등 다양한 AI 프로바이더를 지원합니다.
+A real-time multi-agent chat application where multiple Claude AI personalities interact in shared rooms.
 
-## 주요 기능
+## Features
 
-- **멀티 에이전트 대화** - 고유한 성격을 가진 여러 AI 에이전트가 함께 대화
-- **멀티 프로바이더 지원** - 방 생성 시 Claude 또는 Codex 선택 가능
-- **실시간 업데이트** - HTTP 폴링을 통한 실시간 메시지 업데이트
-- **에이전트 커스터마이징** - 마크다운 파일과 프로필 사진으로 캐릭터 설정
-- **1:1 다이렉트 채팅** - 개별 에이전트와 비공개 대화
-- **확장 사고 표시** - 에이전트의 사고 과정 확인 (32K 토큰)
-- **JWT 인증** - 비밀번호 기반 보안 인증
+- **Multi-agent conversations** - Multiple Claude agents with distinct personalities chat together
+- **HTTP Polling** - Real-time message updates via polling (2-second intervals for messages and status)
+- **Agent customization** - Configure personalities via markdown files with profile pictures
+- **1-on-1 direct chats** - Private conversations with individual agents
+- **Extended thinking** - View agent reasoning process (32K thinking tokens)
+- **JWT Authentication** - Secure password-based authentication with token expiration
+- **Rate limiting** - Protection against brute force attacks on all endpoints
 
-## 기술 스택
+## Tech Stack
 
-**백엔드:** FastAPI, SQLAlchemy (async), SQLite, Multi-provider AI (Claude SDK, Codex CLI)
-**프론트엔드:** React, TypeScript, Vite, Tailwind CSS
+**Backend:** FastAPI, SQLAlchemy (async), PostgreSQL, Anthropic Claude SDK
+**Frontend:** React, TypeScript, Vite, Tailwind CSS
 
-## 사전 요구사항 (Windows)
+## Quick Start
 
-Windows에서 사용하려면 다음 중 하나 이상을 설치해야 합니다:
-
-- **Claude Code** - [claude.ai/code](https://claude.ai/code)에서 설치
-- **Codex** - [GitHub Releases](https://github.com/openai/codex/releases)에서 Windows 버전 다운로드
-
-방 생성 시 설치된 프로바이더를 선택할 수 있습니다.
-
-## 빠른 시작
-
-### 1. 의존성 설치
+### 1. Install Dependencies
 
 ```bash
 make install
 ```
 
-### 2. 인증 설정
+### 2. Configure Authentication
 
 ```bash
-make generate-hash  # 비밀번호 해시 생성
-python -c "import secrets; print(secrets.token_hex(32))"  # JWT 시크릿 생성
-cp .env.example .env  # .env 파일에 API_KEY_HASH와 JWT_SECRET 추가
+make generate-hash  # Generate password hash
+python -c "import secrets; print(secrets.token_hex(32))"  # Generate JWT secret
+cp .env.example .env  # Add API_KEY_HASH and JWT_SECRET to .env
 ```
 
-자세한 내용은 [SETUP.md](SETUP.md)를 참조하세요.
+See [SETUP.md](SETUP.md) for details.
 
-### 3. 실행
+### 3. Run & Access
 
 ```bash
 make dev
 ```
 
-http://localhost:5173 에서 비밀번호로 로그인하세요.
+Open http://localhost:5173 and login with your password.
 
-## 시뮬레이션
+## Simulation & Testing
 
+**Run simulations:**
 ```bash
-make simulate ARGS='-s "AI 윤리에 대해 토론" -a "alice,bob,charlie"'
+make simulate ARGS='-s "Discuss AI ethics" -a "alice,bob,charlie"'
+# Or use the script directly:
+# ./scripts/simulation/simulate_chatroom.sh -s "..." -a "..."
 ```
 
-## 에이전트 설정
+**Test agents:**
+```bash
+make test-agents ARGS='10 agent1 agent2 agent3'
+```
+or
+```bash
+make evaluate-agents ARGS='--target-agent "프리렌" --evaluator "페른" --questions 2'
+```
+or
+```bash
+./scripts/simulation/simulate_chatroom.sh -s "덴지와 레제가 전투 후 카페에서 만나기로 한 날, 덴지는 우연히 마키마가 레제를 죽이려고 하려는 찰나를 목격한다. 덴지가 '아' 라고 하는 순간, 마키마는 레제에게 손가락을 겨누고 '빵'이라고 말했다. (다른 캐릭터들이 아닌, 마키마가 쏠 위치를 정한다)" -a "덴지,레제,마키마" --max-interactions 10 -p sorrysorry --variants 3 --no-thinking
+```
 
-에이전트는 `agents/` 폴더의 마크다운 파일로 설정합니다. 변경사항은 재시작 없이 즉시 반영됩니다.
+See [SIMULATIONS.md](SIMULATIONS.md) and [SETUP.md](SETUP.md) for details.
 
-**폴더 구조:**
+## Agent Configuration
+
+Agents are configured using a folder-based structure in the `agents/` directory:
+
 ```
 agents/
-  캐릭터명/
-    ├── in_a_nutshell.md      # 캐릭터 요약 (3인칭)
-    ├── characteristics.md     # 성격 특성 (3인칭)
-    ├── recent_events.md      # 최근 사건 (자동 업데이트)
-    ├── consolidated_memory.md # 장기 기억 (선택)
-    └── profile.png           # 프로필 사진 (선택)
+  agent_name/
+    ├── in_a_nutshell.md       # Brief identity summary (third-person)
+    ├── characteristics.md      # Personality traits (third-person)
+    ├── recent_events.md       # Auto-updated from conversations
+    ├── anti_pattern.md        # Behaviors to avoid (optional)
+    ├── consolidated_memory.md # Long-term memories with subtitles (optional)
+    └── profile.*              # Optional profile picture (png, jpg, jpeg, gif, webp, svg)
 ```
 
-자세한 설정 옵션은 [CLAUDE.md](CLAUDE.md)를 참조하세요.
+Add optional profile pictures (png, jpg, jpeg, gif, webp, svg) to agent folders. Changes take effect immediately without restart.
 
-## 명령어
+**Tool Configuration:** Agent behavior guidelines and debug settings are configured via YAML files in `backend/config/tools/`. Switch between guideline versions or enable debug logging without code changes. See [CLAUDE.md](CLAUDE.md) for details.
+
+## Commands
 
 ```bash
-make dev           # 풀스택 실행
-make install       # 의존성 설치
-make stop          # 서버 중지
-make clean         # 빌드 파일 정리
+make dev           # Run full stack
+make install       # Install dependencies
+make stop          # Stop servers
+make clean         # Clean build artifacts
 ```
 
 ## API
 
-인증, 방, 에이전트, 메시징을 위한 REST API를 제공합니다. `/auth/*`와 `/health`를 제외한 모든 엔드포인트는 `X-API-Key` 헤더로 JWT 인증이 필요합니다.
+**Authentication:**
+- `POST /auth/login` - Login with password, returns JWT token
+- `GET /auth/verify` - Verify current JWT token
 
-전체 API 레퍼런스는 [backend/README.md](backend/README.md)를 참조하세요.
+**Rooms:**
+- `POST /rooms` - Create room
+- `GET /rooms` - List all rooms
+- `GET /rooms/{id}` - Get room details
+- `DELETE /rooms/{id}` - Delete room
 
-## 배포
+**Agents:**
+- `GET /agents` - List agents
+- `POST /agents` - Create agent from config
+- `GET /agents/{id}/direct-room` - Get 1-on-1 room
+- `PATCH /agents/{id}` - Update agent persona
+- `GET /agents/{name}/profile-pic` - Get agent profile picture
 
-**배포 전략:**
-- **백엔드:** 로컬 머신 + ngrok 터널 (또는 클라우드 호스팅)
-- **프론트엔드:** Vercel (또는 기타 정적 호스팅)
-- **CORS:** 백엔드 `.env`의 `FRONTEND_URL`로 설정
-- **인증:** 비밀번호/JWT 기반
+**Messages & Polling:**
+- `GET /rooms/{id}/messages/poll?since_id={id}` - Poll for new messages (rate limited: 60/min)
+- `POST /rooms/{id}/messages/send` - Send message and trigger agent responses (rate limited: 30/min)
+- `GET /rooms/{id}/chatting-agents` - Get list of agents currently responding (rate limited: 120/min)
+- `DELETE /rooms/{id}/messages` - Clear all messages (Admin only)
 
-자세한 내용은 [SETUP.md](SETUP.md)를 참조하세요.
+See [backend/README.md](backend/README.md) for full API reference and [SETUP.md](SETUP.md) for auth details.
 
-## 설정
+## Deployment
 
-**필수:** 백엔드 `.env` 파일에 `API_KEY_HASH`, `JWT_SECRET` 설정
+For production deployment with Vercel frontend + ngrok backend, see [SETUP.md](SETUP.md).
 
-인증 설정은 [SETUP.md](SETUP.md), 전체 설정 옵션은 [backend/README.md](backend/README.md)를 참조하세요.
+**Deployment Strategy:**
+- **Backend:** Local machine with ngrok tunnel (or cloud hosting of your choice)
+- **Frontend:** Vercel (or other static hosting)
+- **CORS:** Configure via `FRONTEND_URL` in backend `.env`
+- **Authentication:** Password/JWT based (see [SETUP.md](SETUP.md))
+
+## Configuration
+
+**Backend `.env`:** `API_KEY_HASH` (required), `JWT_SECRET` (required), `USER_NAME`, `DEBUG_AGENTS`, `FRONTEND_URL`
+
+**Frontend `.env`:** `VITE_API_BASE_URL` (default: http://localhost:8001)
+
+See [SETUP.md](SETUP.md) and [backend/README.md](backend/README.md) for details.

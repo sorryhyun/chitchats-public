@@ -1,0 +1,8 @@
+# Group Configuration for 슈타게 (Steins;Gate) characters
+# Override tool configurations for all agents in this group
+
+tools:
+  recall:
+    # Return memories verbatim without AI rephrasing
+    # Important for scientific/technical content accuracy
+    response: "{memory_content}\nUse the 'lesson' from this memory, not rephrasing it."

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 import crud
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from core import AgentManager
+from core.manager import AgentManager
 from orchestration import ChatOrchestrator
 from orchestration.agent_ordering import separate_interrupt_agents
 from orchestration.tape import TapeExecutor, TapeGenerator
@@ -20,7 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from infrastructure.database import Message, Room
+from infrastructure.database import models
 
 logger = logging.getLogger("BackgroundScheduler")
 
@@ -49,11 +49,11 @@ class BackgroundScheduler:
     def start(self):
         """Start the background scheduler."""
         if not self.is_running:
-            # Run autonomous chat rounds every 2 seconds
+            # Run autonomous chat rounds every 500ms
             self.scheduler.add_job(
                 self._process_active_rooms,
                 "interval",
-                seconds=2,
+                seconds=0.5,
                 id="process_active_rooms",
                 replace_existing=True,
                 max_instances=1,  # Only one instance at a time (prevents overwhelming system)
@@ -68,9 +68,7 @@ class BackgroundScheduler:
 
             self.scheduler.start()
             self.is_running = True
-            logger.info(
-                "🚀 Background scheduler started - processing rooms every 2 seconds, cache cleanup every 5 minutes"
-            )
+            logger.info("🚀 Background scheduler started - processing rooms every 500ms, cache cleanup every 5 minutes")
 
     def stop(self):
         """Stop the background scheduler."""
@@ -134,7 +132,7 @@ class BackgroundScheduler:
             except Exception as e:
                 logger.error(f"Error closing database session: {e}")
 
-    async def _process_room_for_background_job(self, room: Room):
+    async def _process_room_for_background_job(self, room: models.Room):
         async with self._session_scope() as room_db:
             await self._process_room_autonomous_round(room_db, room)
 
@@ -153,14 +151,14 @@ class BackgroundScheduler:
 
         # Use the room's last_activity_at field to avoid repeated full message scans
         stmt = (
-            select(Room)
-            .options(selectinload(Room.agents))  # Eager load agents
+            select(models.Room)
+            .options(selectinload(models.Room.agents))  # Eager load agents
             .where(
-                Room.is_paused == False,
-                Room.is_finished == False,
-                Room.last_activity_at >= cutoff_time,
+                models.Room.is_paused == False,
+                models.Room.is_finished == False,
+                models.Room.last_activity_at >= cutoff_time,
             )
-            .order_by(Room.last_activity_at.desc())
+            .order_by(models.Room.last_activity_at.desc())
         )
 
         # Optionally cap the number of rooms fetched to reduce load during spikes
@@ -187,7 +185,7 @@ class BackgroundScheduler:
             del self.chat_orchestrator.active_room_tasks[room_id]
             logger.debug(f"Cleaned up completed task for room {room_id}")
 
-    async def _process_room_autonomous_round(self, db: AsyncSession, room: Room):
+    async def _process_room_autonomous_round(self, db: AsyncSession, room: models.Room):
         """
         Process one autonomous round for a room using tape-based scheduling.
 
@@ -257,9 +255,9 @@ class BackgroundScheduler:
     async def _count_agent_messages(self, db: AsyncSession, room_id: int) -> int:
         """Count the number of agent messages (role='assistant') in a room."""
         result = await db.execute(
-            select(func.count(Message.id)).where(
-                Message.room_id == room_id,
-                Message.role == "assistant",
+            select(func.count(models.Message.id)).where(
+                models.Message.room_id == room_id,
+                models.Message.role == "assistant",
             )
         )
         return result.scalar() or 0

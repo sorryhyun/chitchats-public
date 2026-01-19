@@ -8,7 +8,7 @@ and their relationships.
 import crud
 import pytest
 import schemas
-from infrastructure.database import Agent
+from infrastructure.database import models
 
 
 class TestRoomCRUD:
@@ -312,14 +312,13 @@ class TestMemoryOperations:
     async def test_append_agent_memory(self, temp_agent_config, test_db, monkeypatch):
         """Test appending to agent memory."""
         # Mock get_project_root to return temp_agent_config parent
-        from config import AgentConfigIO
+        from core.agent_config_service import AgentConfigService
 
-        monkeypatch.setattr(AgentConfigIO, "get_project_root", lambda: temp_agent_config.parent.parent)
+        monkeypatch.setattr(AgentConfigService, "get_project_root", lambda: temp_agent_config.parent.parent)
 
         # Create agent with config file (relative path from mocked project root)
-        # Use actual directory name from fixture (may be "agents0", "agents1", etc. in pytest)
-        relative_config_path = f"{temp_agent_config.parent.name}/test_agent"
-        agent = Agent(
+        relative_config_path = "agents/test_agent"
+        agent = models.Agent(
             name="test_agent",
             group="test_group",
             config_file=relative_config_path,
@@ -350,14 +349,13 @@ class TestMemoryOperations:
     async def test_append_agent_memory_empty(self, temp_agent_config, test_db, monkeypatch):
         """Test appending to empty memory."""
         # Mock get_project_root to return temp_agent_config parent
-        from config import AgentConfigIO
+        from core.agent_config_service import AgentConfigService
 
-        monkeypatch.setattr(AgentConfigIO, "get_project_root", lambda: temp_agent_config.parent.parent)
+        monkeypatch.setattr(AgentConfigService, "get_project_root", lambda: temp_agent_config.parent.parent)
 
         # Create agent with config file (relative path from mocked project root)
-        # Use actual directory name from fixture (may be "agents0", "agents1", etc. in pytest)
-        relative_config_path = f"{temp_agent_config.parent.name}/test_agent"
-        agent = Agent(
+        relative_config_path = "agents/test_agent"
+        agent = models.Agent(
             name="test_agent",
             group="test_group",
             config_file=relative_config_path,
@@ -393,7 +391,7 @@ class TestDirectRoomOperations:
     @pytest.mark.crud
     async def test_get_or_create_direct_room_new(self, test_db):
         """Test creating a new direct room."""
-        from infrastructure.database import Agent
+        from infrastructure.database.models import Agent
 
         # Create an agent
         agent = Agent(name="test_agent", system_prompt="Test prompt")
@@ -414,7 +412,7 @@ class TestDirectRoomOperations:
     @pytest.mark.crud
     async def test_get_or_create_direct_room_existing(self, test_db):
         """Test getting an existing direct room."""
-        from infrastructure.database import Agent
+        from infrastructure.database.models import Agent
 
         # Create an agent
         agent = Agent(name="test_agent", system_prompt="Test prompt")
@@ -438,7 +436,7 @@ class TestCriticMessageOperations:
     @pytest.mark.crud
     async def test_get_critic_messages(self, sample_room, test_db):
         """Test getting critic messages."""
-        from infrastructure.database import Agent, Message
+        from infrastructure.database.models import Agent, Message
 
         # Create critic agent
         critic = Agent(name="critic", system_prompt="Test", is_critic=1)

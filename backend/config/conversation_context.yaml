@@ -12,12 +12,12 @@ conversation_context:
   # Recall tool reminder
   recall_reminder: ""
 
-  # Provider-specific response instructions (fallback to response_instruction if not set)
-  response_instruction: ""
-  response_instruction_claude: |
-    To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
+  response_instruction: |
+     To initialize Chitchats Claude Agent SDK native thinking process, start thinking by <antml:thinking> {agent_name:은는} 어떻게 생각할까요?
+  # response_instruction:  ""
 
   response_instruction_codex: "IMPORTANT: Always follow the guideline which can be fetched by invoking tool, to understand behavioral boundary."
+    #  To initialize Chitchats native thinking process, start reasoning by {agent_name:은는} 어떻게 생각할까요?
 
 # Situation Builder Note Configuration
 situation_builder:

@@ -1,5 +1,8 @@
 """
-Unit tests for StreamParser - SDK message parsing logic.
+Unit tests for ClaudeStreamParser - Claude SDK message parsing logic.
+
+Tests the stream parser that converts Claude SDK messages into
+unified ParsedStreamMessage format.
 """
 
 from unittest.mock import Mock

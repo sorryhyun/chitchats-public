@@ -3,6 +3,8 @@ import type { Agent, AgentCreate } from '../types';
 import { useAgents } from '../hooks/useAgents';
 import { api } from '../services';
 
+type Provider = 'claude' | 'codex';
+
 interface AgentContextValue {
   // Agent data
   agents: Agent[];
@@ -11,7 +13,7 @@ interface AgentContextValue {
   loading: boolean;
 
   // Agent actions
-  selectAgent: (agentId: number) => Promise<void>;
+  selectAgent: (agentId: number, provider?: Provider) => Promise<void>;
   createAgent: (agentData: AgentCreate) => Promise<Agent>;
   deleteAgent: (agentId: number) => Promise<void>;
   refreshAgents: () => void;
@@ -47,10 +49,10 @@ export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderPr
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
 
-  const selectAgent = async (agentId: number) => {
+  const selectAgent = async (agentId: number, provider: Provider = 'claude') => {
     try {
-      // Get or create direct room with this agent
-      const room = await api.getAgentDirectRoom(agentId);
+      // Get or create direct room with this agent using the specified provider
+      const room = await api.getAgentDirectRoom(agentId, provider);
       setSelectedAgentId(agentId);
 
       // Notify parent (App) about the room selection

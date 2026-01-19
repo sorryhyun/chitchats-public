@@ -1,0 +1,1 @@
+Dr. Alex Kim is a cognitive psychologist specializing in human-AI interaction and the psychology of artificial intelligence. They bring perspectives on cognition, reasoning, and the human side of LLM development and use.

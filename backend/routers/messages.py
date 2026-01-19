@@ -6,17 +6,17 @@ from typing import List
 
 import crud
 import schemas
-from core import AgentManager
-from core.dependencies import (
+from core import (
     RequestIdentity,
+    RoomNotFoundError,
     ensure_room_access,
     get_agent_manager,
     get_chat_orchestrator,
     get_request_identity,
 )
-from core.exceptions import RoomNotFoundError
-from database import get_db
+from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException, Request
+from infrastructure.database import get_db
 from infrastructure.images import compress_image_base64
 from orchestration import ChatOrchestrator
 from slowapi import Limiter
@@ -43,7 +43,7 @@ async def list_messages(
 
 
 @router.get("/{room_id}/messages/poll", response_model=List[schemas.Message])
-@limiter.limit("60/minute")  # 60 requests per minute per IP
+@limiter.limit("360/minute")  # 360 requests per minute per IP (6/sec to handle multiple tabs)
 async def poll_messages(
     request: Request,
     room_id: int,
@@ -67,7 +67,7 @@ async def poll_messages(
 
 
 @router.get("/{room_id}/chatting-agents")
-@limiter.limit("120/minute")  # 120 requests per minute per IP (allows faster polling)
+@limiter.limit("600/minute")  # 600 requests per minute per IP (10/sec for multiple tabs)
 async def get_chatting_agents(
     request: Request,
     room_id: int,
@@ -124,7 +124,7 @@ async def get_chatting_agents(
 
 
 @router.post("/{room_id}/messages/send", response_model=schemas.Message)
-@limiter.limit("30/minute")  # 30 message sends per minute per IP
+@limiter.limit("60/minute")  # 60 message sends per minute per IP
 async def send_message(
     request: Request,
     room_id: int,
@@ -145,7 +145,7 @@ async def send_message(
     Returns:
         The saved user message
     """
-    from database import get_db as get_db_generator
+    from infrastructure.database import get_db as get_db_generator
 
     logger.info(
         f"[send_message] Received message for room {room_id}: content='{message.content[:50]}...', participant_type={message.participant_type}"
@@ -154,25 +154,54 @@ async def send_message(
     # Ensure the caller owns this room (admins bypass)
     await ensure_room_access(db, room_id, identity)
 
-    # Compress image if present
-    if message.image_data and message.image_media_type:
+    # Compress images if present (supports up to 5 images)
+    MAX_IMAGES = 5
+    if message.images:
         try:
-            logger.info(f"[send_message] Compressing image for room {room_id}")
-            compressed_data, compressed_media_type = compress_image_base64(message.image_data, message.image_media_type)
-            # Calculate compression ratio for logging
-            original_size = len(message.image_data)
-            compressed_size = len(compressed_data)
-            compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+            images_to_process = message.images[:MAX_IMAGES]  # Limit to 5 images
+            compressed_images = []
+            total_original = 0
+            total_compressed = 0
+
+            logger.info(f"[send_message] Compressing {len(images_to_process)} image(s) for room {room_id}")
+
+            for i, img in enumerate(images_to_process):
+                original_size = len(img.data)
+                total_original += original_size
+
+                compressed_data, compressed_media_type = compress_image_base64(img.data, img.media_type)
+                compressed_size = len(compressed_data)
+                total_compressed += compressed_size
+
+                compressed_images.append(schemas.ImageItem(data=compressed_data, media_type=compressed_media_type))
+                logger.debug(f"[send_message] Image {i + 1}: {original_size} -> {compressed_size} bytes")
+
+            compression_ratio = (1 - total_compressed / total_original) * 100 if total_original > 0 else 0
             logger.info(
-                f"[send_message] Image compressed: {original_size} -> {compressed_size} bytes "
+                f"[send_message] {len(compressed_images)} images compressed: {total_original} -> {total_compressed} bytes "
                 f"({compression_ratio:.1f}% reduction)"
             )
-            # Update message with compressed data
-            message.image_data = compressed_data
-            message.image_media_type = compressed_media_type
+            message.images = compressed_images
         except Exception as e:
             logger.warning(f"[send_message] Image compression failed, using original: {e}")
-            # Continue with original image if compression fails
+            # Continue with original images if compression fails
+
+    # Backward compatibility: handle old single-image format
+    elif message.image_data and message.image_media_type:
+        try:
+            logger.info(f"[send_message] Compressing single image for room {room_id} (legacy format)")
+            compressed_data, compressed_media_type = compress_image_base64(message.image_data, message.image_media_type)
+            # Convert to new images format
+            message.images = [schemas.ImageItem(data=compressed_data, media_type=compressed_media_type)]
+            # Clear deprecated fields
+            message.image_data = None
+            message.image_media_type = None
+        except Exception as e:
+            logger.warning(f"[send_message] Image compression failed, using original: {e}")
+            # Convert to images format even without compression
+            message.images = [schemas.ImageItem(data=message.image_data, media_type=message.image_media_type)]
+            message.image_data = None
+            message.image_media_type = None
 
     # Save user message and update room activity atomically
     saved_message = await crud.create_message(db, room_id, message, update_room_activity=True)

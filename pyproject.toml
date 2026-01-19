@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Multi-Claude chat room application backend"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "aiosqlite>=0.19.0",
     "asyncpg>=0.29.0",
     "annotated-doc==0.0.3",
     "annotated-types==0.7.0",
@@ -39,9 +40,7 @@ dependencies = [
     "aiohttp",
     "Pillow>=10.0.0",
     "fastapi-mcp>=0.3.0",
-    "aiosqlite>=0.21.0",
-    "toml>=0.10.2",
-    "mcp>=1.0.0",
+    "mcp>=1.0.0"
 ]
 
 [dependency-groups]
@@ -53,6 +52,7 @@ dev = [
     "faker>=33.1.0",
     "pre-commit>=4.0.0",
     "ruff>=0.8.4",
+    "aiosqlite>=0.21.0",  # For in-memory test database
 ]
 
 [tool.ruff]

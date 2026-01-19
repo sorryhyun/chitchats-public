@@ -7,7 +7,7 @@ import { AgentManager } from '../AgentManager';
 import { ChatHeader } from './ChatHeader';
 import { MessageInput, MessageInputHandle } from './MessageInput';
 import { api } from '../../services';
-import type { Room, ParticipantType } from '../../types';
+import type { Room, ParticipantType, ImageItem } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 
 interface ChatRoomProps {
@@ -110,24 +110,10 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     return () => window.removeEventListener('keydown', handleEscape);
   }, [showAgentManager]);
 
-  // Handle F5 key to reset conversation
+  // Handle Enter key to confirm reset modal
   useEffect(() => {
-    const handleF5 = (e: KeyboardEvent) => {
-      if (e.key === 'F5' && roomId) {
-        e.preventDefault(); // Prevent browser refresh
-        setShowClearConfirm(true);
-      }
-    };
-    window.addEventListener('keydown', handleF5);
-    return () => window.removeEventListener('keydown', handleF5);
-  }, [roomId]);
-
-  // Handle Enter key to confirm reset when modal is shown
-  useEffect(() => {
-    if (!showClearConfirm) return;
-
     const handleEnter = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && showClearConfirm) {
         e.preventDefault();
         handleClearMessages();
       }
@@ -135,6 +121,18 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     window.addEventListener('keydown', handleEnter);
     return () => window.removeEventListener('keydown', handleEnter);
   }, [showClearConfirm]);
+
+  // Handle F5 key to open reset confirmation modal
+  useEffect(() => {
+    const handleF5 = (e: KeyboardEvent) => {
+      if (e.key === 'F5' && roomId) {
+        e.preventDefault();
+        setShowClearConfirm(true);
+      }
+    };
+    window.addEventListener('keydown', handleF5);
+    return () => window.removeEventListener('keydown', handleF5);
+  }, [roomId]);
 
   const fetchRoomDetails = async () => {
     if (!roomId) return;
@@ -218,8 +216,8 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     }
   };
 
-  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string, imageData?: string, imageMediaType?: string, mentionedAgentIds?: number[]) => {
-    sendMessage(message, participantType, characterName, imageData, imageMediaType, mentionedAgentIds);
+  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => {
+    sendMessage(message, participantType, characterName, images, mentionedAgentIds);
   };
 
   // Drag-and-drop handlers for the entire chatroom

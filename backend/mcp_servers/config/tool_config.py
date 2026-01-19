@@ -5,13 +5,12 @@ Provides functions to get tool descriptions, schemas, and groupings.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .loaders import (
     get_conversation_context_config,
     get_group_config,
     get_guidelines_config,
-    get_provider_tools_config,
     get_tools_config,
     merge_tool_configs,
 )
@@ -21,38 +20,55 @@ logger = logging.getLogger(__name__)
 
 def _get_tools_config_for_group(
     group_name: Optional[str] = None,
-    provider: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Get tools configuration with provider and group-specific overrides applied.
+    Get tools configuration with group-specific overrides applied.
 
     Merge order (later overrides earlier):
     1. Base tools.yaml
-    2. Provider-specific config (claude_tools.yaml or codex_tools.yaml)
-    3. Group-specific config (group_config.yaml)
+    2. Group-specific config (group_config.yaml)
+
+    Note: Provider filtering is done via the 'providers' field in each tool config,
+    not via separate config files.
 
     Args:
         group_name: Optional group name to apply group-specific overrides
-        provider: Optional provider name ('claude' or 'codex') for provider overrides
 
     Returns:
-        Tools configuration dictionary with all overrides merged
+        Tools configuration dictionary with group overrides merged
     """
     config = get_tools_config()
 
-    # Apply provider-specific overrides
-    if provider:
-        provider_config = get_provider_tools_config(provider)
-        if provider_config:
-            config = merge_tool_configs(config, provider_config)
-
-    # Apply group-specific overrides (takes precedence over provider)
+    # Apply group-specific overrides
     if group_name:
         group_config = get_group_config(group_name)
         if group_config:
             config = merge_tool_configs(config, group_config)
 
     return config
+
+
+def _is_tool_available_for_provider(tool_config: Dict[str, Any], provider: Optional[str]) -> bool:
+    """
+    Check if a tool is available for a specific provider.
+
+    Args:
+        tool_config: Tool configuration dictionary
+        provider: Provider name ('claude' or 'codex'), or None for all providers
+
+    Returns:
+        True if tool is available for the provider
+    """
+    # If no providers field, tool is available for all providers
+    providers: Optional[List[str]] = tool_config.get("providers")
+    if providers is None:
+        return True
+
+    # If provider not specified, assume available
+    if provider is None:
+        return True
+
+    return provider in providers
 
 
 def get_tool_description(
@@ -74,7 +90,7 @@ def get_tool_description(
         situation_builder_note: Situation builder note to include
         memory_subtitles: Available memory subtitles for the recall tool
         group_name: Optional group name to apply group-specific overrides
-        provider: AI provider name ('claude', 'codex'). Defaults to 'claude'.
+        provider: The AI provider ("claude" or "codex")
 
     Returns:
         Tool description string with variables substituted, or None if tool not found
@@ -86,25 +102,19 @@ def get_tool_description(
         active_version = guidelines_config.get("active_version", "v1")
         version_config = guidelines_config.get(active_version, {})
 
-        # Select provider-specific template
-        # Map 'claude' to 'claudecode', 'codex' to 'codex'
-        template_key = "codex" if provider == "codex" else "claudecode"
-        template = version_config.get(template_key, "")
-
-        # Fallback to 'claudecode' if provider-specific template not found
-        if not template and template_key != "claudecode":
-            template = version_config.get("claudecode", "")
-
-        # Legacy fallback to 'template' key for older config versions
-        if not template:
+        # For Codex provider, try to use the codex variant first
+        if provider == "codex" and "codex" in version_config:
+            template = version_config.get("codex", "")
+            logger.debug(f"Using Codex-specific guidelines template for version {active_version}")
+        else:
             template = version_config.get("template", "")
 
         # Substitute template variables
         description = template.format(agent_name=agent_name, situation_builder_note=situation_builder_note)
         return description
 
-    # For other tools, load from tools.yaml (with optional provider/group overrides)
-    tools_config = _get_tools_config_for_group(group_name, provider)
+    # For other tools, load from tools.yaml (with optional group overrides)
+    tools_config = _get_tools_config_for_group(group_name)
 
     if "tools" not in tools_config or tool_name not in tools_config["tools"]:
         logger.warning(f"Tool '{tool_name}' not found in configuration")
@@ -112,9 +122,13 @@ def get_tool_description(
 
     tool_config = tools_config["tools"][tool_name]
 
-    # Check if tool is enabled
+    # Check if tool is enabled and available for this provider
     if not tool_config.get("enabled", True):
         logger.debug(f"Tool '{tool_name}' is disabled in configuration")
+        return None
+
+    if not _is_tool_available_for_provider(tool_config, provider):
+        logger.debug(f"Tool '{tool_name}' is not available for provider '{provider}'")
         return None
 
     # Get description from tools.yaml (or group override)
@@ -134,7 +148,6 @@ def get_tool_description(
 def get_tool_response(
     tool_name: str,
     group_name: Optional[str] = None,
-    provider: Optional[str] = None,
     **kwargs,
 ) -> str:
     """
@@ -143,13 +156,12 @@ def get_tool_response(
     Args:
         tool_name: Name of the tool
         group_name: Optional group name to apply group-specific overrides
-        provider: Optional provider name for provider-specific overrides
         **kwargs: Variables to substitute in the response template
 
     Returns:
         Response string with variables substituted
     """
-    tools_config = _get_tools_config_for_group(group_name, provider)
+    tools_config = _get_tools_config_for_group(group_name)
 
     if "tools" not in tools_config or tool_name not in tools_config["tools"]:
         return "Tool response not configured."
@@ -195,22 +207,29 @@ def is_tool_enabled(
     provider: Optional[str] = None,
 ) -> bool:
     """
-    Check if a tool is enabled in configuration.
+    Check if a tool is enabled in configuration and available for the provider.
 
     Args:
         tool_name: Name of the tool
         group_name: Optional group name for group-specific overrides
-        provider: Optional provider name for provider-specific overrides
+        provider: Optional provider name to check provider availability
 
     Returns:
-        True if tool is enabled, False otherwise
+        True if tool is enabled and available for the provider, False otherwise
     """
-    tools_config = _get_tools_config_for_group(group_name, provider)
+    tools_config = _get_tools_config_for_group(group_name)
 
     if "tools" not in tools_config or tool_name not in tools_config["tools"]:
         return False
 
-    return tools_config["tools"][tool_name].get("enabled", True)
+    tool_config = tools_config["tools"][tool_name]
+
+    # Check if enabled
+    if not tool_config.get("enabled", True):
+        return False
+
+    # Check if available for this provider
+    return _is_tool_available_for_provider(tool_config, provider)
 
 
 def get_tools_by_group(group_name: str) -> Dict[str, Dict[str, Any]]:

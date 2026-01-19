@@ -4,36 +4,53 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useRoomContext } from '../../contexts/RoomContext';
 import { useAgentContext } from '../../contexts/AgentContext';
 import { useFetchAgentConfigs } from '../../hooks/useFetchAgentConfigs';
-import { CreateRoomForm } from './CreateRoomForm';
 import { RoomListPanel } from './RoomListPanel';
 import { CreateAgentForm } from './CreateAgentForm';
 import { AgentListPanel } from './AgentListPanel';
+import { ExportModal } from './ExportModal';
 import { koreanSearch } from '../../utils/koreanSearch';
 import { LanguageSwitcher } from '../LanguageSwitcher';
-import { agentService } from '../../services/agentService';
-import type { Agent, ProviderType } from '../../types';
+import type { ProviderType } from '../../types';
+
+type Provider = 'claude' | 'codex';
 
 interface MainSidebarProps {
   onSelectRoom: (roomId: number) => void;
+  onSelectAgent: (agentId: number, provider: Provider) => Promise<void>;
   onOpenDocs?: () => void;
-  onOpenExport?: () => void;
 }
 
 export const MainSidebar = ({
   onSelectRoom,
+  onSelectAgent,
   onOpenDocs,
-  onOpenExport,
 }: MainSidebarProps) => {
   const { t } = useTranslation('sidebar');
   const { t: tCommon } = useTranslation('common');
+  const { t: tRooms } = useTranslation('rooms');
   const { logout } = useAuth();
   const roomContext = useRoomContext();
   const agentContext = useAgentContext();
   const [activeTab, setActiveTab] = useState<'rooms' | 'agents'>('rooms');
-  const [showRoomForm, setShowRoomForm] = useState(false);
   const [showAgentForm, setShowAgentForm] = useState(false);
   const [agentSearchQuery, setAgentSearchQuery] = useState('');
+  const [newRoomName, setNewRoomName] = useState('');
+  const [showExportModal, setShowExportModal] = useState(false);
   const { configs: availableConfigs, fetchConfigs } = useFetchAgentConfigs();
+
+  // Create a new room with the specified provider
+  const handleCreateRoom = async (provider: ProviderType) => {
+    const trimmedName = newRoomName.trim();
+    if (!trimmedName) return;
+
+    try {
+      const room = await roomContext.createRoom(trimmedName, provider);
+      setNewRoomName('');
+      onSelectRoom(room.id);
+    } catch (err) {
+      console.error('Failed to create room:', err);
+    }
+  };
 
   const handleShowAgentForm = () => {
     if (!showAgentForm) {
@@ -48,26 +65,6 @@ export const MainSidebar = ({
     .sort((a, b) =>
       a.name.localeCompare(b.name, 'ko-KR', { sensitivity: 'base' })
     );
-
-  // Quick chat handler: creates room with provider and adds agent
-  const handleQuickChat = async (agent: Agent, provider: ProviderType) => {
-    try {
-      // Create room with agent name and provider indicator
-      const providerSuffix = provider === 'claude' ? '[c]' : '[x]';
-      const newRoom = await roomContext.createRoom({
-        name: `${agent.name} ${providerSuffix}`,
-        default_provider: provider,
-      });
-      // Add agent to the room
-      await agentService.addAgentToRoom(newRoom.id, agent.id);
-      // Select the room to navigate to it
-      onSelectRoom(newRoom.id);
-      // Switch to rooms tab
-      setActiveTab('rooms');
-    } catch (error) {
-      console.error('Failed to start quick chat:', error);
-    }
-  };
 
   return (
     <div className="w-80 sm:w-80 bg-slate-100 flex flex-col h-full border-r border-slate-300 select-none">
@@ -104,24 +101,39 @@ export const MainSidebar = ({
       {/* Rooms Tab Content */}
       {activeTab === 'rooms' && (
         <>
-          {/* New Room Button (Desktop only) */}
-          <div className="hidden lg:block p-3 border-b border-slate-300 bg-white">
-            <button
-              onClick={() => setShowRoomForm(!showRoomForm)}
-              className="w-full px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm touch-manipulation min-h-[44px]"
-            >
-              <span className="text-xl">+</span>
-              {showRoomForm ? tCommon('cancel') : t('newChatroom')}
-            </button>
-          </div>
-
-          {/* Create Room Form */}
-          {showRoomForm && (
-            <CreateRoomForm
-              onCreateRoom={roomContext.createRoom}
-              onClose={() => setShowRoomForm(false)}
+          {/* New Room Input and Buttons (Desktop only) */}
+          <div className="hidden lg:block p-3 border-b border-slate-300 bg-white space-y-2">
+            <input
+              type="text"
+              value={newRoomName}
+              onChange={(e) => setNewRoomName(e.target.value)}
+              placeholder={tRooms('enterRoomName')}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 transition-all"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newRoomName.trim()) {
+                  handleCreateRoom('claude');
+                }
+              }}
             />
-          )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleCreateRoom('claude')}
+                disabled={!newRoomName.trim()}
+                className="flex-1 px-3 py-2.5 bg-[#D97757] hover:bg-[#c96747] active:bg-[#b95737] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#D97757]"
+              >
+                <span className="text-lg">+</span>
+                Claude
+              </button>
+              <button
+                onClick={() => handleCreateRoom('codex')}
+                disabled={!newRoomName.trim()}
+                className="flex-1 px-3 py-2.5 bg-[#10A37F] hover:bg-[#0d8a6a] active:bg-[#0a7155] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#10A37F]"
+              >
+                <span className="text-lg">+</span>
+                Codex
+              </button>
+            </div>
+          </div>
 
           {/* Rooms List with FAB Container */}
           <div className="relative flex-1 min-h-0">
@@ -132,22 +144,35 @@ export const MainSidebar = ({
               onDeleteRoom={roomContext.deleteRoom}
             />
 
-            {/* Floating Action Button (Mobile only) */}
-            <button
-              onClick={() => setShowRoomForm(!showRoomForm)}
-              className="lg:hidden fixed bottom-6 right-6 w-14 h-14 bg-slate-700 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-slate-600 active:scale-95 transition-transform z-30"
-              title={showRoomForm ? tCommon('cancel') : t('newChatroom')}
-            >
-              {showRoomForm ? (
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              )}
-            </button>
+            {/* Floating Action Buttons (Mobile only) */}
+            <div className="lg:hidden fixed bottom-6 right-6 flex flex-col items-end gap-3 z-30">
+              {/* Mobile Input */}
+              <input
+                type="text"
+                value={newRoomName}
+                onChange={(e) => setNewRoomName(e.target.value)}
+                placeholder={tRooms('enterRoomName')}
+                className="w-48 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleCreateRoom('codex')}
+                  disabled={!newRoomName.trim()}
+                  className="w-14 h-14 bg-[#10A37F] text-white rounded-full shadow-lg flex items-center justify-center hover:bg-[#0d8a6a] active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Codex"
+                >
+                  <span className="text-xs font-bold">CDX</span>
+                </button>
+                <button
+                  onClick={() => handleCreateRoom('claude')}
+                  disabled={!newRoomName.trim()}
+                  className="w-14 h-14 bg-[#D97757] text-white rounded-full shadow-lg flex items-center justify-center hover:bg-[#c96747] active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Claude"
+                >
+                  <span className="text-xs font-bold">CLD</span>
+                </button>
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -217,9 +242,9 @@ export const MainSidebar = ({
             <AgentListPanel
               agents={filteredAndSortedAgents}
               selectedAgentId={agentContext.selectedAgentId}
-              onViewProfile={agentContext.viewProfile}
+              onSelectAgent={onSelectAgent}
               onDeleteAgent={agentContext.deleteAgent}
-              onQuickChat={handleQuickChat}
+              onViewProfile={agentContext.viewProfile}
             />
 
             {/* Floating Action Button (Mobile only) */}
@@ -247,28 +272,27 @@ export const MainSidebar = ({
         {/* Language Switcher */}
         <LanguageSwitcher />
 
+        {/* Export Button */}
+        <button
+          onClick={() => setShowExportModal(true)}
+          className="w-full px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          {t('exportConversations')}
+        </button>
+
         {/* Help Button */}
         {onOpenDocs && (
           <button
             onClick={onOpenDocs}
-            className="w-full px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+            className="w-full px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
             {t('howToUse')}
-          </button>
-        )}
-        {/* Export Button */}
-        {onOpenExport && (
-          <button
-            onClick={onOpenExport}
-            className="w-full px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            {t('export')}
           </button>
         )}
         {/* Logout Button */}
@@ -286,6 +310,12 @@ export const MainSidebar = ({
           {tCommon('logout')}
         </button>
       </div>
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+      />
     </div>
   );
 };

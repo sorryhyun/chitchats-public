@@ -5,10 +5,14 @@ This module provides functionality to build conversation context from
 recent room messages for multi-agent awareness.
 """
 
+import logging
+import random
 from typing import List, Optional
 
-from config import get_conversation_context_config
 from core import get_settings
+
+logger = logging.getLogger("ContextBuilder")
+from config import get_conversation_context_config
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.enums import ParticipantType
 from i18n.korean import format_with_particles
@@ -27,7 +31,7 @@ def build_conversation_context(
     agent_count: Optional[int] = None,
     user_name: Optional[str] = None,
     include_response_instruction: bool = True,
-    provider: Optional[str] = None,
+    provider: str = "claude",
 ) -> List[dict]:
     """
     Build conversation context from recent room messages for multi-agent awareness.
@@ -43,7 +47,7 @@ def build_conversation_context(
         agent_count: Number of agents in the room (for detecting 1-on-1 conversations)
         user_name: Name of the user/character participant (for 1-on-1 conversations)
         include_response_instruction: If True, append response instruction; if False, only include conversation history
-        provider: AI provider ('claude' or 'codex') for provider-specific instructions
+        provider: The AI provider ("claude" or "codex")
 
     Returns:
         List of content blocks: [{"type": "text", "text": "..."}, {"type": "image", "source": {...}}, ...]
@@ -130,37 +134,49 @@ def build_conversation_context(
         # Get message content (use rendered whiteboard content if available)
         content = whiteboard_rendered.get(msg.id, msg.content)
 
-        # Check if message has an image for native multimodal support
-        has_image = (
-            hasattr(msg, "image_data") and msg.image_data and hasattr(msg, "image_media_type") and msg.image_media_type
-        )
+        # Check if message has images for native multimodal support
+        # Support both new 'images' JSON field and legacy 'image_data'/'image_media_type'
+        images = []
+        if hasattr(msg, "images") and msg.images:
+            import json
 
-        if has_image:
-            # Add accumulated text as a block, then image inline
-            current_text += f"{speaker}: "
+            try:
+                images = json.loads(msg.images) if isinstance(msg.images, str) else msg.images
+            except (json.JSONDecodeError, TypeError):
+                images = []
+
+        # Backward compatibility: convert legacy single image to list
+        if not images and hasattr(msg, "image_data") and msg.image_data:
+            if hasattr(msg, "image_media_type") and msg.image_media_type:
+                images = [{"data": msg.image_data, "media_type": msg.image_media_type}]
+
+        if images:
+            # Add accumulated text as a block, then images inline
+            current_text += f"{speaker}:\n"
             if current_text.strip():
                 content_blocks.append({"type": "text", "text": current_text})
 
-            # Add native image block
-            content_blocks.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": msg.image_media_type,
-                        "data": msg.image_data,
-                    },
-                }
-            )
+            # Add native image blocks for each image
+            for img in images:
+                content_blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": img.get("media_type") or img.get("mediaType"),
+                            "data": img.get("data"),
+                        },
+                    }
+                )
 
-            # Continue with content after image
+            # Continue with content
             if content:
-                current_text = f"\n{content}\n"
+                current_text = f"{content}\n\n"
             else:
                 current_text = "\n"
         else:
-            # No image - just add text with colon format
-            current_text += f"{speaker}: {content}\n"
+            # No images - just add text
+            current_text += f"{speaker}:\n{content}\n\n"
 
     # Add footer (closing tag) after conversation messages
     footer = config.get("footer", "")
@@ -175,11 +191,23 @@ def build_conversation_context(
 
     # Add response instruction (if requested)
     if include_response_instruction and agent_name:
-        # Try provider-specific instruction first, fall back to generic
-        instruction = ""
-        if provider:
-            instruction = config.get(f"response_instruction_{provider}", "")
-        if not instruction:
+        # Pseudo-random sampling for uncommon/rare thought instructions
+        roll = random.random()
+        if roll < 0.05:
+            logger.info(f"🎲 Rare thought triggered for {agent_name} (roll={roll:.3f} < 0.05)")
+            rare_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 5% of the time.</special_instruction>\n"
+            current_text += rare_instruction
+        elif roll < 0.20:  # 15% chance (0.05 to 0.20)
+            logger.info(f"🎲 Uncommon thought triggered for {agent_name} (roll={roll:.3f} < 0.20)")
+            uncommon_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 20% of the time.</special_instruction>\n"
+            current_text += uncommon_instruction
+
+        # For Codex provider, try to use the _codex variant first
+        if provider == "codex":
+            instruction = config.get("response_instruction_codex", "")
+            if not instruction:
+                instruction = config.get("response_instruction", "")
+        else:
             instruction = config.get("response_instruction", "")
         if instruction:
             current_text += format_with_particles(instruction, agent_name=agent_name, user_name=user_name or "")

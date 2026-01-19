@@ -3,7 +3,7 @@
 import json
 import secrets
 
-from core.auth import generate_jwt_token, validate_password_with_role
+from core import generate_jwt_token, validate_password_with_role
 from fastapi import APIRouter, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address

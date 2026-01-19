@@ -296,3 +296,4 @@ npm run lint      # Run ESLint
 - [Main README](../README.md) - Project overview
 - [SETUP.md](../SETUP.md) - Setup, authentication, deployment, and memory systems
 - [Backend README](../backend/README.md) - Backend API documentation
+- [SIMULATIONS.md](../SIMULATIONS.md) - Simulation and testing guide

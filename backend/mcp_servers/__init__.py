@@ -1,17 +1,39 @@
 """
-Standalone MCP servers for Codex integration.
+Shared MCP servers for ChitChats.
 
-This package provides MCP server entry points that can be run as
-separate processes for Codex CLI integration. These servers implement
-the same tools as the Claude SDK MCP servers but run standalone.
+This module provides provider-agnostic MCP server implementations
+that can be used by both Claude SDK and Codex providers.
 
-Usage:
-    python -m mcp_servers.action_server
-    python -m mcp_servers.guidelines_server
+Servers:
+- action_server: skip, memorize, recall tools
+- guidelines_server: read, anthropic tools
+- etc_server: current_time tool
 
-Environment Variables:
-    AGENT_NAME: Name of the agent (required)
-    AGENT_GROUP: Group name for config overrides (optional)
-    AGENT_ID: Agent ID for context (optional)
-    ROOM_ID: Room ID for context (optional)
+Each server supports two execution modes:
+1. Subprocess mode (stdio) - for Claude SDK and Codex CLI
+2. In-process mode - for testing or direct use
 """
+
+
+# Lazy imports to avoid errors when servers don't exist yet
+def __getattr__(name):
+    if name == "create_action_server":
+        from .action_server import create_action_server
+
+        return create_action_server
+    elif name == "create_guidelines_server":
+        from .guidelines_server import create_guidelines_server
+
+        return create_guidelines_server
+    elif name == "create_etc_server":
+        from .etc_server import create_etc_server
+
+        return create_etc_server
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "create_action_server",
+    "create_guidelines_server",
+    "create_etc_server",
+]

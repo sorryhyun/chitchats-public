@@ -48,7 +48,7 @@ class TestBuildConversationContext:
         # Mock the settings object to return our test user name
         mock_settings.user_name = "TestUser"
 
-        # Create mock messages with image_data=None to avoid Mock truthiness
+        # Create mock messages with image_data=None and images=None to avoid Mock truthiness
         msg1 = Mock(
             role="user",
             content="Hello!",
@@ -56,6 +56,7 @@ class TestBuildConversationContext:
             participant_name=None,
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
         msg2 = Mock(
@@ -65,14 +66,15 @@ class TestBuildConversationContext:
             participant_name=None,
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
         content_blocks = build_conversation_context([msg1, msg2])
         context = extract_text_from_blocks(content_blocks)
 
         assert "Conversation:" in context
-        assert "<TestUser>Hello!</TestUser>" in context
-        assert "<TestUser>How are you?</TestUser>" in context
+        assert "TestUser:\nHello!" in context
+        assert "TestUser:\nHow are you?" in context
 
     @patch("orchestration.context.get_conversation_context_config")
     def test_build_context_with_agent_messages(self, mock_get_config):
@@ -83,12 +85,12 @@ class TestBuildConversationContext:
         mock_agent = Mock()
         mock_agent.name = "Alice"
 
-        msg = Mock(role="assistant", content="Hi there!", agent_id=1, agent=mock_agent, image_data=None)
+        msg = Mock(role="assistant", content="Hi there!", agent_id=1, agent=mock_agent, image_data=None, images=None)
 
         content_blocks = build_conversation_context([msg])
         context = extract_text_from_blocks(content_blocks)
 
-        assert "<Alice>Hi there!</Alice>" in context
+        assert "Alice:\nHi there!" in context
 
     @patch("orchestration.context.get_conversation_context_config")
     def test_build_context_skips_skip_messages(self, mock_get_config):
@@ -98,9 +100,18 @@ class TestBuildConversationContext:
         # Import SKIP_MESSAGE_TEXT
         from core.settings import SKIP_MESSAGE_TEXT
 
-        msg1 = Mock(role="assistant", content=SKIP_MESSAGE_TEXT, agent_id=1, agent=Mock(name="Alice"), image_data=None)
+        msg1 = Mock(
+            role="assistant",
+            content=SKIP_MESSAGE_TEXT,
+            agent_id=1,
+            agent=Mock(name="Alice"),
+            image_data=None,
+            images=None,
+        )
 
-        msg2 = Mock(role="assistant", content="Real message", agent_id=2, agent=Mock(name="Bob"), image_data=None)
+        msg2 = Mock(
+            role="assistant", content="Real message", agent_id=2, agent=Mock(name="Bob"), image_data=None, images=None
+        )
 
         content_blocks = build_conversation_context([msg1, msg2])
         context = extract_text_from_blocks(content_blocks)
@@ -116,10 +127,23 @@ class TestBuildConversationContext:
 
         # Create messages before and after agent's last response
         messages = [
-            Mock(role="user", content="Message 1", agent_id=None, participant_type="user", image_data=None),
-            Mock(role="assistant", content="Agent response", agent_id=1, agent=Mock(name="Alice"), image_data=None),
-            Mock(role="user", content="Message 2", agent_id=None, participant_type="user", image_data=None),
-            Mock(role="user", content="Message 3", agent_id=None, participant_type="user", image_data=None),
+            Mock(
+                role="user", content="Message 1", agent_id=None, participant_type="user", image_data=None, images=None
+            ),
+            Mock(
+                role="assistant",
+                content="Agent response",
+                agent_id=1,
+                agent=Mock(name="Alice"),
+                image_data=None,
+                images=None,
+            ),
+            Mock(
+                role="user", content="Message 2", agent_id=None, participant_type="user", image_data=None, images=None
+            ),
+            Mock(
+                role="user", content="Message 3", agent_id=None, participant_type="user", image_data=None, images=None
+            ),
         ]
 
         with patch.dict(os.environ, {"USER_NAME": "User"}):
@@ -139,7 +163,14 @@ class TestBuildConversationContext:
 
         # Create many messages
         messages = [
-            Mock(role="user", content=f"Message {i}", agent_id=None, participant_type="user", image_data=None)
+            Mock(
+                role="user",
+                content=f"Message {i}",
+                agent_id=None,
+                participant_type="user",
+                image_data=None,
+                images=None,
+            )
             for i in range(100)
         ]
 
@@ -164,13 +195,14 @@ class TestBuildConversationContext:
             participant_name="Charlie",
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
         content_blocks = build_conversation_context([msg])
         context = extract_text_from_blocks(content_blocks)
 
         # Should use participant_name as speaker
-        assert "<Charlie>Hello from character!</Charlie>" in context
+        assert "Charlie:\nHello from character!" in context
 
     @patch("orchestration.context.get_conversation_context_config")
     def test_build_context_with_situation_builder(self, mock_get_config):
@@ -184,13 +216,14 @@ class TestBuildConversationContext:
             participant_name=None,
             agent_id=None,
             image_data=None,
+            images=None,
         )
 
         content_blocks = build_conversation_context([msg])
         context = extract_text_from_blocks(content_blocks)
 
-        # Should use "Situation Builder" as speaker (with underscores for valid XML)
-        assert "<Situation_Builder>Scenario description</Situation_Builder>" in context
+        # Should use "Situation Builder" as speaker
+        assert "Situation Builder:\nScenario description" in context
 
     @patch("orchestration.context.get_conversation_context_config")
     @patch("orchestration.context.format_with_particles")
@@ -206,7 +239,13 @@ class TestBuildConversationContext:
         mock_format_particles.return_value = "Respond as Alice."
 
         msg = Mock(
-            role="user", content="Hello", participant_type="user", participant_name=None, agent_id=None, image_data=None
+            role="user",
+            content="Hello",
+            participant_type="user",
+            participant_name=None,
+            agent_id=None,
+            image_data=None,
+            images=None,
         )
 
         content_blocks = build_conversation_context([msg], agent_name="Alice")
@@ -230,6 +269,7 @@ class TestBuildConversationContext:
                 participant_type="user",
                 participant_name=None,
                 image_data=None,
+                images=None,
             ),
             Mock(
                 role="user",
@@ -238,6 +278,7 @@ class TestBuildConversationContext:
                 participant_type="user",
                 participant_name=None,
                 image_data=None,
+                images=None,
             ),
             Mock(
                 role="user",
@@ -246,6 +287,7 @@ class TestBuildConversationContext:
                 participant_type="user",
                 participant_name=None,
                 image_data=None,
+                images=None,
             ),
         ]
 

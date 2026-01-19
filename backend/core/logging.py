@@ -48,17 +48,6 @@ def setup_logging(debug_mode: bool = True, log_level: Optional[int] = None) -> N
     uvicorn_logger = logging.getLogger("uvicorn.access")
     uvicorn_logger.addFilter(SuppressPollingLogsFilter())
 
-    # Suppress noisy library loggers (set to WARNING to hide DEBUG/INFO)
-    noisy_loggers = [
-        "aiosqlite",  # SQLite operation logs
-        "asyncio",    # Asyncio internal logs (ProactorEventLoop pipe logs, etc.)
-        "httpcore",   # HTTP connection logs
-        "httpx",      # HTTP client logs
-        "mcp",        # MCP protocol logs (unless debugging MCP issues)
-    ]
-    for logger_name in noisy_loggers:
-        logging.getLogger(logger_name).setLevel(logging.WARNING)
-
     # Log the configuration
     logger = logging.getLogger("Logging")
     level_name = logging.getLevelName(log_level)

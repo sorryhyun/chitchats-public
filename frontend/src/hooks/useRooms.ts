@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services';
 import { useAuth } from '../contexts/AuthContext';
-import type { RoomSummary, Room, RoomCreate } from '../types';
+import type { ProviderType, RoomSummary, Room } from '../types';
 
 interface UseRoomsReturn {
   rooms: RoomSummary[];
   loading: boolean;
   error: string | null;
-  createRoom: (data: RoomCreate) => Promise<Room>;
+  createRoom: (name: string, provider?: ProviderType) => Promise<Room>;
   deleteRoom: (roomId: number) => Promise<void>;
   renameRoom: (roomId: number, name: string) => Promise<Room>;
   refreshRooms: () => Promise<void>;
@@ -143,9 +143,9 @@ export const useRooms = (): UseRoomsReturn => {
     };
   }, [apiKey]);
 
-  const createRoom = async (data: RoomCreate): Promise<Room> => {
+  const createRoom = async (name: string, provider?: ProviderType): Promise<Room> => {
     try {
-      const newRoom = await api.createRoom(data);
+      const newRoom = await api.createRoom(name, provider);
       // Convert Room to RoomSummary for the rooms list
       const roomSummary: RoomSummary = {
         id: newRoom.id,

@@ -43,37 +43,6 @@ class AgentConfigData:
         """
         return any([self.in_a_nutshell, self.characteristics, self.recent_events])
 
-    def to_system_prompt_markdown(self, agent_name: str) -> str:
-        """
-        Build character configuration as markdown for system prompt injection.
-
-        This format replaces the XML-based tool description injection when
-        RETIRE_TRAIT_INJECTION is enabled.
-
-        Args:
-            agent_name: The name of the agent
-
-        Returns:
-            Markdown-formatted configuration string with ## headings
-        """
-        sections = []
-
-        if self.in_a_nutshell:
-            sections.append(f"## {agent_name} in a nutshell\n\n{self.in_a_nutshell}")
-
-        if self.characteristics:
-            sections.append(f"## {agent_name}'s characteristics\n\n{self.characteristics}")
-
-        if self.recent_events:
-            sections.append(f"## Recent events\n\n{self.recent_events}")
-
-        # Note: long_term_memory_subtitles removed from system prompt
-        # Available memories are now shown in the recall tool description instead
-
-        if sections:
-            return "\n\n" + "\n\n".join(sections)
-        return ""
-
     @classmethod
     def from_dict(cls, data: dict) -> "AgentConfigData":
         """

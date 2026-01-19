@@ -3,21 +3,116 @@ Agent configuration parser for markdown files.
 
 This module handles loading agent configurations from markdown files
 following a specific format with standardized sections.
+
+Also includes memory parsing utilities for long-term memory files.
 """
 
 import logging
+import re
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
-from core import get_settings
 from domain.agent_config import AgentConfigData
-
-from .memory_parser import parse_long_term_memory
 
 logger = logging.getLogger("ConfigParser")
 
-# Get settings singleton
-_settings = get_settings()
+
+# =============================================================================
+# Memory Parsing Functions
+# =============================================================================
+
+
+def parse_long_term_memory(file_path: Path) -> Dict[str, str]:
+    """
+    Parse a long-term memory file with subtitle format.
+
+    Format:
+        ## [subtitle]
+        Content for this memory...
+
+        ## [another_subtitle]
+        More content...
+
+    Args:
+        file_path: Path to the long_term_memory.md file
+
+    Returns:
+        Dictionary mapping subtitles to their content
+    """
+    if not file_path.exists():
+        logger.debug(f"Long-term memory file not found: {file_path}")
+        return {}
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+
+        # Split by subtitle headers: ## [subtitle]
+        # Pattern matches: ## [text]
+        pattern = r"^##\s*\[([^\]]+)\]"
+
+        memories = {}
+        current_subtitle = None
+        current_content = []
+
+        for line in content.split("\n"):
+            # Check if this line is a subtitle header
+            match = re.match(pattern, line)
+            if match:
+                # Save previous memory if exists
+                if current_subtitle:
+                    memories[current_subtitle] = "\n".join(current_content).strip()
+
+                # Start new memory
+                current_subtitle = match.group(1)
+                current_content = []
+            else:
+                # Accumulate content lines
+                if current_subtitle is not None:
+                    current_content.append(line)
+
+        # Save last memory
+        if current_subtitle:
+            memories[current_subtitle] = "\n".join(current_content).strip()
+
+        return memories
+
+    except Exception as e:
+        logger.error(f"Error parsing long-term memory file {file_path}: {e}")
+        return {}
+
+
+def get_memory_subtitles(file_path: Path) -> List[str]:
+    """
+    Extract just the subtitles from a long-term memory file.
+
+    Args:
+        file_path: Path to the long_term_memory.md file
+
+    Returns:
+        List of subtitle strings
+    """
+    memories = parse_long_term_memory(file_path)
+    return list(memories.keys())
+
+
+def get_memory_by_subtitle(file_path: Path, subtitle: str) -> Optional[str]:
+    """
+    Retrieve a specific memory by its subtitle.
+
+    Args:
+        file_path: Path to the long_term_memory.md file
+        subtitle: The subtitle to look up
+
+    Returns:
+        The memory content, or None if not found
+    """
+    memories = parse_long_term_memory(file_path)
+    return memories.get(subtitle)
+
+
+# =============================================================================
+# Agent Configuration Parsing
+# =============================================================================
 
 
 def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
@@ -37,20 +132,12 @@ def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
     Returns:
         AgentConfigData object or None if folder doesn't exist
     """
-    import sys
-
     # Resolve path relative to project root if not absolute
     path = Path(file_path)
     if not path.is_absolute():
-        # First try user agents directory (working directory in bundled mode)
-        project_root = _settings.project_root
+        backend_dir = Path(__file__).parent.parent
+        project_root = backend_dir.parent
         path = project_root / file_path
-
-        # In bundled mode, also check bundled agents as fallback
-        if not path.exists() and getattr(sys, "frozen", False):
-            bundled_path = Path(sys._MEIPASS) / file_path  # type: ignore[attr-defined]
-            if bundled_path.exists():
-                path = bundled_path
 
     if not path.exists() or not path.is_dir():
         return None
@@ -94,8 +181,7 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
         return None
 
     # Parse long-term memory file for recall tool
-    memory_filename = f"{_settings.recall_memory_file}.md"
-    long_term_memory_file = folder_path / memory_filename
+    long_term_memory_file = folder_path / "consolidated_memory.md"
     long_term_memory_index = None
     long_term_memory_subtitles = None
 
@@ -123,66 +209,45 @@ def list_available_configs() -> Dict[str, Dict[str, Optional[str]]]:
     - agents/agent_name/ -> ungrouped agent
     - agents/group_체인소맨/agent_name/ -> agent in "체인소맨" group
 
-    In bundled mode, searches both the working directory (user agents) and
-    the bundled directory (default agents) as fallback.
-
     Returns:
         Dictionary mapping agent names to config info with keys:
         - "path": str (relative path to agent folder)
         - "group": Optional[str] (group name if in a group folder, None otherwise)
     """
-    agents_dir = _settings.agents_dir
-    bundled_agents_dir = _settings.bundled_agents_dir
-    project_root = _settings.project_root
+    # Get the project root directory (parent of backend/)
+    backend_dir = Path(__file__).parent.parent
+    project_root = backend_dir.parent
+    agents_dir = project_root / "agents"
+
+    if not agents_dir.exists():
+        return {}
 
     configs = {}
     required_files = ["in_a_nutshell.md", "characteristics.md"]
 
-    def scan_agents_dir(agents_path: Path, base_path: Path):
-        """Scan an agents directory and add found configs."""
-        if not agents_path.exists():
-            return
+    # Check for folder-based configs
+    for item in agents_dir.iterdir():
+        if not item.is_dir() or item.name.startswith("."):
+            continue
 
-        for item in agents_path.iterdir():
-            if not item.is_dir() or item.name.startswith("."):
-                continue
+        # Check if this is a group folder (starts with "group_")
+        if item.name.startswith("group_"):
+            # Extract group name (remove "group_" prefix)
+            group_name = item.name[6:]  # Remove "group_" prefix
 
-            # Check if this is a group folder (starts with "group_")
-            if item.name.startswith("group_"):
-                # Extract group name (remove "group_" prefix)
-                group_name = item.name[6:]  # Remove "group_" prefix
-
-                # Scan for agent folders inside the group folder
-                for agent_item in item.iterdir():
-                    if agent_item.is_dir() and not agent_item.name.startswith("."):
-                        # Verify it has at least one required config file
-                        if any((agent_item / f).exists() for f in required_files):
-                            agent_name = agent_item.name
-                            # Skip if already found (user agents take priority)
-                            if agent_name in configs:
-                                continue
-                            relative_path = agent_item.relative_to(base_path)
-                            configs[agent_name] = {"path": str(relative_path), "group": group_name}
-            else:
-                # Regular agent folder (not in a group)
-                if any((item / f).exists() for f in required_files):
-                    agent_name = item.name
-                    # Skip if already found (user agents take priority)
-                    if agent_name in configs:
-                        continue
-                    relative_path = item.relative_to(base_path)
-                    configs[agent_name] = {"path": str(relative_path), "group": None}
-
-    # First scan user agents directory (takes priority)
-    scan_agents_dir(agents_dir, project_root)
-
-    # In bundled mode, also scan bundled agents as fallback
-    if bundled_agents_dir and bundled_agents_dir.exists():
-        # For bundled agents, use a special prefix to indicate bundled location
-        # But we use the same relative path format for consistency
-        import sys
-
-        base_path = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else project_root  # type: ignore[attr-defined]
-        scan_agents_dir(bundled_agents_dir, base_path)
+            # Scan for agent folders inside the group folder
+            for agent_item in item.iterdir():
+                if agent_item.is_dir() and not agent_item.name.startswith("."):
+                    # Verify it has at least one required config file
+                    if any((agent_item / f).exists() for f in required_files):
+                        agent_name = agent_item.name
+                        relative_path = agent_item.relative_to(project_root)
+                        configs[agent_name] = {"path": str(relative_path), "group": group_name}
+        else:
+            # Regular agent folder (not in a group)
+            if any((item / f).exists() for f in required_files):
+                agent_name = item.name
+                relative_path = item.relative_to(project_root)
+                configs[agent_name] = {"path": str(relative_path), "group": None}
 
     return configs

@@ -63,18 +63,17 @@ export const agentService = {
     return response.json();
   },
 
-  async getAgentDirectRoom(agentId: number): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}/direct-room`, getFetchOptions());
+  async getAgentDirectRoom(agentId: number, provider: 'claude' | 'codex' = 'claude'): Promise<Room> {
+    const response = await fetch(`${API_BASE_URL}/agents/${agentId}/direct-room?provider=${provider}`, getFetchOptions());
     if (!response.ok) throw new Error('Failed to get agent direct room');
     return response.json();
   },
 
-  async addAgentToRoom(roomId: number, agentId: number): Promise<Room> {
+  async addAgentToRoom(roomId: number, agentId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents/${agentId}`, getFetchOptions({
       method: 'POST',
     }));
     if (!response.ok) throw new Error('Failed to add agent to room');
-    return response.json();
   },
 
   async removeAgentFromRoom(roomId: number, agentId: number): Promise<void> {

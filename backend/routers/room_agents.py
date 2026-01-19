@@ -4,12 +4,11 @@ from typing import List
 
 import crud
 import schemas
-from core import AgentManager
-from core.auth import require_admin
-from core.dependencies import RequestIdentity, ensure_room_access, get_agent_manager, get_request_identity
-from crud import remove_agent_from_room_with_cleanup
-from database import get_db
+from core import RequestIdentity, ensure_room_access, get_agent_manager, get_request_identity, require_admin
+from core.agent_service import remove_agent_from_room_with_cleanup
+from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException
+from infrastructure.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -26,7 +25,7 @@ async def list_room_agents(
     return await crud.get_agents(db, room_id)
 
 
-@router.post("/{room_id}/agents/{agent_id}", response_model=schemas.RoomWithAgents)
+@router.post("/{room_id}/agents/{agent_id}", response_model=schemas.RoomSummary)
 async def add_agent_to_room(
     room_id: int,
     agent_id: int,

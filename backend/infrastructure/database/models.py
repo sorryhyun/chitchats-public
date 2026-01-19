@@ -1,14 +1,3 @@
-"""
-SQLAlchemy ORM models for the database schema.
-
-This module defines the database tables and their relationships:
-- Room: Chat rooms
-- Agent: AI agents with configurations
-- Message: Chat messages
-- RoomAgentSession: Session tracking per room/agent
-- room_agents: Many-to-many association between rooms and agents
-"""
-
 from datetime import datetime
 
 from database import Base
@@ -40,7 +29,9 @@ class Room(Base):
         DateTime, default=datetime.utcnow, index=True
     )  # Track last message time (updated only when messages are created)
     last_read_at = Column(DateTime, nullable=True)  # Track when user last viewed this room
-    default_provider = Column(String, default="claude")  # Default AI provider for this room
+    default_provider = Column(
+        String, default="claude"
+    )  # Default AI provider: 'claude' or 'codex' (immutable after creation)
 
     agents = relationship("Agent", secondary=room_agents, back_populates="rooms")
     messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")
@@ -63,6 +54,7 @@ class Agent(Base):
     interrupt_every_turn = Column(Boolean, default=False)  # Whether agent always responds after any message
     priority = Column(Integer, default=0)  # Priority level (0 = normal, higher = more priority)
     transparent = Column(Boolean, default=False)  # Whether agent's messages don't trigger other agents
+    final_response = Column(Boolean, default=False)  # Whether agent gets a final turn when limit is reached
     created_at = Column(DateTime, default=datetime.utcnow)
 
     rooms = relationship("Room", secondary=room_agents, back_populates="agents")
@@ -96,10 +88,10 @@ class Agent(Base):
         config_data = None
         if self.config_file:
             try:
-                from config import AgentConfigIO
+                from core import AgentConfigService
 
                 # load_agent_config now returns AgentConfigData directly
-                config_data = AgentConfigIO.load_agent_config(self.config_file)
+                config_data = AgentConfigService.load_agent_config(self.config_file)
             except Exception as e:
                 # Log error but fallback to database
                 import logging
@@ -144,8 +136,9 @@ class Message(Base):
     thinking = Column(Text, nullable=True)  # Agent's thinking process (for assistant messages)
     anthropic_calls = Column(Text, nullable=True)  # JSON array of anthropic tool call situations
     timestamp = Column(DateTime, default=datetime.utcnow)
-    image_data = Column(Text, nullable=True)  # Base64-encoded image data
-    image_media_type = Column(String, nullable=True)  # MIME type (e.g., 'image/png', 'image/jpeg')
+    image_data = Column(Text, nullable=True)  # DEPRECATED: Use images column instead
+    image_media_type = Column(String, nullable=True)  # DEPRECATED: Use images column instead
+    images = Column(Text, nullable=True)  # JSON array: [{"data": "base64...", "media_type": "image/webp"}, ...]
     provider = Column(String, nullable=True)  # AI provider used: 'claude' or 'codex' (NULL = claude for legacy)
 
     # Indexes for frequently queried foreign keys
@@ -165,7 +158,7 @@ class RoomAgentSession(Base):
     room_id = Column(Integer, ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
     agent_id = Column(Integer, ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
     # Legacy session_id field - always populated for DB constraint compatibility
-    session_id = Column(String, nullable=False)  # Use provider-specific fields for reading
+    session_id = Column(String, nullable=False)
     # Provider-specific session IDs
     claude_session_id = Column(String, nullable=True)  # Claude Agent SDK session ID
     codex_thread_id = Column(String, nullable=True)  # Codex thread ID for conversation resume

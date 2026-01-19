@@ -15,7 +15,7 @@ import logging
 from typing import List, Optional
 
 from infrastructure.cache import agent_object_key, get_cache, room_agents_key, room_messages_key, room_object_key
-from infrastructure.database import Agent, Message, Room
+from infrastructure.database import models
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import crud
@@ -23,7 +23,7 @@ import crud
 logger = logging.getLogger("CachedCRUD")
 
 
-async def get_agent_cached(db: AsyncSession, agent_id: int) -> Optional[Agent]:
+async def get_agent_cached(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:
     """
     Get agent with caching (TTL: 5 minutes).
 
@@ -44,7 +44,7 @@ async def get_agent_cached(db: AsyncSession, agent_id: int) -> Optional[Agent]:
     )
 
 
-async def get_room_cached(db: AsyncSession, room_id: int) -> Optional[Room]:
+async def get_room_cached(db: AsyncSession, room_id: int) -> Optional[models.Room]:
     """
     Get room with caching (TTL: 30 seconds).
 
@@ -65,7 +65,7 @@ async def get_room_cached(db: AsyncSession, room_id: int) -> Optional[Room]:
     )
 
 
-async def get_agents_cached(db: AsyncSession, room_id: int) -> List[Agent]:
+async def get_agents_cached(db: AsyncSession, room_id: int) -> List[models.Agent]:
     """
     Get agents in a room with caching (TTL: 1 minute).
 
@@ -86,7 +86,7 @@ async def get_agents_cached(db: AsyncSession, room_id: int) -> List[Agent]:
     )
 
 
-async def get_messages_cached(db: AsyncSession, room_id: int) -> List[Message]:
+async def get_messages_cached(db: AsyncSession, room_id: int) -> List[models.Message]:
     """
     Get messages in a room with caching (TTL: 5 seconds).
 
@@ -110,7 +110,7 @@ async def get_messages_cached(db: AsyncSession, room_id: int) -> List[Message]:
     )
 
 
-async def get_recent_messages_cached(db: AsyncSession, room_id: int, limit: int = 200) -> List[Message]:
+async def get_recent_messages_cached(db: AsyncSession, room_id: int, limit: int = 200) -> List[models.Message]:
     """Get recent messages with caching to avoid repeated DB hits."""
     cache = get_cache()
     key = f"{room_messages_key(room_id)}:recent:{limit}"
@@ -127,7 +127,7 @@ async def get_messages_since_cached(
     room_id: int,
     since_id: int | None = None,
     limit: int = 100,
-) -> List[Message]:
+) -> List[models.Message]:
     """
     Get new messages since a specific ID using a cached recent slice.
 
@@ -150,7 +150,7 @@ async def get_messages_after_agent_response_cached(
     room_id: int,
     agent_id: int,
     limit: int = 200,
-) -> List[Message]:
+) -> List[models.Message]:
     """Get messages after an agent's last response, cached briefly."""
     cache = get_cache()
     key = f"{room_messages_key(room_id)}:after:{agent_id}:{limit}"

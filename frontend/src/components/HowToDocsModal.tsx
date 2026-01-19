@@ -180,7 +180,6 @@ const GettingStartedContent = () => {
           <Li><strong>Agents:</strong> {t('gettingStarted.conceptAgents')}</Li>
           <Li><strong>Rooms:</strong> {t('gettingStarted.conceptRooms')}</Li>
           <Li><strong>Third-Person Format:</strong> {t('gettingStarted.conceptThirdPerson')}</Li>
-          <Li><strong>Hot-Reloading:</strong> {t('gettingStarted.conceptHotReload')}</Li>
         </ul>
       </Section>
     </div>

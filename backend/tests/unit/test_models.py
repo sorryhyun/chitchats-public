@@ -8,7 +8,7 @@ and their relationships.
 from datetime import datetime
 
 import pytest
-from infrastructure.database import Agent, Message, Room, RoomAgentSession
+from infrastructure.database import models
 from sqlalchemy import select
 
 
@@ -18,7 +18,7 @@ class TestRoomModel:
     @pytest.mark.unit
     async def test_create_room(self, test_db):
         """Test creating a room."""
-        room = Room(name="test_room", max_interactions=10, owner_id="admin")
+        room = models.Room(name="test_room", max_interactions=10, owner_id="admin")
         test_db.add(room)
         await test_db.commit()
         await test_db.refresh(room)
@@ -32,7 +32,7 @@ class TestRoomModel:
     @pytest.mark.unit
     async def test_room_default_values(self, test_db):
         """Test room default values."""
-        room = Room(name="default_room", owner_id="admin")
+        room = models.Room(name="default_room", owner_id="admin")
         test_db.add(room)
         await test_db.commit()
         await test_db.refresh(room)
@@ -44,11 +44,11 @@ class TestRoomModel:
     @pytest.mark.unit
     async def test_room_unique_name_per_owner(self, test_db):
         """Room names are unique per owner, but different owners can reuse names."""
-        room1 = Room(name="duplicate", owner_id="owner1")
+        room1 = models.Room(name="duplicate", owner_id="owner1")
         test_db.add(room1)
         await test_db.commit()
 
-        room2 = Room(name="duplicate", owner_id="owner1")
+        room2 = models.Room(name="duplicate", owner_id="owner1")
         test_db.add(room2)
 
         with pytest.raises(Exception):  # Should raise IntegrityError for same owner
@@ -57,7 +57,7 @@ class TestRoomModel:
         await test_db.rollback()
 
         # Different owner should be allowed
-        room3 = Room(name="duplicate", owner_id="owner2")
+        room3 = models.Room(name="duplicate", owner_id="owner2")
         test_db.add(room3)
         await test_db.commit()
 
@@ -68,7 +68,7 @@ class TestAgentModel:
     @pytest.mark.unit
     async def test_create_agent(self, test_db):
         """Test creating an agent."""
-        agent = Agent(
+        agent = models.Agent(
             name="test_agent",
             group="test_group",
             config_file="agents/test_agent.md",
@@ -90,11 +90,11 @@ class TestAgentModel:
     @pytest.mark.unit
     async def test_agent_unique_name(self, test_db):
         """Test that agent names must be unique."""
-        agent1 = Agent(name="duplicate", system_prompt="Test")
+        agent1 = models.Agent(name="duplicate", system_prompt="Test")
         test_db.add(agent1)
         await test_db.commit()
 
-        agent2 = Agent(name="duplicate", system_prompt="Test")
+        agent2 = models.Agent(name="duplicate", system_prompt="Test")
         test_db.add(agent2)
 
         with pytest.raises(Exception):  # Should raise IntegrityError
@@ -103,7 +103,7 @@ class TestAgentModel:
     @pytest.mark.unit
     async def test_agent_critic_flag(self, test_db):
         """Test creating a critic agent."""
-        agent = Agent(name="critic_agent", system_prompt="You are a critic.", is_critic=True)
+        agent = models.Agent(name="critic_agent", system_prompt="You are a critic.", is_critic=True)
         test_db.add(agent)
         await test_db.commit()
         await test_db.refresh(agent)
@@ -117,7 +117,7 @@ class TestMessageModel:
     @pytest.mark.unit
     async def test_create_message(self, sample_room, sample_agent, test_db):
         """Test creating a message."""
-        message = Message(
+        message = models.Message(
             room_id=sample_room.id,
             agent_id=sample_agent.id,
             content="Hello, world!",
@@ -139,7 +139,7 @@ class TestMessageModel:
     @pytest.mark.unit
     async def test_create_user_message(self, sample_room, test_db):
         """Test creating a user message (no agent)."""
-        message = Message(
+        message = models.Message(
             room_id=sample_room.id, agent_id=None, content="User message", role="user", participant_type="user"
         )
         test_db.add(message)
@@ -153,7 +153,7 @@ class TestMessageModel:
     @pytest.mark.unit
     async def test_message_relationships(self, sample_room, sample_agent, test_db):
         """Test message relationships with room and agent."""
-        message = Message(room_id=sample_room.id, agent_id=sample_agent.id, content="Test", role="assistant")
+        message = models.Message(room_id=sample_room.id, agent_id=sample_agent.id, content="Test", role="assistant")
         test_db.add(message)
         await test_db.commit()
         await test_db.refresh(message)
@@ -171,14 +171,16 @@ class TestRoomAgentSession:
     @pytest.mark.unit
     async def test_create_session(self, sample_room, sample_agent, test_db):
         """Test creating a room-agent session."""
-        session = RoomAgentSession(room_id=sample_room.id, agent_id=sample_agent.id, session_id="test_session_123")
+        session = models.RoomAgentSession(
+            room_id=sample_room.id, agent_id=sample_agent.id, session_id="test_session_123"
+        )
         test_db.add(session)
         await test_db.commit()
 
         # Retrieve session
         result = await test_db.execute(
-            select(RoomAgentSession).where(
-                RoomAgentSession.room_id == sample_room.id, RoomAgentSession.agent_id == sample_agent.id
+            select(models.RoomAgentSession).where(
+                models.RoomAgentSession.room_id == sample_room.id, models.RoomAgentSession.agent_id == sample_agent.id
             )
         )
         retrieved_session = result.scalar_one()
@@ -190,16 +192,16 @@ class TestRoomAgentSession:
     async def test_session_composite_key(self, sample_room, test_db):
         """Test that room_id and agent_id form composite primary key."""
         # Create two agents
-        agent1 = Agent(name="agent1", system_prompt="Test")
-        agent2 = Agent(name="agent2", system_prompt="Test")
+        agent1 = models.Agent(name="agent1", system_prompt="Test")
+        agent2 = models.Agent(name="agent2", system_prompt="Test")
         test_db.add_all([agent1, agent2])
         await test_db.commit()
         await test_db.refresh(agent1)
         await test_db.refresh(agent2)
 
         # Same room, different agents - should be allowed
-        session1 = RoomAgentSession(room_id=sample_room.id, agent_id=agent1.id, session_id="session1")
-        session2 = RoomAgentSession(room_id=sample_room.id, agent_id=agent2.id, session_id="session2")
+        session1 = models.RoomAgentSession(room_id=sample_room.id, agent_id=agent1.id, session_id="session1")
+        session2 = models.RoomAgentSession(room_id=sample_room.id, agent_id=agent2.id, session_id="session2")
         test_db.add_all([session1, session2])
         await test_db.commit()
 
@@ -230,9 +232,9 @@ class TestRoomAgentRelationship:
     @pytest.mark.unit
     async def test_multiple_agents_in_room(self, sample_room, test_db):
         """Test adding multiple agents to a room."""
-        agent1 = Agent(name="agent1", system_prompt="Test1")
-        agent2 = Agent(name="agent2", system_prompt="Test2")
-        agent3 = Agent(name="agent3", system_prompt="Test3")
+        agent1 = models.Agent(name="agent1", system_prompt="Test1")
+        agent2 = models.Agent(name="agent2", system_prompt="Test2")
+        agent3 = models.Agent(name="agent3", system_prompt="Test3")
 
         test_db.add_all([agent1, agent2, agent3])
         await test_db.commit()
@@ -248,9 +250,9 @@ class TestRoomAgentRelationship:
     @pytest.mark.unit
     async def test_agent_in_multiple_rooms(self, sample_agent, test_db):
         """Test adding an agent to multiple rooms."""
-        room1 = Room(name="room1")
-        room2 = Room(name="room2")
-        room3 = Room(name="room3")
+        room1 = models.Room(name="room1")
+        room2 = models.Room(name="room2")
+        room3 = models.Room(name="room3")
 
         test_db.add_all([room1, room2, room3])
         await test_db.commit()
@@ -274,11 +276,11 @@ class TestRoomAgentRelationship:
         await test_db.commit()
 
         # Agent should still exist
-        result = await test_db.execute(select(Agent).where(Agent.id == agent_id))
+        result = await test_db.execute(select(models.Agent).where(models.Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         assert agent is not None
 
         # But room should be gone
-        result = await test_db.execute(select(Room).where(Room.id == room_id))
+        result = await test_db.execute(select(models.Room).where(models.Room.id == room_id))
         room = result.scalar_one_or_none()
         assert room is None

@@ -1,0 +1,1 @@
+Dr. Jane Morrison is a qualitative researcher and UX specialist focusing on human-AI interaction. She brings expertise in conversational design, user experience evaluation, and understanding authentic user perspectives through in-depth interviews.

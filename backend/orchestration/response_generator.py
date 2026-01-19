@@ -11,9 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import crud
-import schemas
 from config import build_system_prompt
-from core.settings import SKIP_MESSAGE_TEXT
 from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
 from domain.task_identifier import TaskIdentifier
 from i18n.timezone import format_kst_timestamp
@@ -75,11 +73,11 @@ class ResponseGenerator:
         # Generate unique task ID for interruption tracking
         task_id = TaskIdentifier(room_id=orch_context.room_id, agent_id=agent.id)
 
-        # Fetch room to get created_at timestamp and default_provider (use cache for performance)
+        # Fetch room to get created_at timestamp and provider (use cache for performance)
         room = await crud.get_room_cached(orch_context.db, orch_context.room_id)
 
-        # Get the provider from room's default_provider (default to 'claude' for legacy)
-        provider = getattr(room, "default_provider", "claude") or "claude"
+        # Get the provider for this room (defaults to claude)
+        provider = room.default_provider if room else "claude"
 
         # Fetch only the messages since this agent's last response (cache for performance)
         room_messages = await crud.get_messages_after_agent_response_cached(
@@ -110,25 +108,6 @@ class ResponseGenerator:
             provider=provider,
         )
 
-        # For Codex: build full conversation for session recovery (when thread is lost)
-        # This includes more messages from the entire room history (not just after agent's last response)
-        full_conversation_for_recovery = None
-        if provider == "codex":
-            # Fetch ALL recent messages from the room (not filtered by agent's last response)
-            all_room_messages = await crud.get_recent_messages_cached(orch_context.db, orch_context.room_id, limit=200)
-            logger.debug(f"Building full conversation for recovery. All room messages: {len(all_room_messages)}, Recent (after agent): {len(room_messages)}")
-            full_conversation_for_recovery = build_conversation_context(
-                all_room_messages,
-                limit=100,  # Use last 100 messages for recovery context
-                agent_id=None,  # Don't filter by agent's last response
-                agent_name=agent.name,
-                agent_count=agent_count,
-                user_name=user_name,
-                provider=provider,
-                include_response_instruction=False,  # Just the history, no instruction
-            )
-            logger.debug(f"Full conversation for recovery: {len(full_conversation_for_recovery)} content blocks")
-
         # For follow-up rounds, skip if there are no new messages since this agent's last response
         if user_message_content is None:
             if not self._has_new_messages(conversation_content_blocks):
@@ -148,16 +127,14 @@ class ResponseGenerator:
         )
 
         # Format current timestamp with day of week
-        conversation_started = format_kst_timestamp(datetime.now(timezone.utc), "%Y-%m-%d (%a) %H:%M:%S KST")
-
-        # Build provider-specific system prompt at runtime
-        # This allows different providers (Claude, Codex) to use different system prompts
-        provider_system_prompt = build_system_prompt(agent.name, agent_config, provider)
+        conversation_started = format_kst_timestamp(datetime.now(timezone.utc), "%Y-%m-%d (%a) %H:%M KST")
 
         # Build agent response context
-        logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id}) provider: {provider}")
+        # Build system prompt dynamically based on provider (for Codex-specific prompts)
+        logger.debug(f"Building response context for agent: '{agent.name}' (id: {agent.id})")
+        system_prompt = build_system_prompt(agent.name, agent_config, provider)
         response_context = AgentResponseContext(
-            system_prompt=provider_system_prompt,
+            system_prompt=system_prompt,
             user_message=message_to_agent,  # Content blocks with inline images
             agent_name=agent.name,
             config=agent.get_config_data(),
@@ -170,7 +147,6 @@ class ResponseGenerator:
             conversation_started=conversation_started,
             has_situation_builder=has_situation_builder,
             provider=provider,
-            full_conversation_for_recovery=full_conversation_for_recovery,
         )
 
         # Handle streaming response events
@@ -221,20 +197,8 @@ class ResponseGenerator:
                 orch_context.db, orch_context.room_id, agent.id, new_session_id, provider
             )
 
-        # Skip if agent chose not to respond
+        # Skip if agent chose not to respond - don't persist anything
         if skipped or not response_text:
-            # Save skip message if stream was started (so frontend can show persistent skip indicator)
-            if stream_started and not is_critic:
-                skip_message = schemas.MessageCreate(
-                    content=SKIP_MESSAGE_TEXT,
-                    role="assistant",
-                    agent_id=agent.id,
-                    thinking=thinking_text if thinking_text else None,
-                )
-                # Don't update room activity for skip messages
-                await crud.create_message(
-                    orch_context.db, orch_context.room_id, skip_message, update_room_activity=False
-                )
             return False
 
         # Check if this response was interrupted by a new user message

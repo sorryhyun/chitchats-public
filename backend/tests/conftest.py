@@ -6,7 +6,6 @@ authentication, and commonly used test data.
 """
 
 import asyncio
-import shutil
 import sys
 from pathlib import Path
 from typing import AsyncGenerator
@@ -17,11 +16,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Add backend directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from core import AgentManager
-from database import Base, get_db
-from infrastructure.database.models import Agent, Message, Room
+from core.manager import AgentManager
+from infrastructure.database import Base, get_db, models
 from main import app
 from orchestration import ChatOrchestrator
 
@@ -34,62 +32,6 @@ def event_loop():
     loop = policy.new_event_loop()
     yield loop
     loop.close()
-
-
-@pytest.fixture(scope="session")
-def test_agents_dir(tmp_path_factory) -> Path:
-    """
-    Session-scoped temporary directory for all test agent configs.
-
-    This prevents tests from polluting the real agents/ directory.
-    """
-    return tmp_path_factory.mktemp("agents")
-
-
-@pytest.fixture(autouse=True, scope="session")
-def cleanup_test_agents():
-    """
-    Safety net: cleanup any test directories in real agents/ folder.
-
-    Runs after ALL tests complete and removes directories matching test patterns.
-    """
-    real_agents_dir = Path(__file__).parent.parent.parent / "agents"
-    existing_before: set[str] = set()
-    if real_agents_dir.exists():
-        existing_before = {d.name for d in real_agents_dir.iterdir() if d.is_dir()}
-
-    yield
-
-    # Cleanup test patterns after all tests
-    test_patterns = ["agent_", "group_test", "test_agent", "new_agent"]
-    if real_agents_dir.exists():
-        for item in real_agents_dir.iterdir():
-            if not item.is_dir():
-                continue
-            # Skip directories that existed before tests
-            if item.name in existing_before:
-                continue
-            # Check if name matches any test pattern
-            if any(item.name.startswith(p) for p in test_patterns):
-                shutil.rmtree(item, ignore_errors=True)
-
-
-@pytest.fixture(autouse=True)
-def redirect_agents_dir(test_agents_dir, monkeypatch):
-    """
-    Redirect agent filesystem operations to temp directory.
-
-    This ensures tests don't create files in the real agents/ directory.
-    """
-    from core.settings import Settings, reset_settings
-
-    def mock_agents_dir(self) -> Path:
-        return test_agents_dir
-
-    monkeypatch.setattr(Settings, "agents_dir", property(mock_agents_dir))
-    reset_settings()
-    yield
-    reset_settings()
 
 
 @pytest.fixture(scope="function")
@@ -172,7 +114,7 @@ async def authenticated_client(test_db: AsyncSession) -> AsyncGenerator[tuple[As
     Returns:
         tuple: (AsyncClient, token) - The test client and the JWT token
     """
-    from core.auth import generate_jwt_token
+    from core import generate_jwt_token
 
     # Set up app state
     _setup_app_state()
@@ -203,7 +145,7 @@ async def guest_client(test_db: AsyncSession) -> AsyncGenerator[tuple[AsyncClien
     Returns:
         tuple: (AsyncClient, token) - The test client and the JWT token
     """
-    from core.auth import generate_jwt_token
+    from core import generate_jwt_token
 
     # Set up app state
     _setup_app_state()
@@ -227,9 +169,9 @@ async def guest_client(test_db: AsyncSession) -> AsyncGenerator[tuple[AsyncClien
 
 
 @pytest.fixture
-async def sample_agent(test_db: AsyncSession) -> Agent:
+async def sample_agent(test_db: AsyncSession) -> models.Agent:
     """Create a sample agent for testing."""
-    agent = Agent(
+    agent = models.Agent(
         name="test_agent",
         group="test_group",
         config_file="agents/test_agent.md",
@@ -246,9 +188,9 @@ async def sample_agent(test_db: AsyncSession) -> Agent:
 
 
 @pytest.fixture
-async def sample_room(test_db: AsyncSession) -> Room:
+async def sample_room(test_db: AsyncSession) -> models.Room:
     """Create a sample room for testing."""
-    room = Room(name="test_room", max_interactions=None, is_paused=False, owner_id="admin")
+    room = models.Room(name="test_room", max_interactions=None, is_paused=False, owner_id="admin")
     test_db.add(room)
     await test_db.commit()
     await test_db.refresh(room)
@@ -256,7 +198,9 @@ async def sample_room(test_db: AsyncSession) -> Room:
 
 
 @pytest.fixture
-async def sample_room_with_agents(test_db: AsyncSession, sample_room: Room, sample_agent: Agent) -> Room:
+async def sample_room_with_agents(
+    test_db: AsyncSession, sample_room: models.Room, sample_agent: models.Agent
+) -> models.Room:
     """Create a sample room with agents."""
     # Refresh to ensure we have the agents relationship loaded
     await test_db.refresh(sample_room, ["agents"])
@@ -267,9 +211,9 @@ async def sample_room_with_agents(test_db: AsyncSession, sample_room: Room, samp
 
 
 @pytest.fixture
-async def sample_message(test_db: AsyncSession, sample_room: Room, sample_agent: Agent) -> Message:
+async def sample_message(test_db: AsyncSession, sample_room: models.Room, sample_agent: models.Agent) -> models.Message:
     """Create a sample message for testing."""
-    message = Message(
+    message = models.Message(
         room_id=sample_room.id,
         agent_id=sample_agent.id,
         content="This is a test message",
@@ -308,10 +252,10 @@ def mock_env_vars(monkeypatch):
 
 
 @pytest.fixture
-def temp_agent_config(test_agents_dir):
-    """Create a temporary agent configuration directory using the test agents dir."""
-    agent_dir = test_agents_dir / "test_agent"
-    agent_dir.mkdir(parents=True, exist_ok=True)
+def temp_agent_config(tmp_path):
+    """Create a temporary agent configuration directory."""
+    agent_dir = tmp_path / "agents" / "test_agent"
+    agent_dir.mkdir(parents=True)
 
     # Create config files
     (agent_dir / "in_a_nutshell.md").write_text("Test agent nutshell")

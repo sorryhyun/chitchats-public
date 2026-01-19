@@ -33,7 +33,7 @@ from .cached import (
     invalidate_room_cache,
 )
 
-# Cleanup operations (CRUD + resource cleanup)
+# Cleanup operations (CRUD + resource cleanup coordination)
 from .cleanup import (
     clear_room_messages_with_cleanup,
     delete_agent_with_cleanup,
@@ -66,6 +66,7 @@ from .rooms import (
     get_or_create_direct_room,
     get_room,
     get_rooms,
+    mark_room_as_finished,
     mark_room_as_read,
     update_room,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "get_room",
     "update_room",
     "mark_room_as_read",
+    "mark_room_as_finished",
     "delete_room",
     "get_or_create_direct_room",
     # Agent operations

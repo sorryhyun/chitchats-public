@@ -1,29 +1,57 @@
 """
-Database infrastructure components.
+Database infrastructure: models, migrations, connection, and utilities.
 
-This package provides database-related functionality including models,
-migrations, and write queue management.
-
-Usage:
-    from infrastructure.database import Room, Agent, Message
-    from infrastructure.database import run_migrations
+This module re-exports from the centralized database.py for backward compatibility.
 """
 
-from .migrations import run_migrations
+# Import from centralized database module
+from database import (
+    Base,
+    SerializedWrite,
+    get_db,
+    get_engine,
+    get_session_maker,
+    init_db,
+    is_sqlite,
+    retry_on_db_lock,
+    serialized_commit,
+    serialized_write,
+)
+
+from . import models
 from .models import Agent, Message, Room, RoomAgentSession, room_agents
-from .write_queue import enqueue_write, start_writer, stop_writer
+
+
+# Legacy module-level accessors using __getattr__
+def __getattr__(name):
+    """Lazy access for legacy module-level attributes."""
+    if name == "engine":
+        return get_engine()
+    if name == "async_session_maker":
+        return get_session_maker()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Models
-    "Room",
+    "models",
     "Agent",
     "Message",
+    "Room",
     "RoomAgentSession",
     "room_agents",
-    # Migrations
-    "run_migrations",
-    # Write queue
-    "enqueue_write",
-    "start_writer",
-    "stop_writer",
+    # Connection
+    "Base",
+    "engine",
+    "async_session_maker",
+    "get_db",
+    "init_db",
+    "is_sqlite",
+    "get_engine",
+    "get_session_maker",
+    # Concurrency helpers
+    "retry_on_db_lock",
+    "SerializedWrite",
+    "serialized_write",
+    "serialized_commit",
 ]

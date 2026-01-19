@@ -186,11 +186,17 @@ Alice was nine when she found her mother unconscious in the bathroom, pill bottl
 
 ## 메모리 시스템과의 연동
 
-ChitChats의 에이전트는 `recall` 도구를 사용하여 기억을 검색한다:
+ChitChats는 두 가지 메모리 모드를 지원한다:
 
+### RECALL 모드 (`MEMORY_BY=RECALL`)
 - 에이전트가 필요할 때 `recall` 도구로 특정 기억을 검색
 - 기억 제목(subtitle)이 검색 키워드로 사용됨
 - **제목의 중요성**: 검색 가능한 키워드를 포함해야 함
+
+### BRAIN 모드 (`MEMORY_BY=BRAIN`)
+- 별도의 메모리 브레인 에이전트가 맥락을 분석해 관련 기억 자동 주입
+- 기억 제목과 내용 모두 활성화 판단에 사용
+- **제목과 내용의 일관성**: 브레인이 올바르게 선택할 수 있도록
 
 ## 실전 연습
 다음 정보를 하나의 기억으로 작성해보자:

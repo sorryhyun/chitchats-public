@@ -7,30 +7,43 @@ for the Claude Agent SDK backend.
 
 import asyncio
 import logging
-import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions
-from claude_agent_sdk.types import HookMatcher, McpStdioServerConfig, PostToolUseHookInput, SyncHookJSONOutput
+from claude_agent_sdk.types import HookMatcher, PostToolUseHookInput, SyncHookJSONOutput
 from core import get_settings
 
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
 from .client import ClaudeClient
 from .parser import ClaudeStreamParser
+from .pool import ClaudeClientPool
+
+# Type alias for MCP server subprocess config
+MCPServerConfig = dict[str, str | list[str] | dict[str, str]]
 
 logger = logging.getLogger("ClaudeProvider")
 
 # Get settings singleton
 _settings = get_settings()
 
-# Project root directory (backend directory)
-_BACKEND_ROOT = Path(__file__).parent.parent.parent
 
-# Platform detection
-_IS_WINDOWS = sys.platform == "win32"
+def _get_cli_path() -> Optional[str]:
+    """Get the CLI path based on platform and settings.
+
+    Returns None to use the native Claude Code CLI when:
+    - EXPERIMENTAL_CUSTOM_CLI is set to false
+
+    Returns the bundled patched CLI path when:
+    - EXPERIMENTAL_CUSTOM_CLI is set to true
+    """
+    # Check if custom CLI is enabled
+    if not _settings.experimental_custom_cli:
+        return None  # Use native Claude Code CLI
+
+    return str(_settings.project_root / "bundled" / "cli.js")
 
 
 def _get_claude_working_dir() -> str:
@@ -50,6 +63,7 @@ class ClaudeProvider(AIProvider):
     def __init__(self):
         """Initialize the Claude provider."""
         self._parser = ClaudeStreamParser()
+        self._pool: Optional[ClaudeClientPool] = None
 
     @property
     def provider_type(self) -> ProviderType:
@@ -67,6 +81,12 @@ class ClaudeProvider(AIProvider):
         """
         return ClaudeClient(options)
 
+    def get_client_pool(self) -> ClaudeClientPool:
+        """Get the client pool for this provider."""
+        if self._pool is None:
+            self._pool = ClaudeClientPool()
+        return self._pool
+
     def build_options(
         self,
         base_options: AIClientOptions,
@@ -83,16 +103,16 @@ class ClaudeProvider(AIProvider):
         Returns:
             ClaudeAgentOptions ready for client creation
         """
-        # Import here to avoid circular imports
         from config import get_tool_names_by_group
 
-        # Build standalone MCP server configurations
-        mcp_servers = self._build_mcp_server_config(base_options)
+        # Build MCP servers as subprocess configs
+        mcp_servers = self._build_mcp_server_configs(base_options)
 
         # Build allowed tools list
         allowed_tool_names = [
             *get_tool_names_by_group("guidelines"),
             *get_tool_names_by_group("action"),
+            *get_tool_names_by_group("etc"),
         ]
 
         # Create PostToolUse hooks
@@ -107,7 +127,7 @@ class ClaudeProvider(AIProvider):
         options = ClaudeAgentOptions(
             model=model,
             system_prompt=base_options.system_prompt,
-            cli_path=None,  # Use native Claude Code CLI
+            cli_path=_get_cli_path(),
             permission_mode="default",
             max_thinking_tokens=base_options.max_thinking_tokens,
             mcp_servers=mcp_servers,
@@ -143,7 +163,6 @@ class ClaudeProvider(AIProvider):
             True if Claude Code CLI is available
         """
         try:
-            # Try to run a simple command to check availability
             process = await asyncio.create_subprocess_exec(
                 "claude",
                 "--version",
@@ -156,99 +175,12 @@ class ClaudeProvider(AIProvider):
             logger.warning(f"Claude Code availability check failed: {e}")
             return False
 
-    def _build_mcp_server_config(
-        self,
-        base_options: AIClientOptions,
-    ) -> dict[str, McpStdioServerConfig]:
-        """Build MCP server configurations for standalone servers.
-
-        Args:
-            base_options: Provider-agnostic configuration
-
-        Returns:
-            Dict mapping server names to McpStdioServerConfig
-        """
-        # Check if running as bundled PyInstaller exe
-        is_bundled = getattr(sys, "frozen", False)
-
-        if is_bundled:
-            # In bundled mode, spawn the exe itself with --mcp flag
-            command = sys.executable
-            action_args = ["--mcp", "action"]
-            guidelines_args = ["--mcp", "guidelines"]
-        else:
-            # In development mode, use Python module execution
-            command = sys.executable
-            action_args = ["-m", "mcp_servers.action_server"]
-            guidelines_args = ["-m", "mcp_servers.guidelines_server"]
-
-        backend_path = str(_BACKEND_ROOT)
-
-        # Get work_dir (where agents folder lives)
-        # In bundled mode: next to the exe
-        # In dev mode: project root (parent of backend)
-        if is_bundled:
-            work_dir = str(Path(sys.executable).parent)
-        else:
-            work_dir = str(_BACKEND_ROOT.parent)
-
-        # Base environment for all MCP servers
-        base_env = {
-            "PYTHONPATH": backend_path,
-            "AGENT_NAME": base_options.agent_name,
-            "WORK_DIR": work_dir,
-        }
-
-        # Add optional environment variables
-        if base_options.group_name:
-            base_env["AGENT_GROUP"] = base_options.group_name
-        if base_options.agent_id is not None:
-            base_env["AGENT_ID"] = str(base_options.agent_id)
-        if base_options.config_file:
-            base_env["CONFIG_FILE"] = base_options.config_file
-
-        # Build action server config
-        action_config: McpStdioServerConfig = {
-            "command": command,
-            "args": action_args,
-            "env": {**base_env},
-        }
-
-        # Build guidelines server config
-        guidelines_env = {
-            "PYTHONPATH": backend_path,
-            "AGENT_NAME": base_options.agent_name,
-            "HAS_SITUATION_BUILDER": str(base_options.has_situation_builder).lower(),
-            "PROVIDER": "claude",
-        }
-        if base_options.group_name:
-            guidelines_env["AGENT_GROUP"] = base_options.group_name
-
-        guidelines_config: McpStdioServerConfig = {
-            "command": command,
-            "args": guidelines_args,
-            "env": guidelines_env,
-        }
-
-        return {
-            "action": action_config,
-            "guidelines": guidelines_config,
-        }
-
     def _build_tool_capture_hooks(
         self,
         anthropic_calls_capture: Optional[List[str]],
         skip_tool_capture: Optional[List[bool]],
     ) -> Optional[dict]:
-        """Build PostToolUse hooks for capturing tool calls.
-
-        Args:
-            anthropic_calls_capture: List to append captured situations to
-            skip_tool_capture: List to append True when skip tool is called
-
-        Returns:
-            Hooks dict for ClaudeAgentOptions, or None if no capture needed
-        """
+        """Build PostToolUse hooks for capturing tool calls."""
         hook_matchers = []
 
         # Hook for anthropic tool calls
@@ -292,3 +224,65 @@ class ClaudeProvider(AIProvider):
             return None
 
         return {"PostToolUse": hook_matchers}
+
+    def _build_mcp_server_configs(
+        self,
+        base_options: AIClientOptions,
+    ) -> dict[str, MCPServerConfig]:
+        """Build MCP server subprocess configurations.
+
+        Creates configs for spawning MCP servers as subprocesses that communicate
+        via stdio. This uses the shared mcp_servers/ implementations.
+
+        Args:
+            base_options: Provider-agnostic configuration
+
+        Returns:
+            Dict of MCP server configs for ClaudeAgentOptions
+        """
+        import sys
+
+        # Backend directory for module resolution
+        backend_dir = str(_settings.backend_dir)
+
+        # Common environment variables
+        base_env = {
+            "AGENT_NAME": base_options.agent_name,
+            "PROVIDER": "claude",
+            "PYTHONPATH": backend_dir,  # Required for MCP server module resolution
+        }
+        if base_options.group_name:
+            base_env["AGENT_GROUP"] = base_options.group_name
+
+        # Action server config
+        action_env = {**base_env}
+        if base_options.agent_id:
+            action_env["AGENT_ID"] = str(base_options.agent_id)
+        if base_options.config_file:
+            action_env["CONFIG_FILE"] = base_options.config_file
+
+        # Guidelines server config
+        guidelines_env = {**base_env}
+        if base_options.has_situation_builder:
+            guidelines_env["HAS_SITUATION_BUILDER"] = "true"
+
+        return {
+            "action": {
+                "command": sys.executable,
+                "args": ["-m", "mcp_servers.action_server"],
+                "env": action_env,
+                "cwd": backend_dir,
+            },
+            "guidelines": {
+                "command": sys.executable,
+                "args": ["-m", "mcp_servers.guidelines_server"],
+                "env": guidelines_env,
+                "cwd": backend_dir,
+            },
+            "etc": {
+                "command": sys.executable,
+                "args": ["-m", "mcp_servers.etc_server"],
+                "env": base_env,
+                "cwd": backend_dir,
+            },
+        }

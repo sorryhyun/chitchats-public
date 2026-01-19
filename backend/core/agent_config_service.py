@@ -1,8 +1,8 @@
 """
-Agent configuration file I/O operations.
+Service for handling agent configuration file operations.
 
-This module handles file I/O operations for agent configuration files,
-separating filesystem operations from database CRUD operations.
+This service separates file I/O operations from database CRUD operations,
+providing a cleaner separation of concerns and making the code more testable.
 """
 
 import logging
@@ -15,10 +15,10 @@ from infrastructure.locking import file_lock
 if TYPE_CHECKING:
     from domain.agent_config import AgentConfigData
 
-logger = logging.getLogger("AgentConfigIO")
+logger = logging.getLogger("AgentConfigService")
 
 
-class AgentConfigIO:
+class AgentConfigService:
     """
     Handles all agent configuration file operations.
     Keeps file I/O separate from database operations in CRUD layer.
@@ -26,10 +26,9 @@ class AgentConfigIO:
 
     @staticmethod
     def get_project_root() -> Path:
-        """Get the project root directory from settings."""
-        from core import get_settings
-
-        return get_settings().project_root
+        """Get the project root directory (parent of backend/)."""
+        backend_dir = Path(__file__).parent.parent
+        return backend_dir.parent
 
     @staticmethod
     def append_to_recent_events(config_file: str, memory_entry: str, timestamp: Optional[datetime] = None) -> bool:
@@ -53,7 +52,7 @@ class AgentConfigIO:
         # Format the memory entry with bullet point and timestamp
         formatted_entry = f"- [{timestamp.strftime('%Y-%m-%d')}] {memory_entry}"
 
-        project_root = AgentConfigIO.get_project_root()
+        project_root = AgentConfigService.get_project_root()
         config_path = project_root / config_file
 
         # Check if it's a folder-based config
@@ -103,7 +102,7 @@ class AgentConfigIO:
             return None
 
         try:
-            from .parser import parse_agent_config
+            from config import parse_agent_config
 
             # parse_agent_config now returns AgentConfigData directly
             return parse_agent_config(config_file)

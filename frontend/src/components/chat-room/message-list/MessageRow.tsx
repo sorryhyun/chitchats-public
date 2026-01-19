@@ -163,9 +163,10 @@ export const MessageRow = memo(({
                   </div>
                 )}
 
-                {/* Image attachment */}
-                {message.image_data && message.image_media_type && (
+                {/* Image attachment - supports both new images array and legacy single image */}
+                {(message.images || (message.image_data && message.image_media_type)) && (
                   <ImageAttachment
+                    images={message.images}
                     imageData={message.image_data}
                     imageMediaType={message.image_media_type}
                     isUserMessage={message.role === 'user'}
@@ -180,7 +181,7 @@ export const MessageRow = memo(({
                       : message.is_skipped
                       ? 'bg-slate-50 text-slate-500 rounded-tl-sm'
                       : 'bg-slate-100 text-slate-800 rounded-tl-sm'
-                  } ${!message.content && message.image_data ? 'hidden' : ''}`}
+                  } ${!message.content && (message.images || message.image_data) ? 'hidden' : ''}`}
                 >
                   {message.is_typing || message.is_chatting ? (
                     <div className="flex flex-col gap-2">
