@@ -9,19 +9,22 @@ Architecture:
     - Async singleton pattern for thread-safe access
     - Request locking to serialize tool calls
     - Automatic restart on connection failure
+    - Notification handler captures codex/event reasoning
 """
 
 import asyncio
+import json
 import logging
 import os
 import platform
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.types import ServerNotification
 
 logger = logging.getLogger("CodexMCPServerManager")
 
@@ -92,6 +95,9 @@ class CodexMCPServerManager:
         self._started = False
         self._request_lock = asyncio.Lock()
         self._available_tools: Dict[str, Any] = {}
+        # Captured reasoning from codex/event notifications during tool calls
+        self._captured_reasoning: List[str] = []
+        self._capture_lock = asyncio.Lock()
 
     @classmethod
     async def get_instance(cls) -> "CodexMCPServerManager":
@@ -112,6 +118,77 @@ class CodexMCPServerManager:
             if cls._instance is not None:
                 await cls._instance.shutdown()
                 cls._instance = None
+
+    async def _handle_notification(
+        self,
+        message: Union[Any, ServerNotification, Exception],
+    ) -> None:
+        """Handle incoming notifications from the MCP server.
+
+        Captures codex/event notifications containing agent reasoning.
+        """
+        # Skip exceptions and non-notification messages
+        if isinstance(message, Exception):
+            return
+
+        # Check if it's a ServerNotification with codex/event method
+        # The notification may be a raw dict or ServerNotification object
+        method = None
+        params = None
+
+        if hasattr(message, "method"):
+            method = message.method
+            params = getattr(message, "params", None)
+        elif isinstance(message, dict):
+            method = message.get("method")
+            params = message.get("params")
+
+        if method != "codex/event":
+            return
+
+        # Extract reasoning from the notification
+        # Format: {"method": "codex/event", "params": {"type": "event_msg", "payload": {"type": "agent_reasoning", "text": "..."}}}
+        # or: {"method": "codex/event", "params": {"type": "response_item", "payload": {"type": "reasoning", "summary": [...]}}}
+        try:
+            if isinstance(params, dict):
+                event_type = params.get("type", "")
+                payload = params.get("payload", {})
+
+                if event_type == "event_msg" and isinstance(payload, dict):
+                    if payload.get("type") == "agent_reasoning":
+                        text = payload.get("text", "")
+                        if text:
+                            async with self._capture_lock:
+                                self._captured_reasoning.append(text)
+                            logger.info(f"Captured agent_reasoning: {len(text)} chars")
+
+                elif event_type == "response_item" and isinstance(payload, dict):
+                    if payload.get("type") == "reasoning":
+                        # Try to extract from summary array
+                        summary = payload.get("summary", [])
+                        for item in summary:
+                            if isinstance(item, dict) and item.get("type") == "summary_text":
+                                text = item.get("text", "")
+                                if text:
+                                    async with self._capture_lock:
+                                        self._captured_reasoning.append(text)
+                                    logger.info(f"Captured reasoning summary: {len(text)} chars")
+
+            elif hasattr(params, "type"):
+                # Handle as object with attributes
+                event_type = params.type
+                payload = getattr(params, "payload", None)
+
+                if event_type == "event_msg" and hasattr(payload, "type"):
+                    if payload.type == "agent_reasoning":
+                        text = getattr(payload, "text", "")
+                        if text:
+                            async with self._capture_lock:
+                                self._captured_reasoning.append(text)
+                            logger.info(f"Captured agent_reasoning (obj): {len(text)} chars")
+
+        except Exception as e:
+            logger.debug(f"Error extracting reasoning from notification: {e}")
 
     async def ensure_started(self) -> None:
         """Ensure the MCP server is started and connected.
@@ -154,8 +231,13 @@ class CodexMCPServerManager:
         self._read_stream = read_stream
         self._write_stream = write_stream
 
-        # Create MCP session (type: ignore for MCP library's Any types)
-        self._session_context = ClientSession(read_stream, write_stream)  # type: ignore[arg-type]
+        # Create MCP session with notification handler for codex/event reasoning
+        # type: ignore for MCP library's Any types
+        self._session_context = ClientSession(
+            read_stream,
+            write_stream,
+            message_handler=self._handle_notification,  # type: ignore[arg-type]
+        )
         session = await self._session_context.__aenter__()
         self._session = session
         assert session is not None, "MCP session failed to initialize"
@@ -234,6 +316,10 @@ class CodexMCPServerManager:
 
         logger.info(f"Calling MCP tool '{tool_name}' with thread_id={thread_id}, prompt: {prompt[:100]}...")
 
+        # Clear captured reasoning before the call
+        async with self._capture_lock:
+            self._captured_reasoning.clear()
+
         try:
             result = await self._session.call_tool(tool_name, arguments)
 
@@ -284,8 +370,6 @@ class CodexMCPServerManager:
                                 )
                         elif item.type == "json":
                             # Parse JSON content to extract structured data
-                            import json
-
                             try:
                                 data = json.loads(item.text) if hasattr(item, "text") else {}
                                 response["content"].append(
@@ -301,6 +385,21 @@ class CodexMCPServerManager:
                                         "text": item.text if hasattr(item, "text") else str(item),
                                     }
                                 )
+
+            # Add captured reasoning from codex/event notifications
+            async with self._capture_lock:
+                if self._captured_reasoning:
+                    # Combine all captured reasoning into one content item
+                    combined_reasoning = "\n".join(self._captured_reasoning)
+                    # Insert reasoning at the beginning (before agent_message)
+                    response["content"].insert(
+                        0,
+                        {
+                            "type": "reasoning",
+                            "text": combined_reasoning,
+                        },
+                    )
+                    logger.info(f"Added captured reasoning to response: {len(combined_reasoning)} chars")
 
             logger.info(
                 f"MCP tool call complete. Thread ID: {response.get('thread_id')}, content items: {len(response.get('content', []))}"

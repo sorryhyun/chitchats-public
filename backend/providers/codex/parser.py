@@ -116,7 +116,7 @@ class CodexStreamParser(AIStreamParser):
 
             elif item_type == "reasoning":
                 # Codex reasoning (equivalent to thinking)
-                text = item.get("summary", "")
+                text = item.get("summary_text", "")
                 if text:
                     thinking_delta = text
                     logger.info(f"[CodexParser] Extracted reasoning: {len(text)} chars")

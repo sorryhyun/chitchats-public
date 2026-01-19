@@ -184,8 +184,47 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 
+def run_mcp_server(server_type: str) -> None:
+    """Run in MCP server mode (for self-spawn from bundled exe).
+
+    This is called when the exe is invoked with --mcp-server argument,
+    allowing Codex to spawn this exe as an MCP server subprocess.
+
+    Args:
+        server_type: Either "action" or "guidelines"
+    """
+    import asyncio
+
+    # Set up paths for imports
+    setup_paths()
+
+    if server_type == "action":
+        from mcp_servers.action_server import main as server_main
+    elif server_type == "guidelines":
+        from mcp_servers.guidelines_server import main as server_main
+    else:
+        print(f"Unknown MCP server type: {server_type}", file=sys.stderr)
+        print("Valid types: action, guidelines", file=sys.stderr)
+        sys.exit(1)
+
+    # Run the MCP server (async main)
+    asyncio.run(server_main())
+
+
 def main():
     """Main entry point."""
+    # Check for MCP server mode first (before any other setup)
+    # This allows the bundled exe to be spawned as an MCP server subprocess
+    if "--mcp-server" in sys.argv:
+        try:
+            idx = sys.argv.index("--mcp-server")
+            server_type = sys.argv[idx + 1]
+        except (IndexError, ValueError):
+            print("Usage: ClaudeCodeRP.exe --mcp-server <action|guidelines>", file=sys.stderr)
+            sys.exit(1)
+        run_mcp_server(server_type)
+        return  # MCP server handles its own exit
+
     # Set up paths first
     setup_paths()
 

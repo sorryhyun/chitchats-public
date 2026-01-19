@@ -8,7 +8,9 @@ for the Codex MCP backend using persistent `codex mcp-server` connection.
 import asyncio
 import logging
 import os
+import platform
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -195,12 +197,36 @@ class CodexProvider(AIProvider):
         # Get backend path from settings
         backend_path = str(_settings.backend_dir)
 
-        # Get Python executable path
-        python_path = os.environ.get("VIRTUAL_ENV")
-        if python_path:
-            python_exe = str(Path(python_path) / "bin" / "python")
+        # Determine command and args based on execution mode
+        is_frozen = getattr(sys, "frozen", False)
+
+        if is_frozen:
+            # Running as PyInstaller bundle - use self-spawn mode
+            # The bundled exe handles --mcp-server argument
+            exe_path = sys.executable
+            action_cmd = exe_path
+            action_args = ["--mcp-server", "action"]
+            guidelines_cmd = exe_path
+            guidelines_args = ["--mcp-server", "guidelines"]
+            # In bundled mode, cwd is the exe's directory
+            cwd = str(Path(exe_path).parent)
         else:
-            python_exe = "python"
+            # Development mode - use Python interpreter
+            python_path = os.environ.get("VIRTUAL_ENV")
+            if python_path:
+                # Use platform-specific path for Python executable
+                if platform.system() == "Windows":
+                    python_exe = str(Path(python_path) / "Scripts" / "python.exe")
+                else:
+                    python_exe = str(Path(python_path) / "bin" / "python")
+            else:
+                python_exe = "python"
+
+            action_cmd = python_exe
+            action_args = ["-m", "mcp_servers.action_server"]
+            guidelines_cmd = python_exe
+            guidelines_args = ["-m", "mcp_servers.guidelines_server"]
+            cwd = backend_path
 
         # Build environment variables
         action_env: Dict[str, str] = {
@@ -224,15 +250,15 @@ class CodexProvider(AIProvider):
 
         return {
             "action": {
-                "command": python_exe,
-                "args": ["-m", "mcp_servers.action_server"],
-                "cwd": backend_path,
+                "command": action_cmd,
+                "args": action_args,
+                "cwd": cwd,
                 "env": action_env,
             },
             "guidelines": {
-                "command": python_exe,
-                "args": ["-m", "mcp_servers.guidelines_server"],
-                "cwd": backend_path,
+                "command": guidelines_cmd,
+                "args": guidelines_args,
+                "cwd": cwd,
                 "env": guidelines_env,
             },
         }
