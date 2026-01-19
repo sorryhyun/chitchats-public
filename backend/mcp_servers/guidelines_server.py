@@ -27,7 +27,8 @@ from typing import Optional
 from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import Resource, ResourceTemplate, TextContent, Tool
+from pydantic import AnyUrl
 
 from .config import (
     get_extreme_traits,
@@ -129,6 +130,39 @@ def create_guidelines_server(
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
+
+    # Resources for guidelines access
+    @server.list_resources()
+    async def list_resources():
+        """List available guidelines resources."""
+        return [
+            Resource(
+                uri=AnyUrl(f"guidelines://{agent_name}/behavioral"),
+                name="Behavioral Guidelines",
+                description=f"Behavioral guidelines for {agent_name}",
+                mimeType="text/plain",
+            )
+        ]
+
+    @server.read_resource()
+    async def read_resource(uri: AnyUrl) -> str:
+        """Read a guidelines resource by URI."""
+        uri_str = str(uri)
+        if uri_str == f"guidelines://{agent_name}/behavioral":
+            return guidelines_content
+        raise ValueError(f"Unknown resource URI: {uri_str}")
+
+    @server.list_resource_templates()
+    async def list_resource_templates():
+        """List resource templates for guidelines access."""
+        return [
+            ResourceTemplate(
+                uriTemplate=f"guidelines://{agent_name}/{{type}}",
+                name="Agent Guidelines",
+                description=f"Access {agent_name}'s guidelines. Available: behavioral",
+                mimeType="text/plain",
+            )
+        ]
 
     return server
 

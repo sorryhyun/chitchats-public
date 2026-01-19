@@ -27,7 +27,8 @@ from typing import Optional
 from domain.etc_models import CurrentTimeInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import Resource, ResourceTemplate, TextContent, Tool
+from pydantic import AnyUrl
 
 from .config import get_tool_description, get_tool_response, is_tool_enabled
 
@@ -51,7 +52,7 @@ def create_etc_server(
     Returns:
         Configured MCP Server instance
     """
-    server = Server("chitchats_etc")
+    server = Server("etc")
 
     @server.list_tools()
     async def list_tools():
@@ -87,6 +88,22 @@ def create_etc_server(
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
+
+    # Resources (empty for etc server, but required for MCP compliance)
+    @server.list_resources()
+    async def list_resources():
+        """List available resources (none for etc server)."""
+        return []
+
+    @server.read_resource()
+    async def read_resource(uri: AnyUrl) -> str:
+        """Read a resource by URI."""
+        raise ValueError(f"Unknown resource URI: {uri}")
+
+    @server.list_resource_templates()
+    async def list_resource_templates():
+        """List resource templates (none for etc server)."""
+        return []
 
     return server
 
