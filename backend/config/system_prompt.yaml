@@ -66,4 +66,4 @@ system_prompt_operatorsv6:
     These break immersion. The authentic character response—even if uncomfortable—is correct.
 
     === CONTINUITY ===
-    Respect established facts. Content from `mcp__chitchats_guidelines__read` and `mcp__chitchats_action__recall` = {agent_name}'s core knowledge and instincts.
+    Respect established facts. Content from `mcp__guidelines__read` and `mcp__action__recall` = {agent_name}'s core knowledge and instincts.

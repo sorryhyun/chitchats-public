@@ -48,6 +48,12 @@ def setup_logging(debug_mode: bool = True, log_level: Optional[int] = None) -> N
     uvicorn_logger = logging.getLogger("uvicorn.access")
     uvicorn_logger.addFilter(SuppressPollingLogsFilter())
 
+    # Suppress verbose aiosqlite debug logs
+    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+
+    # Suppress MCP client JSONRPC parsing errors (noisy during normal operation)
+    logging.getLogger("mcp.client.stdio").setLevel(logging.CRITICAL)
+
     # Log the configuration
     logger = logging.getLogger("Logging")
     level_name = logging.getLevelName(log_level)

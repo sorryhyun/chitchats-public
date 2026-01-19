@@ -14,14 +14,41 @@ Architecture:
 import asyncio
 import logging
 import os
+import platform
 import shutil
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 logger = logging.getLogger("CodexMCPServerManager")
+
+
+def _get_bundled_codex_path() -> Optional[str]:
+    """Get the path to the bundled Codex Rust binary."""
+    # Bundled paths by platform (relative to project root)
+    bundled_paths = {
+        "windows-amd64": "bundled/codex-x86_64-pc-windows-msvc.exe",
+        "windows-x86_64": "bundled/codex-x86_64-pc-windows-msvc.exe",
+        "darwin-arm64": "bundled/codex-aarch64-apple-darwin",
+        "darwin-x86_64": "bundled/codex-x86_64-apple-darwin",
+        "linux-x86_64": "bundled/codex-x86_64-unknown-linux-gnu",
+        "linux-aarch64": "bundled/codex-aarch64-unknown-linux-gnu",
+    }
+
+    key = f"{platform.system().lower()}-{platform.machine().lower()}"
+    relative_path = bundled_paths.get(key)
+    if relative_path:
+        # This file: backend/providers/codex/mcp_server_manager.py
+        # Project root: 4 levels up
+        project_root = Path(__file__).parent.parent.parent.parent
+        bundled_path = project_root / relative_path
+        if bundled_path.exists():
+            logger.info(f"Found bundled Codex binary: {bundled_path}")
+            return str(bundled_path)
+    return None
 
 
 class _MCPNotificationFilter(logging.Filter):
@@ -104,11 +131,15 @@ class CodexMCPServerManager:
 
     async def _start_server(self) -> None:
         """Start the Codex MCP server process and establish connection."""
-        codex_path = shutil.which("codex")
+        # Prefer bundled Rust binary over npm-installed Node.js version
+        # The Rust binary properly supports MCP server mode
+        codex_path = _get_bundled_codex_path()
+        if not codex_path:
+            codex_path = shutil.which("codex")
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
-        logger.info("Starting Codex MCP server...")
+        logger.info(f"Starting Codex MCP server using: {codex_path}")
 
         # Create server parameters for stdio transport
         server_params = StdioServerParameters(

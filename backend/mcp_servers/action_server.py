@@ -28,8 +28,7 @@ from typing import Optional
 from domain.action_models import MemorizeInput, RecallInput, SkipInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Resource, ResourceTemplate, TextContent, Tool
-from pydantic import AnyUrl
+from mcp.types import TextContent, Tool
 
 from .config import get_tool_description, get_tool_response, is_tool_enabled
 
@@ -59,7 +58,7 @@ def create_action_server(
     Returns:
         Configured MCP Server instance
     """
-    server = Server("chitchats_action")
+    server = Server("action")
 
     # Use provided memory index or load from config file
     memory_index = long_term_memory_index or _load_memory_index(config_file)
@@ -127,57 +126,6 @@ def create_action_server(
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-    # Resources for memory access
-    @server.list_resources()
-    async def list_resources():
-        """List available memory resources."""
-        resources = []
-
-        for subtitle in memory_index.keys():
-            resources.append(
-                Resource(
-                    uri=AnyUrl(f"memory://{agent_name}/{subtitle}"),
-                    name=subtitle,
-                    description=f"Memory: {subtitle}",
-                    mimeType="text/plain",
-                )
-            )
-
-        return resources
-
-    @server.read_resource()
-    async def read_resource(uri: AnyUrl) -> str:
-        """Read a memory resource by URI."""
-        uri_str = str(uri)
-        prefix = f"memory://{agent_name}/"
-        if not uri_str.startswith(prefix):
-            raise ValueError(f"Invalid resource URI: {uri_str}")
-
-        subtitle = uri_str[len(prefix) :]
-
-        if subtitle not in memory_index:
-            raise ValueError(f"Memory not found: {subtitle}")
-
-        return memory_index[subtitle]
-
-    @server.list_resource_templates()
-    async def list_resource_templates():
-        """List resource templates for dynamic memory access."""
-        templates = []
-
-        if memory_index:
-            available = ", ".join(memory_index.keys())
-            templates.append(
-                ResourceTemplate(
-                    uriTemplate=f"memory://{agent_name}/{{subtitle}}",
-                    name="Agent Memory",
-                    description=f"Access {agent_name}'s memories. Available: {available}",
-                    mimeType="text/plain",
-                )
-            )
-
-        return templates
 
     return server
 

@@ -223,13 +223,13 @@ class CodexProvider(AIProvider):
         }
 
         return {
-            "chitchats_action": {
+            "action": {
                 "command": python_exe,
                 "args": ["-m", "mcp_servers.action_server"],
                 "cwd": backend_path,
                 "env": action_env,
             },
-            "chitchats_guidelines": {
+            "guidelines": {
                 "command": python_exe,
                 "args": ["-m", "mcp_servers.guidelines_server"],
                 "cwd": backend_path,

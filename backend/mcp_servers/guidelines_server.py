@@ -27,8 +27,7 @@ from typing import Optional
 from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Resource, TextContent, Tool
-from pydantic import AnyUrl
+from mcp.types import TextContent, Tool
 
 from .config import (
     get_extreme_traits,
@@ -60,7 +59,7 @@ def create_guidelines_server(
     Returns:
         Configured MCP Server instance
     """
-    server = Server("chitchats_guidelines")
+    server = Server("guidelines")
 
     # Pre-compute guidelines content
     situation_builder_note = get_situation_builder_note(has_situation_builder)
@@ -130,27 +129,6 @@ def create_guidelines_server(
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-    @server.list_resources()
-    async def list_resources():
-        """List available guideline resources."""
-        return [
-            Resource(
-                uri=AnyUrl(f"guidelines://{agent_name}/behavioral"),
-                name="Behavioral Guidelines",
-                description=f"Roleplay and behavioral guidelines for {agent_name}",
-                mimeType="text/plain",
-            )
-        ]
-
-    @server.read_resource()
-    async def read_resource(uri: AnyUrl) -> str:
-        """Read a guideline resource by URI."""
-        uri_str = str(uri)
-        if uri_str == f"guidelines://{agent_name}/behavioral":
-            return guidelines_content
-
-        raise ValueError(f"Unknown resource: {uri_str}")
 
     return server
 

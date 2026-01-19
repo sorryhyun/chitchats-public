@@ -21,6 +21,16 @@ DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."
 # Skip message text (displayed when agent chooses not to respond)
 SKIP_MESSAGE_TEXT = "(무시함)"
 
+# Bundled Codex binary paths by platform (relative to project root)
+BUNDLED_CODEX_PATHS: Dict[str, str] = {
+    "windows-amd64": "bundled/codex-x86_64-pc-windows-msvc.exe",
+    "windows-x86_64": "bundled/codex-x86_64-pc-windows-msvc.exe",
+    "darwin-arm64": "bundled/codex-aarch64-apple-darwin",
+    "darwin-x86_64": "bundled/codex-x86_64-apple-darwin",
+    "linux-x86_64": "bundled/codex-x86_64-unknown-linux-gnu",
+    "linux-aarch64": "bundled/codex-aarch64-unknown-linux-gnu",
+}
+
 # Character-specific MCP tool names organized by group
 # These are the tools available to each agent for character-based interactions
 AGENT_TOOL_NAMES_BY_GROUP: Dict[str, Dict[str, str]] = {
