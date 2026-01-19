@@ -1,5 +1,5 @@
 """
-Database migration utilities for ChitChats (PostgreSQL).
+Database migration utilities for ChitChats (PostgreSQL and SQLite).
 
 This module provides automatic schema migration functionality to handle
 database upgrades without requiring manual deletion of the database.
@@ -42,30 +42,51 @@ async def run_migrations(engine: AsyncEngine):
 # =============================================================================
 
 
+def _is_sqlite(conn) -> bool:
+    """Check if the connection is using SQLite."""
+    return conn.dialect.name == "sqlite"
+
+
 async def _column_exists(conn, table: str, column: str) -> bool:
-    """Check if a column exists in a table (PostgreSQL)."""
-    result = await conn.execute(
-        text("""
-            SELECT COUNT(*) as count
-            FROM information_schema.columns
-            WHERE table_name = :table AND column_name = :column
-        """),
-        {"table": table, "column": column},
-    )
-    return result.first().count > 0
+    """Check if a column exists in a table (PostgreSQL and SQLite)."""
+    if _is_sqlite(conn):
+        # SQLite: use PRAGMA table_info
+        result = await conn.execute(text(f"PRAGMA table_info({table})"))
+        columns = [row[1] for row in result.fetchall()]  # column name is at index 1
+        return column in columns
+    else:
+        # PostgreSQL: use information_schema
+        result = await conn.execute(
+            text("""
+                SELECT COUNT(*) as count
+                FROM information_schema.columns
+                WHERE table_name = :table AND column_name = :column
+            """),
+            {"table": table, "column": column},
+        )
+        return result.first().count > 0
 
 
 async def _index_exists(conn, index_name: str) -> bool:
-    """Check if an index exists (PostgreSQL)."""
-    result = await conn.execute(
-        text("""
-            SELECT COUNT(*) as count
-            FROM pg_indexes
-            WHERE indexname = :index_name
-        """),
-        {"index_name": index_name},
-    )
-    return result.first().count > 0
+    """Check if an index exists (PostgreSQL and SQLite)."""
+    if _is_sqlite(conn):
+        # SQLite: query sqlite_master
+        result = await conn.execute(
+            text("SELECT COUNT(*) as count FROM sqlite_master WHERE type='index' AND name = :index_name"),
+            {"index_name": index_name},
+        )
+        return result.first().count > 0
+    else:
+        # PostgreSQL: use pg_indexes
+        result = await conn.execute(
+            text("""
+                SELECT COUNT(*) as count
+                FROM pg_indexes
+                WHERE indexname = :index_name
+            """),
+            {"index_name": index_name},
+        )
+        return result.first().count > 0
 
 
 async def _migrate_agents_table(conn):
