@@ -19,6 +19,11 @@ frontend/.env.local
 frontend/.env.production.local
 dev-cert.pfx
 
+# Tauri
+frontend/src-tauri/target/
+frontend/src-tauri/sidecars/
+.window_state.json
+
 # IDE
 .vscode/
 .idea/

@@ -8,7 +8,9 @@ import { ChatRoom } from './components/chat-room/ChatRoom';
 import { AgentProfileModal } from './components/AgentProfileModal';
 import { HowToDocsModal } from './components/HowToDocsModal';
 import { Login } from './components/Login';
+import { SetupWizard } from './components/SetupWizard';
 import { BREAKPOINTS } from './config/breakpoints';
+import { isTauri, checkSetupNeeded } from './utils/tauri';
 
 function AppContent() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -221,6 +223,32 @@ function AppContent() {
 
 // Main App component with providers
 function App() {
+  const [setupNeeded, setSetupNeeded] = useState<boolean | null>(null);
+  const [setupComplete, setSetupComplete] = useState(false);
+
+  useEffect(() => {
+    // Check if running in Tauri and setup is needed
+    if (isTauri()) {
+      checkSetupNeeded().then(setSetupNeeded);
+    } else {
+      setSetupNeeded(false);
+    }
+  }, []);
+
+  // Still checking setup status
+  if (setupNeeded === null) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-lg sm:text-xl text-gray-600">Loading...</p>
+      </div>
+    );
+  }
+
+  // Show setup wizard if needed and not yet complete
+  if (setupNeeded && !setupComplete) {
+    return <SetupWizard onComplete={() => setSetupComplete(true)} />;
+  }
+
   return (
     <RoomProvider>
       <AgentProviderWrapper />

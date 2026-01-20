@@ -3,18 +3,21 @@ Launcher script for the packaged Claude Code Role Play application.
 
 This is the entry point for the PyInstaller bundle. It:
 1. Sets up paths for bundled resources
-2. Runs first-time setup wizard if needed
+2. Runs first-time setup wizard if needed (console mode only)
 3. Starts the uvicorn server
-4. Opens the browser to the application
+
+When run as a Tauri sidecar:
+- Setup is handled by Tauri's GUI wizard
+- Browser is not opened (Tauri provides the webview)
+- Graceful shutdown on SIGTERM
 """
 
 import getpass
 import os
 import secrets
+import signal
 import sys
-import webbrowser
 from pathlib import Path
-from threading import Timer
 
 
 def get_base_path() -> Path:
@@ -179,9 +182,10 @@ def setup_environment() -> bool:
         sys.exit(0)
 
 
-def open_browser():
-    """Open the browser to the application."""
-    webbrowser.open("http://localhost:8000")
+def is_tauri_sidecar() -> bool:
+    """Check if running as a Tauri sidecar."""
+    # Tauri sets this when spawning sidecars, or check parent process
+    return os.environ.get("TAURI_SIDECAR") == "1" or "--sidecar" in sys.argv
 
 
 def run_mcp_server(server_type: str) -> None:
@@ -228,8 +232,21 @@ def main():
     # Set up paths first
     setup_paths()
 
+    # Set up signal handlers for graceful shutdown
+    def signal_handler(signum, frame):
+        print("\n서버를 종료합니다...")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Check if running as Tauri sidecar
+    sidecar_mode = is_tauri_sidecar()
+
     # Run environment setup (including first-time wizard if needed)
-    setup_was_run = setup_environment()
+    # In sidecar mode, Tauri handles setup via GUI
+    if not sidecar_mode:
+        setup_environment()
 
     # Import uvicorn and app after setting up paths
     import uvicorn
@@ -239,11 +256,9 @@ def main():
     print("=" * 60)
     print()
     print("서버 시작 중: http://localhost:8000")
-    print("서버를 중지하려면 Ctrl+C를 누르세요")
+    if not sidecar_mode:
+        print("서버를 중지하려면 Ctrl+C를 누르세요")
     print()
-
-    # Open browser after a short delay
-    Timer(2.0, open_browser).start()
 
     # Import the app directly instead of using string path
     # This works better with PyInstaller bundling

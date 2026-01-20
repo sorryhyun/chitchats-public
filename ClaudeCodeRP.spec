@@ -111,7 +111,6 @@ hiddenimports = [
     # Pydantic
     'pydantic',
     'pydantic_core',
-    'email_validator',
     # Python-dotenv
     'dotenv',
     # Image processing
@@ -152,7 +151,7 @@ exe = EXE(
     name='ClaudeCodeRP',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=True,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,

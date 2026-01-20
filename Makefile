@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full extract-signature tauri-dev tauri-build build-desktop build-backend-sidecar test-e2e test-e2e-ui test-e2e-debug
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -16,6 +16,15 @@ help:
 	@echo ""
 	@echo "Build:"
 	@echo "  make build-exe         - Build Windows executable (requires PowerShell)"
+	@echo ""
+	@echo "Desktop App (Tauri):"
+	@echo "  make tauri-dev         - Run Tauri desktop app in development mode"
+	@echo "  make tauri-build       - Build Tauri desktop app for production"
+	@echo "  make build-desktop     - Full build: backend sidecar + Tauri app"
+	@echo "  make build-backend-sidecar - Build backend PyInstaller exe for Tauri"
+	@echo "  make test-e2e          - Run Tauri E2E tests with Playwright"
+	@echo "  make test-e2e-ui       - Run E2E tests with Playwright UI mode"
+	@echo "  make test-e2e-debug    - Run E2E tests in debug mode"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make env               - Create .env file (prompts for password)"
@@ -154,3 +163,84 @@ build-exe:
 		echo "    -SkipFrontend  Skip frontend build (use existing dist)"; \
 		exit 1; \
 	fi
+
+extract-signature:
+	@echo "Extracting thinking signatures from session files..."
+	@python3 scripts/collect_thinking_signatures.py > scripts/output.py
+	@echo "Saved to scripts/output.py"
+
+# =============================================================================
+# Tauri Desktop App Build Commands
+# =============================================================================
+
+tauri-dev:
+	@echo "Starting Tauri desktop app in development mode..."
+	@echo "Note: You need to have the backend running separately (make run-backend)"
+	@echo "      Or use --features sidecar-dev to auto-start backend"
+	cd frontend && npm run tauri:dev
+
+tauri-build:
+	@echo "Building Tauri desktop app..."
+	cd frontend && npm run tauri:build
+
+build-backend-sidecar:
+	@echo "Building backend sidecar executable..."
+	@echo "This creates a PyInstaller bundle for use as Tauri sidecar"
+	@# Build the PyInstaller bundle
+	uv run pyinstaller ClaudeCodeRP.spec --clean
+	@# Create sidecars directory in Tauri
+	@mkdir -p frontend/src-tauri/sidecars
+	@# Copy the built exe to sidecars location
+	@# Note: The target triple suffix is required by Tauri
+	@if [ -f "dist/ClaudeCodeRP.exe" ]; then \
+		cp dist/ClaudeCodeRP.exe frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe; \
+		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe"; \
+	elif [ -f "dist/ClaudeCodeRP" ]; then \
+		cp dist/ClaudeCodeRP frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu; \
+		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu"; \
+	else \
+		echo "Error: PyInstaller output not found"; \
+		exit 1; \
+	fi
+
+build-desktop: build-backend-sidecar tauri-build
+	@echo ""
+	@echo "=========================================="
+	@echo "Desktop app build complete!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Installers can be found in:"
+	@echo "  frontend/src-tauri/target/release/bundle/"
+	@echo ""
+	@echo "Available formats:"
+	@echo "  - MSI (Windows Installer)"
+	@echo "  - NSIS (Windows Setup)"
+	@echo ""
+
+# =============================================================================
+# E2E Testing with Playwright
+# =============================================================================
+
+test-e2e:
+	@echo "Running Tauri E2E tests with Playwright..."
+	@echo "Prerequisites:"
+	@echo "  1. Build the Tauri app first: make tauri-build"
+	@echo "  2. Install tauri-driver: cargo install tauri-driver"
+	@echo ""
+	cd frontend && npm run test:e2e
+
+test-e2e-ui:
+	@echo "Running E2E tests with Playwright UI mode..."
+	@echo "This opens an interactive test runner."
+	@echo ""
+	cd frontend && npm run test:e2e:ui
+
+test-e2e-debug:
+	@echo "Running E2E tests in debug mode..."
+	@echo "This enables step-through debugging."
+	@echo ""
+	cd frontend && npm run test:e2e:debug
+
+test-e2e-report:
+	@echo "Opening Playwright test report..."
+	cd frontend && npm run test:e2e:report
