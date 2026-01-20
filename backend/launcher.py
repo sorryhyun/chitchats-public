@@ -4,9 +4,10 @@ Launcher script for the packaged ChitChats application.
 This is the entry point for the PyInstaller bundle. It:
 1. Sets up paths for bundled resources
 2. Runs first-time setup wizard if needed (console mode only)
-3. Starts the uvicorn server
+3. Opens the default web browser automatically
+4. Starts the uvicorn server
 
-When run as a Tauri sidecar:
+When run as a Tauri sidecar (legacy, archived):
 - Setup is handled by Tauri's GUI wizard
 - Browser is not opened (Tauri provides the webview)
 - Graceful shutdown on SIGTERM
@@ -17,6 +18,9 @@ import os
 import secrets
 import signal
 import sys
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
 
@@ -209,6 +213,16 @@ def is_tauri_sidecar() -> bool:
     return os.environ.get("TAURI_SIDECAR") == "1" or "--sidecar" in sys.argv
 
 
+def open_browser_delayed(url: str, delay: float = 1.5):
+    """Open browser after a delay to allow server to start."""
+    def _open():
+        time.sleep(delay)
+        webbrowser.open(url)
+
+    thread = threading.Thread(target=_open, daemon=True)
+    thread.start()
+
+
 def run_mcp_server(server_type: str) -> None:
     """Run in MCP server mode (for self-spawn from bundled exe).
 
@@ -279,6 +293,10 @@ def main():
     print("서버 시작 중: http://localhost:8000")
     if not sidecar_mode:
         print("서버를 중지하려면 Ctrl+C를 누르세요")
+        print()
+        # Open browser automatically (standalone mode only)
+        open_browser_delayed("http://localhost:8000")
+        print("브라우저를 자동으로 엽니다...")
     print()
 
     # Import the app directly instead of using string path
