@@ -1,5 +1,5 @@
 """
-Launcher script for the packaged Claude Code Role Play application.
+Launcher script for the packaged ChitChats application.
 
 This is the entry point for the PyInstaller bundle. It:
 1. Sets up paths for bundled resources
@@ -112,7 +112,7 @@ def run_first_time_setup():
     import bcrypt
 
     print("=" * 60)
-    print("Claude Code Role Play - 초기 설정")
+    print("ChitChats - 초기 설정")
     print("=" * 60)
     print()
     print("환영합니다! 애플리케이션을 설정해주세요.")
@@ -245,7 +245,7 @@ def main():
             idx = sys.argv.index("--mcp-server")
             server_type = sys.argv[idx + 1]
         except (IndexError, ValueError):
-            print("Usage: ClaudeCodeRP.exe --mcp-server <action|guidelines>", file=sys.stderr)
+            print("Usage: ChitChats.exe --mcp-server <action|guidelines>", file=sys.stderr)
             sys.exit(1)
         run_mcp_server(server_type)
         return  # MCP server handles its own exit
@@ -273,7 +273,7 @@ def main():
     import uvicorn
 
     print("=" * 60)
-    print("Claude Code Role Play")
+    print("ChitChats")
     print("=" * 60)
     print()
     print("서버 시작 중: http://localhost:8000")

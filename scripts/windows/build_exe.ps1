@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the Claude Code Role Play Windows executable.
+    Build the ChitChats Windows executable.
 
 .DESCRIPTION
     This script builds a single Windows EXE that includes:
@@ -62,20 +62,19 @@ function Invoke-BuildCommand {
     if ($script:isUncPath) {
         # Start cmd.exe from C:\ first to avoid UNC path error, then pushd to map UNC path
         # pushd automatically creates a temporary drive letter (like Z:) for UNC paths
-        $cmdScript = "cd /d C:\ && pushd `"$WorkingDir`" && $Command"
-        $result = & cmd /c $cmdScript 2>&1
-        $code = $LASTEXITCODE
-        if ($result) {
-            # Filter out the "UNC path" warning if pushd succeeded
-            $result | Where-Object { $_ -notmatch 'UNC.*지원되지|CMD\.EXE.*실행' } | Write-Host
-        }
-        return $code
+        $cmdScript = "cd /d C:\ && pushd `"$WorkingDir`" && $Command && exit"
+        & cmd /c $cmdScript
+        return $LASTEXITCODE
     } else {
         Push-Location $WorkingDir
-        Invoke-Expression $Command
-        $code = $LASTEXITCODE
-        Pop-Location
-        return $code
+        try {
+            # Run command via cmd.exe to get reliable exit code
+            # The 'call' ensures proper exit code propagation for batch/npm commands
+            & cmd /c "call $Command"
+            return $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
     }
 }
 
@@ -132,7 +131,7 @@ function New-DevCertificate {
     # Create self-signed certificate
     $cert = New-SelfSignedCertificate `
         -Type CodeSigningCert `
-        -Subject "CN=Claude Code RP Dev Certificate" `
+        -Subject "CN=ChitChats Dev Certificate" `
         -CertStoreLocation "Cert:\CurrentUser\My" `
         -NotAfter (Get-Date).AddYears(5)
 
@@ -223,19 +222,17 @@ if (-not $SkipFrontend) {
     # Always ensure dependencies are installed (check for vite specifically)
     if (-not (Test-Path (Join-Path $frontendDir "node_modules/vite"))) {
         Write-Step "Installing frontend dependencies..."
-        $exitCode = Invoke-BuildCommand -Command "npm install" -WorkingDir $frontendDir
-        if ($exitCode -ne 0) {
-            Write-Error "npm install failed"
-            exit 1
-        }
+        Push-Location $frontendDir
+        npm install
+        Pop-Location
     }
 
-    $exitCode = Invoke-BuildCommand -Command "npm run build" -WorkingDir $frontendDir
-    if ($exitCode -ne 0) {
-        Write-Error "Frontend build failed"
-        exit 1
-    }
+    # Run npm build - exit code is unreliable in PowerShell, so we check output file instead
+    Push-Location $frontendDir
+    npm run build
+    Pop-Location
 
+    # Verify build succeeded by checking output file existence
     $frontendIndex = Join-Path $repoRoot "frontend/dist/index.html"
     if (-not (Test-Path $frontendIndex)) {
         Write-Error "Frontend build failed - dist/index.html not found"
@@ -257,10 +254,10 @@ $exitCode = Invoke-BuildCommand -Command "uv pip install pyinstaller --quiet"
 
 # Build the executable
 Write-Step "Building Windows executable with PyInstaller..."
-$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ClaudeCodeRP.spec --noconfirm"
+$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ChitChats.spec --noconfirm"
 
 # Check output
-$exePath = Join-Path $repoRoot "dist/ClaudeCodeRP.exe"
+$exePath = Join-Path $repoRoot "dist/ChitChats.exe"
 if (Test-Path $exePath) {
     $size = (Get-Item $exePath).Length / 1MB
     Write-Success "Build complete!"
@@ -306,9 +303,9 @@ if (Test-Path $exePath) {
 
     Write-Host ""
     Write-Host "To run the application:" -ForegroundColor Cyan
-    Write-Host "  1. Copy ClaudeCodeRP.exe to your desired location"
+    Write-Host "  1. Copy ChitChats.exe to your desired location"
     Write-Host "  2. Create a .env file with API_KEY_HASH and JWT_SECRET"
-    Write-Host "  3. Run ClaudeCodeRP.exe"
+    Write-Host "  3. Run ChitChats.exe"
     Write-Host ""
 
     if (-not $Sign) {

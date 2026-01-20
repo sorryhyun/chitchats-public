@@ -13,7 +13,7 @@
   "logout": "로그아웃",
   "logoutConfirm": "정말 로그아웃하시겠습니까?",
   "appName": "ChitChats",
-  "appSubtitle": "Claude Code RP 플랫폼",
+  "appSubtitle": "멀티 에이전트 채팅 플랫폼",
   "failedToCreate": "{{item}} 생성 실패",
   "failedToUpdate": "{{item}} 수정 실패",
   "failedToDelete": "{{item}} 삭제 실패",

@@ -15,7 +15,8 @@
       "Bash(wc:*)",
       "Bash(env)",
       "WebSearch",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

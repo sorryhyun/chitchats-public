@@ -1,11 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for Claude Code Role Play.
+PyInstaller spec file for ChitChats.
 
 This bundles the FastAPI backend with the pre-built React frontend
 into a single Windows executable.
 
-Build command: pyinstaller ClaudeCodeRP.spec
+Build command: pyinstaller ChitChats.spec
 """
 
 import os
@@ -149,7 +149,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='ClaudeCodeRP',
+    name='ChitChats',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,

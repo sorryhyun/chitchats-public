@@ -53,19 +53,19 @@ jobs:
         working-directory: frontend
 
       - name: Build Windows executable
-        run: uv run pyinstaller ClaudeCodeRP.spec --noconfirm
+        run: uv run pyinstaller ChitChats.spec --noconfirm
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ClaudeCodeRP-Windows
-          path: dist/ClaudeCodeRP.exe
+          name: ChitChats-Windows
+          path: dist/ChitChats.exe
           if-no-files-found: error
 
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ClaudeCodeRP.exe
+          files: dist/ChitChats.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

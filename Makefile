@@ -41,7 +41,7 @@ help:
 	@echo "  make clean             - Clean build artifacts and caches"
 
 install:
-	@echo "Installing Claude Code CLI globally..."
+	@echo "Installing dependencies..."
 	sudo npm install -g @anthropic-ai/claude-code || echo "Warning: Failed to install Claude Code CLI globally. You may need to run with sudo."
 	@echo "Installing backend dependencies with uv..."
 	uv sync
@@ -142,7 +142,7 @@ simulate:
 # Comprehensive build command - prompts for build type
 build-exe:
 	@echo "=========================================="
-	@echo "Claude Code RP - Windows Executable Build"
+	@echo "ChitChats - Windows Executable Build"
 	@echo "=========================================="
 	@echo ""
 	@echo "Choose build type:"
@@ -161,18 +161,20 @@ build-exe:
 
 # Standalone Windows executable (non-Tauri)
 # Single exe with embedded frontend, no native desktop integration
-# Requires PowerShell (pwsh on Linux/macOS, powershell.exe on Windows)
+# On Windows: uses powershell directly
+# On Linux/macOS: uses pwsh (PowerShell Core)
 build-non-tauri:
+ifeq ($(OS),Windows_NT)
+	@echo "Building standalone Windows executable (non-Tauri)..."
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 -Sign
+else
 	@echo "Building standalone Windows executable (non-Tauri)..."
 	@if command -v pwsh >/dev/null 2>&1; then \
 		echo "Using PowerShell Core (pwsh)..."; \
 		pwsh -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
-	elif command -v powershell.exe >/dev/null 2>&1; then \
-		echo "Using Windows PowerShell via WSL..."; \
-		powershell.exe -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
 	else \
 		echo ""; \
-		echo "PowerShell not found. To build the Windows executable:"; \
+		echo "PowerShell Core not found. To build the Windows executable:"; \
 		echo ""; \
 		echo "  Option 1: Install PowerShell Core"; \
 		echo "    Ubuntu/Debian: sudo apt install powershell"; \
@@ -181,11 +183,9 @@ build-non-tauri:
 		echo "  Option 2: Run directly on Windows"; \
 		echo "    .\\scripts\\windows\\build_exe.ps1"; \
 		echo ""; \
-		echo "  Options:"; \
-		echo "    CLEAN=1         Clean build artifacts first"; \
-		echo "    SKIP_FRONTEND=1 Skip frontend build (use existing dist)"; \
 		exit 1; \
 	fi
+endif
 
 # Tauri desktop app with bundled backend sidecar
 # Native desktop app with system tray, auto-updates, etc.
@@ -193,13 +193,13 @@ build-tauri:
 	@echo "Building Tauri desktop app with bundled backend..."
 	@echo ""
 	@echo "Step 1: Building backend sidecar..."
-	uv run pyinstaller ClaudeCodeRP.spec --clean
+	uv run pyinstaller ChitChats.spec --clean
 	@mkdir -p frontend/src-tauri/sidecars
-	@if [ -f "dist/ClaudeCodeRP.exe" ]; then \
-		cp dist/ClaudeCodeRP.exe frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe; \
+	@if [ -f "dist/ChitChats.exe" ]; then \
+		cp dist/ChitChats.exe frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe; \
 		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe"; \
-	elif [ -f "dist/ClaudeCodeRP" ]; then \
-		cp dist/ClaudeCodeRP frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu; \
+	elif [ -f "dist/ChitChats" ]; then \
+		cp dist/ChitChats frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu; \
 		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu"; \
 	else \
 		echo "Error: PyInstaller output not found"; \
