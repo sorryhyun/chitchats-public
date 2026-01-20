@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri build-tauri test-e2e test-e2e-ui test-e2e-debug
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri build-tauri-archived test-e2e-archived test-e2e-ui-archived test-e2e-debug-archived
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -15,14 +15,12 @@ help:
 	@echo "  make run-frontend      - Run frontend server only"
 	@echo ""
 	@echo "Build:"
-	@echo "  make build-exe         - Build Windows exe (comprehensive, prompts for type)"
-	@echo "  make build-non-tauri   - Build standalone Windows exe (no Tauri)"
-	@echo "  make build-tauri       - Build Tauri desktop app with bundled backend"
+	@echo "  make build-exe         - Build standalone Windows exe (recommended)"
+	@echo "  make build-non-tauri   - Build standalone Windows exe (same as build-exe)"
 	@echo ""
-	@echo "E2E Testing:"
-	@echo "  make test-e2e          - Run Tauri E2E tests with Playwright"
-	@echo "  make test-e2e-ui       - Run E2E tests with Playwright UI mode"
-	@echo "  make test-e2e-debug    - Run E2E tests in debug mode"
+	@echo "Archived (not recommended for Windows):"
+	@echo "  make build-tauri-archived  - [ARCHIVED] Tauri desktop app (see scripts/archive/)"
+	@echo "  make test-e2e-archived     - [ARCHIVED] Tauri E2E tests"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make env               - Create .env file (prompts for password)"
@@ -139,25 +137,9 @@ simulate:
 # Build Commands
 # =============================================================================
 
-# Comprehensive build command - prompts for build type
+# Windows executable build (standalone PyInstaller)
 build-exe:
-	@echo "=========================================="
-	@echo "ChitChats - Windows Executable Build"
-	@echo "=========================================="
-	@echo ""
-	@echo "Choose build type:"
-	@echo "  1. Standalone (non-Tauri) - Single exe with embedded frontend"
-	@echo "  2. Tauri Desktop App - Native desktop app with bundled backend"
-	@echo ""
-	@read -p "Enter choice [1/2]: " choice; \
-	if [ "$$choice" = "1" ]; then \
-		$(MAKE) build-non-tauri CLEAN=$(CLEAN) SKIP_FRONTEND=$(SKIP_FRONTEND); \
-	elif [ "$$choice" = "2" ]; then \
-		$(MAKE) build-tauri; \
-	else \
-		echo "Invalid choice. Please enter 1 or 2."; \
-		exit 1; \
-	fi
+	@$(MAKE) build-non-tauri CLEAN=$(CLEAN) SKIP_FRONTEND=$(SKIP_FRONTEND)
 
 # Standalone Windows executable (non-Tauri)
 # Single exe with embedded frontend, no native desktop integration
@@ -187,14 +169,33 @@ else
 	fi
 endif
 
-# Tauri desktop app with bundled backend sidecar
-# Native desktop app with system tray, auto-updates, etc.
-# On Windows: uses powershell directly
-# On Linux/macOS: uses bash commands
-build-tauri:
+# =============================================================================
+# Archived Commands (Not Recommended for Windows)
+# =============================================================================
+
+# [ARCHIVED] Tauri desktop app with bundled backend sidecar
+# Note: Tauri build has issues on Windows. Use build-exe instead.
+# See scripts/archive/README.md for details.
+build-tauri-archived:
+	@echo "=========================================="
+	@echo "[ARCHIVED] Tauri Build"
+	@echo "=========================================="
+	@echo ""
+	@echo "WARNING: Tauri build is archived and not recommended for Windows."
+	@echo "Use 'make build-exe' instead for a reliable standalone executable."
+	@echo ""
+	@echo "See scripts/archive/README.md for more information."
+	@echo ""
+	@read -p "Continue anyway? (y/N): " confirm; \
+	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+		$(MAKE) _build-tauri-internal; \
+	else \
+		echo "Aborted. Use 'make build-exe' for the recommended build."; \
+	fi
+
+_build-tauri-internal:
 ifeq ($(OS),Windows_NT)
-	@echo "Building Tauri desktop app with bundled backend..."
-	@powershell.exe -ExecutionPolicy Bypass -File scripts/windows/build_tauri.ps1
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/archive/build_tauri.ps1
 else
 	@echo "Building Tauri desktop app with bundled backend..."
 	@echo ""
@@ -222,36 +223,27 @@ else
 	@echo "Installers can be found in:"
 	@echo "  frontend/src-tauri/target/release/bundle/"
 	@echo ""
-	@echo "Available formats:"
-	@echo "  - MSI (Windows Installer)"
-	@echo "  - NSIS (Windows Setup)"
-	@echo ""
 endif
 
-# =============================================================================
-# E2E Testing with Playwright
-# =============================================================================
+# [ARCHIVED] E2E Testing with Playwright (requires Tauri)
+# Note: These tests depend on Tauri which is archived.
 
-test-e2e:
-	@echo "Running Tauri E2E tests with Playwright..."
+test-e2e-archived:
+	@echo "[ARCHIVED] Tauri E2E tests"
+	@echo ""
+	@echo "WARNING: E2E tests require Tauri which is archived."
 	@echo "Prerequisites:"
-	@echo "  1. Build the Tauri app first: make tauri-build"
+	@echo "  1. Build the Tauri app first: make build-tauri-archived"
 	@echo "  2. Install tauri-driver: cargo install tauri-driver"
 	@echo ""
 	cd frontend && npm run test:e2e
 
-test-e2e-ui:
-	@echo "Running E2E tests with Playwright UI mode..."
-	@echo "This opens an interactive test runner."
+test-e2e-ui-archived:
+	@echo "[ARCHIVED] E2E tests with Playwright UI mode"
 	@echo ""
 	cd frontend && npm run test:e2e:ui
 
-test-e2e-debug:
-	@echo "Running E2E tests in debug mode..."
-	@echo "This enables step-through debugging."
+test-e2e-debug-archived:
+	@echo "[ARCHIVED] E2E tests in debug mode"
 	@echo ""
 	cd frontend && npm run test:e2e:debug
-
-test-e2e-report:
-	@echo "Opening Playwright test report..."
-	cd frontend && npm run test:e2e:report

@@ -16,7 +16,8 @@
       "Bash(env)",
       "WebSearch",
       "Bash(python -c:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(dir /b \"C:\\\\Users\\\\stand\\\\Desktop\\\\etc\\\\claude_code_RP\\\\*.md\")"
     ],
     "deny": [],
     "ask": []
