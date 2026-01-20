@@ -1,3 +1,8 @@
+// Check if running inside Tauri desktop app
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+}
+
 // Get clean API URL without credentials
 function getApiUrl(): string {
   // If VITE_API_BASE_URL is explicitly set, use it
@@ -13,6 +18,11 @@ function getApiUrl(): string {
     } catch {
       return urlString;
     }
+  }
+
+  // Tauri desktop app: sidecar runs on port 8000
+  if (isTauri()) {
+    return 'http://localhost:8000';
   }
 
   // Check if running in bundled mode (frontend served from backend on port 8000)

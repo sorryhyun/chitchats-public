@@ -2,8 +2,9 @@ import { FullConfig } from '@playwright/test';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Store app process globally for teardown
 declare global {
@@ -33,7 +34,7 @@ const getAppPath = (): string => {
 // Wait for backend health check
 const waitForBackend = async (timeout = 30000): Promise<boolean> => {
   const startTime = Date.now();
-  const backendUrl = 'http://localhost:8001/health';
+  const backendUrl = 'http://localhost:8000/health';
 
   while (Date.now() - startTime < timeout) {
     try {

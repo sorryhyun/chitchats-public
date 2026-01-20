@@ -189,7 +189,13 @@ endif
 
 # Tauri desktop app with bundled backend sidecar
 # Native desktop app with system tray, auto-updates, etc.
+# On Windows: uses powershell directly
+# On Linux/macOS: uses bash commands
 build-tauri:
+ifeq ($(OS),Windows_NT)
+	@echo "Building Tauri desktop app with bundled backend..."
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/windows/build_tauri.ps1
+else
 	@echo "Building Tauri desktop app with bundled backend..."
 	@echo ""
 	@echo "Step 1: Building backend sidecar..."
@@ -220,6 +226,7 @@ build-tauri:
 	@echo "  - MSI (Windows Installer)"
 	@echo "  - NSIS (Windows Setup)"
 	@echo ""
+endif
 
 # =============================================================================
 # E2E Testing with Playwright

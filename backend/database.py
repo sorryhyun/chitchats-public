@@ -17,6 +17,7 @@ URL Priority:
 import logging
 import os
 import platform
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +32,16 @@ _session_maker: Optional[async_sessionmaker] = None
 
 # Declarative base for models
 Base = declarative_base()
+
+
+def _get_work_dir() -> Path:
+    """Get the working directory for data files (handles bundled mode)."""
+    if getattr(sys, "frozen", False):
+        # Running as PyInstaller bundle - use exe directory
+        return Path(sys.executable).parent
+    else:
+        # Running in development - use project root
+        return Path(__file__).parent.parent
 
 
 def _get_database_url() -> str:
@@ -49,13 +60,13 @@ def _get_database_url() -> str:
 
     # Check for explicit SQLite request
     if os.getenv("USE_SQLITE", "").lower() == "true":
-        project_root = Path(__file__).parent.parent
-        return f"sqlite+aiosqlite:///{project_root}/chitchats.db"
+        work_dir = _get_work_dir()
+        return f"sqlite+aiosqlite:///{work_dir}/chitchats.db"
 
     # Auto-detect Windows → use SQLite for easier development
     if platform.system() == "Windows":
-        project_root = Path(__file__).parent.parent
-        return f"sqlite+aiosqlite:///{project_root}/chitchats.db"
+        work_dir = _get_work_dir()
+        return f"sqlite+aiosqlite:///{work_dir}/chitchats.db"
 
     # Default to PostgreSQL
     return "postgresql+asyncpg://postgres:postgres@localhost:5432/chitchats"

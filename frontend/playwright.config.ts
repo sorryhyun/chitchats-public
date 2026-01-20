@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Determine OS-specific binary path
 const getAppPath = () => {
@@ -76,7 +77,7 @@ export default defineConfig({
   // Web server configuration for tauri-driver
   // Note: tauri-driver must be started before tests run
   webServer: {
-    command: 'tauri-driver',
+    command: `tauri-driver --native-driver ${path.resolve(__dirname, '../bundled/msedgedriver.exe')}`,
     port: 4444,
     timeout: 30_000,
     reuseExistingServer: !process.env.CI,
