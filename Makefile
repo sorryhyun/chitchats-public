@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe test-agents evaluate-agents evaluate-agents-cross load-test test-jane test-jane-questions evaluate-jane-full extract-signature tauri-dev tauri-build build-desktop build-backend-sidecar test-e2e test-e2e-ui test-e2e-debug
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe tauri-dev tauri-build build-desktop build-backend-sidecar test-e2e test-e2e-ui test-e2e-debug
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -163,11 +163,6 @@ build-exe:
 		echo "    -SkipFrontend  Skip frontend build (use existing dist)"; \
 		exit 1; \
 	fi
-
-extract-signature:
-	@echo "Extracting thinking signatures from session files..."
-	@python3 scripts/collect_thinking_signatures.py > scripts/output.py
-	@echo "Saved to scripts/output.py"
 
 # =============================================================================
 # Tauri Desktop App Build Commands
