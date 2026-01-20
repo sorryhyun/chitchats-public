@@ -5,11 +5,37 @@ This module provides type-safe access to environment variables with validation.
 All settings are loaded once at application startup.
 """
 
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+
+def _is_frozen() -> bool:
+    """Check if running as a PyInstaller bundle."""
+    return getattr(sys, "frozen", False)
+
+
+def _get_base_path() -> Path:
+    """Get the base path for bundled resources (config files, static files)."""
+    if _is_frozen():
+        # Running as PyInstaller bundle - resources are in temp extraction dir
+        return Path(sys._MEIPASS)
+    else:
+        # Running in development - relative to this file
+        return Path(__file__).parent.parent.parent
+
+
+def _get_work_dir() -> Path:
+    """Get the working directory for user data (.env, agents, etc.)."""
+    if _is_frozen():
+        # Running as PyInstaller bundle - user data next to exe
+        return Path(sys.executable).parent
+    else:
+        # Running in development - project root
+        return Path(__file__).parent.parent.parent
 
 # ============================================================================
 # Application Constants
@@ -152,22 +178,42 @@ class Settings(BaseSettings):
     @property
     def project_root(self) -> Path:
         """
-        Get the project root directory (parent of backend/).
+        Get the project root directory.
+
+        In bundled mode: returns base path (temp extraction dir) for bundled resources
+        In dev mode: returns parent of backend/
 
         Returns:
             Path to the project root directory
         """
-        backend_dir = Path(__file__).parent.parent
-        return backend_dir.parent
+        return _get_base_path()
+
+    @property
+    def work_dir(self) -> Path:
+        """
+        Get the working directory for user data (.env, agents, etc.).
+
+        In bundled mode: directory containing the exe
+        In dev mode: project root
+
+        Returns:
+            Path to the working directory
+        """
+        return _get_work_dir()
 
     @property
     def backend_dir(self) -> Path:
         """
-        Get the backend directory.
+        Get the backend directory for bundled resources.
+
+        In bundled mode: same as base path (modules at root of extraction)
+        In dev mode: project_root/backend
 
         Returns:
             Path to the backend directory
         """
+        if _is_frozen():
+            return _get_base_path()
         return Path(__file__).parent.parent
 
     @property
@@ -175,10 +221,12 @@ class Settings(BaseSettings):
         """
         Get the agents configuration directory.
 
+        Agents are user data, so they live in work_dir (next to exe in bundled mode).
+
         Returns:
             Path to the agents directory
         """
-        return self.project_root / "agents"
+        return self.work_dir / "agents"
 
     @property
     def config_dir(self) -> Path:
@@ -186,8 +234,10 @@ class Settings(BaseSettings):
         Get the general configuration files directory.
 
         Returns:
-            Path to backend/config directory (for debug.yaml, conversation_context.yaml)
+            Path to config directory (for debug.yaml, conversation_context.yaml)
         """
+        if _is_frozen():
+            return _get_base_path() / "config"
         return self.backend_dir / "config"
 
     @property
@@ -196,8 +246,10 @@ class Settings(BaseSettings):
         Get the MCP servers configuration directory.
 
         Returns:
-            Path to backend/mcp_servers/config directory (for tools.yaml, guidelines)
+            Path to mcp_servers/config directory (for tools.yaml, guidelines)
         """
+        if _is_frozen():
+            return _get_base_path() / "mcp_servers" / "config"
         return self.backend_dir / "mcp_servers" / "config"
 
     @property
@@ -310,8 +362,8 @@ def get_settings() -> Settings:
         # Create settings instance first (to access path properties)
         _settings = Settings()
 
-        # Find .env file in project root using settings path properties
-        env_path = _settings.project_root / ".env"
+        # Find .env file in work directory (next to exe in bundled mode)
+        env_path = _settings.work_dir / ".env"
 
         # Reload settings with explicit env file path if it exists
         if env_path.exists():

@@ -9,12 +9,25 @@ Also includes memory parsing utilities for long-term memory files.
 
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from domain.agent_config import AgentConfigData
 
 logger = logging.getLogger("ConfigParser")
+
+
+def _get_agents_dir() -> Path:
+    """Get the agents directory, handling both dev and bundled modes."""
+    if getattr(sys, "frozen", False):
+        # Running as PyInstaller bundle - agents are next to exe
+        return Path(sys.executable).parent / "agents"
+    else:
+        # Running in development - relative to this file
+        backend_dir = Path(__file__).parent.parent
+        project_root = backend_dir.parent
+        return project_root / "agents"
 
 
 # =============================================================================
@@ -127,17 +140,28 @@ def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
          └── consolidated_memory.md (or long_term_memory.md)
 
     Args:
-        file_path: Path to the agent folder (can be relative to project root)
+        file_path: Path to the agent folder (can be relative to project root/work_dir)
 
     Returns:
         AgentConfigData object or None if folder doesn't exist
     """
-    # Resolve path relative to project root if not absolute
+    # Resolve path relative to agents directory if not absolute
     path = Path(file_path)
     if not path.is_absolute():
-        backend_dir = Path(__file__).parent.parent
-        project_root = backend_dir.parent
-        path = project_root / file_path
+        # If path starts with "agents/", resolve relative to work_dir
+        if file_path.startswith("agents/") or file_path.startswith("agents\\"):
+            agents_dir = _get_agents_dir()
+            # Remove "agents/" prefix and resolve from agents_dir
+            relative_path = file_path.replace("agents/", "").replace("agents\\", "")
+            path = agents_dir / relative_path
+        else:
+            # Assume it's relative to work_dir
+            if getattr(sys, "frozen", False):
+                work_dir = Path(sys.executable).parent
+            else:
+                backend_dir = Path(__file__).parent.parent
+                work_dir = backend_dir.parent
+            path = work_dir / file_path
 
     if not path.exists() or not path.is_dir():
         return None
@@ -214,16 +238,15 @@ def list_available_configs() -> Dict[str, Dict[str, Optional[str]]]:
         - "path": str (relative path to agent folder)
         - "group": Optional[str] (group name if in a group folder, None otherwise)
     """
-    # Get the project root directory (parent of backend/)
-    backend_dir = Path(__file__).parent.parent
-    project_root = backend_dir.parent
-    agents_dir = project_root / "agents"
+    agents_dir = _get_agents_dir()
 
     if not agents_dir.exists():
         return {}
 
     configs = {}
     required_files = ["in_a_nutshell.md", "characteristics.md"]
+    # Parent of agents_dir is the work_dir/project_root
+    work_dir = agents_dir.parent
 
     # Check for folder-based configs
     for item in agents_dir.iterdir():
@@ -241,13 +264,13 @@ def list_available_configs() -> Dict[str, Dict[str, Optional[str]]]:
                     # Verify it has at least one required config file
                     if any((agent_item / f).exists() for f in required_files):
                         agent_name = agent_item.name
-                        relative_path = agent_item.relative_to(project_root)
+                        relative_path = agent_item.relative_to(work_dir)
                         configs[agent_name] = {"path": str(relative_path), "group": group_name}
         else:
             # Regular agent folder (not in a group)
             if any((item / f).exists() for f in required_files):
                 agent_name = item.name
-                relative_path = item.relative_to(project_root)
+                relative_path = item.relative_to(work_dir)
                 configs[agent_name] = {"path": str(relative_path), "group": None}
 
     return configs

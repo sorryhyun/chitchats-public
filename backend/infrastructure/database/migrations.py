@@ -6,11 +6,25 @@ database upgrades without requiring manual deletion of the database.
 """
 
 import logging
+import sys
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 logger = logging.getLogger(__name__)
+
+
+def _get_work_dir() -> Path:
+    """Get the working directory for user data (agents, .env, etc.).
+
+    In bundled mode: directory containing the exe
+    In dev mode: project root (parent of backend/)
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    # Development mode: relative to this file
+    return Path(__file__).parent.parent.parent.parent
 
 
 async def run_migrations(engine: AsyncEngine):
@@ -264,8 +278,6 @@ async def _add_indexes(conn):
 
 async def _sync_agents_from_filesystem(conn):
     """Sync agent data from filesystem (paths, groups, profile pics, system prompts)."""
-    from pathlib import Path
-
     from config import get_base_system_prompt, list_available_configs, parse_agent_config
     from config.prompt_builder import config_to_markdown
     from i18n.korean import format_with_particles
@@ -282,7 +294,8 @@ async def _sync_agents_from_filesystem(conn):
         return
 
     system_prompt_template = get_base_system_prompt()
-    agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+    work_dir = _get_work_dir()
+    agents_dir = work_dir / "agents"
     image_extensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]
     common_names = ["profile", "avatar", "picture", "photo"]
 
@@ -302,7 +315,7 @@ async def _sync_agents_from_filesystem(conn):
             # Use config_file path if available, otherwise fall back to direct folder
             agent_folder = None
             if agent.config_file:
-                agent_folder = Path(__file__).parent.parent.parent.parent / agent.config_file
+                agent_folder = work_dir / agent.config_file
             if not agent_folder or not agent_folder.exists():
                 agent_folder = agents_dir / agent.name
 

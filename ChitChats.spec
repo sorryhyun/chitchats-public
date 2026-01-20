@@ -22,12 +22,15 @@ config_dir = backend_dir / 'config'
 # NOTE: Agents are NOT bundled here - they are distributed as agents.zip alongside the exe
 # This reduces exe size and allows users to update agents independently
 # Use `make agents-zip` to create agents.zip for distribution
+mcp_servers_config_dir = backend_dir / 'mcp_servers' / 'config'
+
 datas = [
     # Frontend static files
     (str(frontend_dist), 'static'),
-    # Backend config files (YAML) - must be at config/ since settings.py looks for backend_dir/config
-    # In bundled mode, backend modules are at root, so config should be at config/ not backend/config/
+    # Backend config files (YAML)
     (str(config_dir), 'config'),
+    # MCP servers config files (tools.yaml, guidelines.yaml) - bundled at mcp_servers/config/
+    (str(mcp_servers_config_dir), 'mcp_servers/config'),
     # .env.example as template
     (str(project_root / '.env.example'), '.'),
 ]

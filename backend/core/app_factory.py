@@ -198,14 +198,19 @@ def create_app() -> FastAPI:
             # Catch-all route for SPA - must be last
             @app.get("/{full_path:path}")
             async def serve_spa(full_path: str):
-                """Serve index.html for all non-API routes (SPA routing)."""
+                """Serve static files or index.html for SPA routing."""
                 # Check if it's an API route (already handled by routers)
                 if full_path.startswith(("api/", "auth/", "rooms/", "agents/", "debug/", "mcp")):
                     return None
+
+                # Check if the requested file exists in static directory
+                # This handles root-level files like chitchats.webp, manifest.json
+                if full_path:
+                    requested_file = static_dir / full_path
+                    if requested_file.is_file():
+                        return FileResponse(requested_file)
+
                 # Serve index.html for SPA routes
-                index_file = static_dir / "index.html"
-                if index_file.exists():
-                    return FileResponse(index_file)
                 return FileResponse(static_dir / "index.html")
         else:
             logger.warning(f"⚠️ Static files directory not found: {static_dir}")

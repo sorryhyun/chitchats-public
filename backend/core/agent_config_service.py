@@ -6,6 +6,7 @@ providing a cleaner separation of concerns and making the code more testable.
 """
 
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -25,10 +26,25 @@ class AgentConfigService:
     """
 
     @staticmethod
-    def get_project_root() -> Path:
-        """Get the project root directory (parent of backend/)."""
+    def get_work_dir() -> Path:
+        """Get the working directory for user data (agents, .env, etc.).
+
+        In bundled mode: directory containing the exe
+        In dev mode: project root (parent of backend/)
+        """
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).parent
         backend_dir = Path(__file__).parent.parent
         return backend_dir.parent
+
+    @staticmethod
+    def get_project_root() -> Path:
+        """Get the project root directory (parent of backend/).
+
+        NOTE: For agent files, use get_work_dir() instead as agents are
+        user data that lives next to the exe in bundled mode.
+        """
+        return AgentConfigService.get_work_dir()
 
     @staticmethod
     def append_to_recent_events(config_file: str, memory_entry: str, timestamp: Optional[datetime] = None) -> bool:
