@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe tauri-dev tauri-build build-desktop build-backend-sidecar test-e2e test-e2e-ui test-e2e-debug
+.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri build-tauri test-e2e test-e2e-ui test-e2e-debug
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -15,13 +15,11 @@ help:
 	@echo "  make run-frontend      - Run frontend server only"
 	@echo ""
 	@echo "Build:"
-	@echo "  make build-exe         - Build Windows executable (requires PowerShell)"
+	@echo "  make build-exe         - Build Windows exe (comprehensive, prompts for type)"
+	@echo "  make build-non-tauri   - Build standalone Windows exe (no Tauri)"
+	@echo "  make build-tauri       - Build Tauri desktop app with bundled backend"
 	@echo ""
-	@echo "Desktop App (Tauri):"
-	@echo "  make tauri-dev         - Run Tauri desktop app in development mode"
-	@echo "  make tauri-build       - Build Tauri desktop app for production"
-	@echo "  make build-desktop     - Full build: backend sidecar + Tauri app"
-	@echo "  make build-backend-sidecar - Build backend PyInstaller exe for Tauri"
+	@echo "E2E Testing:"
 	@echo "  make test-e2e          - Run Tauri E2E tests with Playwright"
 	@echo "  make test-e2e-ui       - Run E2E tests with Playwright UI mode"
 	@echo "  make test-e2e-debug    - Run E2E tests in debug mode"
@@ -137,10 +135,35 @@ simulate:
 		./scripts/simulation/simulate_chatroom.sh $(ARGS); \
 	fi
 
-# Windows executable build
-# Requires PowerShell (pwsh on Linux/macOS, powershell.exe on Windows)
+# =============================================================================
+# Build Commands
+# =============================================================================
+
+# Comprehensive build command - prompts for build type
 build-exe:
-	@echo "Building Windows executable..."
+	@echo "=========================================="
+	@echo "Claude Code RP - Windows Executable Build"
+	@echo "=========================================="
+	@echo ""
+	@echo "Choose build type:"
+	@echo "  1. Standalone (non-Tauri) - Single exe with embedded frontend"
+	@echo "  2. Tauri Desktop App - Native desktop app with bundled backend"
+	@echo ""
+	@read -p "Enter choice [1/2]: " choice; \
+	if [ "$$choice" = "1" ]; then \
+		$(MAKE) build-non-tauri CLEAN=$(CLEAN) SKIP_FRONTEND=$(SKIP_FRONTEND); \
+	elif [ "$$choice" = "2" ]; then \
+		$(MAKE) build-tauri; \
+	else \
+		echo "Invalid choice. Please enter 1 or 2."; \
+		exit 1; \
+	fi
+
+# Standalone Windows executable (non-Tauri)
+# Single exe with embedded frontend, no native desktop integration
+# Requires PowerShell (pwsh on Linux/macOS, powershell.exe on Windows)
+build-non-tauri:
+	@echo "Building standalone Windows executable (non-Tauri)..."
 	@if command -v pwsh >/dev/null 2>&1; then \
 		echo "Using PowerShell Core (pwsh)..."; \
 		pwsh -ExecutionPolicy Bypass -File scripts/windows/build_exe.ps1 $(if $(CLEAN),-Clean,) $(if $(SKIP_FRONTEND),-SkipFrontend,); \
@@ -159,34 +182,19 @@ build-exe:
 		echo "    .\\scripts\\windows\\build_exe.ps1"; \
 		echo ""; \
 		echo "  Options:"; \
-		echo "    -Clean         Clean build artifacts first"; \
-		echo "    -SkipFrontend  Skip frontend build (use existing dist)"; \
+		echo "    CLEAN=1         Clean build artifacts first"; \
+		echo "    SKIP_FRONTEND=1 Skip frontend build (use existing dist)"; \
 		exit 1; \
 	fi
 
-# =============================================================================
-# Tauri Desktop App Build Commands
-# =============================================================================
-
-tauri-dev:
-	@echo "Starting Tauri desktop app in development mode..."
-	@echo "Note: You need to have the backend running separately (make run-backend)"
-	@echo "      Or use --features sidecar-dev to auto-start backend"
-	cd frontend && npm run tauri:dev
-
-tauri-build:
-	@echo "Building Tauri desktop app..."
-	cd frontend && npm run tauri:build
-
-build-backend-sidecar:
-	@echo "Building backend sidecar executable..."
-	@echo "This creates a PyInstaller bundle for use as Tauri sidecar"
-	@# Build the PyInstaller bundle
+# Tauri desktop app with bundled backend sidecar
+# Native desktop app with system tray, auto-updates, etc.
+build-tauri:
+	@echo "Building Tauri desktop app with bundled backend..."
+	@echo ""
+	@echo "Step 1: Building backend sidecar..."
 	uv run pyinstaller ClaudeCodeRP.spec --clean
-	@# Create sidecars directory in Tauri
 	@mkdir -p frontend/src-tauri/sidecars
-	@# Copy the built exe to sidecars location
-	@# Note: The target triple suffix is required by Tauri
 	@if [ -f "dist/ClaudeCodeRP.exe" ]; then \
 		cp dist/ClaudeCodeRP.exe frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe; \
 		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe"; \
@@ -197,11 +205,12 @@ build-backend-sidecar:
 		echo "Error: PyInstaller output not found"; \
 		exit 1; \
 	fi
-
-build-desktop: build-backend-sidecar tauri-build
+	@echo ""
+	@echo "Step 2: Building Tauri app..."
+	cd frontend && npm run tauri:build
 	@echo ""
 	@echo "=========================================="
-	@echo "Desktop app build complete!"
+	@echo "Tauri Desktop App Build Complete!"
 	@echo "=========================================="
 	@echo ""
 	@echo "Installers can be found in:"

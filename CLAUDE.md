@@ -37,6 +37,11 @@ uv run pytest --cov=backend --cov-report=term-missing  # With coverage
 cd frontend && npm run test                      # Run vitest
 cd frontend && npm run typecheck                 # TypeScript check
 cd frontend && npm run lint                      # ESLint
+
+# Build commands
+make build-exe         # Comprehensive - prompts for build type
+make build-non-tauri   # Standalone Windows exe (PyInstaller + embedded frontend)
+make build-tauri       # Tauri desktop app with bundled backend sidecar
 ```
 
 ## Architecture Overview
@@ -80,15 +85,6 @@ cd frontend && npm run lint                      # ESLint
   - Typing indicators
   - Agent thinking process display
 
-### Custom-Patched CLI (ccdecompose)
-
-ChitChats uses a patched version of Claude Code's `cli.js` built with [ccdecompose](../ccdecompose/). Patches applied:
-- **disable-system-reminders** - Removes TodoWrite reminders that break immersion
-- **disable-built-in-agents** - Removes default subagents from agent listings
-- **sdk-allow-assistant-messages** - Enables conversation history seeding with `role: "assistant"` messages
-
-See [how_it_works.md](how_it_works.md#custom-patched-cli-ccdecompose) for full documentation.
-
 ### AI Providers
 
 ChitChats supports multiple AI providers through a unified abstraction layer:
@@ -103,29 +99,7 @@ ChitChats supports multiple AI providers through a unified abstraction layer:
 - Provider is set at room creation time via the `provider` field
 - All agents in a room use the same provider
 
-**API Usage:**
-```bash
-# Create room with specific provider
-curl -X POST /rooms -d '{"name": "Test Room", "provider": "codex"}'
-
-# Check available providers
-curl -X GET /providers
-# Returns: {"providers": [{"name": "claude", "available": true}, {"name": "codex", "available": true}], "default": "claude"}
-```
-
-**Architecture:**
-- `backend/providers/base.py` - Abstract base classes (`AIProvider`, `AIClient`, `AIStreamParser`)
-- `backend/providers/factory.py` - Provider factory with lazy singleton instantiation
-- `backend/providers/claude/` - Claude SDK implementation
-- `backend/providers/codex/` - Codex MCP implementation
-
-See [codex_mcp.md](codex_mcp.md) for detailed Codex provider documentation.
-
-**Evaluation with Providers:**
-```bash
-# Run agent evaluation with codex provider
-make evaluate-agents-cross AGENT1="프리렌" AGENT2="페른" PROVIDER=codex
-```
+Provider implementations are in `backend/providers/`.
 
 ## Agent Configuration
 
@@ -166,114 +140,21 @@ Tool descriptions and debug settings are configured via YAML files in `backend/c
 - Tool descriptions support template variables (`{agent_name}`, `{config_sections}`)
 - Enable/disable tools individually
 
-### Group-Specific Tool Overrides
+### Group Configuration
 
-You can override tool configurations for all agents in a group using `group_config.yaml`:
+Groups (`group_*` folders) can have a `group_config.yaml` for shared settings:
+- **Tool overrides** - Custom tool responses/descriptions for all agents in the group
+- **Behavior settings** - `interrupt_every_turn`, `priority`, `transparent`
 
-**Structure:**
-```
-agents/
-  group_슈타게/
-    ├── group_config.yaml  # Group-wide tool overrides
-    └── 크리스/
-        ├── in_a_nutshell.md
-        └── ...
-```
-
-**Example `group_config.yaml`:**
-```yaml
-# Override tool responses/descriptions for all agents in this group
-tools:
-  recall:
-    # Return memories verbatim without AI rephrasing
-    response: "{memory_content}"
-
-  skip:
-    # Custom skip message for this group
-    response: "This character chooses to remain silent."
-```
-
-**Features:**
-- **Follows `tools.yaml` structure** - Any field from `tools.yaml` can be overridden (response, description, etc.)
-- **Group-wide application** - Applies to all agents in `group_*` folder
-- **Selective overrides** - Only override what you need, inherit the rest from global config
-
-**Use Cases:**
-- **No rephrasing for technical content** - Scientific/technical characters (e.g., Steins;Gate group) recall memories exactly as written
-- **Group-specific response styles** - Different personality groups can have customized tool responses
-- **Context-specific behaviors** - Anime groups can have culturally appropriate tool messages
-
-See `agents/group_config.yaml.example` for more examples.
-
-### Group Behavior Settings
-
-In addition to tool overrides, `group_config.yaml` supports behavior settings that affect how agents interact:
-
-```yaml
-# group_config.yaml
-interrupt_every_turn: true  # Agent responds after every message
-priority: 5                 # Higher priority = responds before others
-transparent: true           # Agent's responses don't trigger others to reply
-```
-
-**Available Settings:**
-- **`interrupt_every_turn`** - When `true`, agents in this group always get a turn after any message
-- **`priority`** - Integer value (default: 0). Higher values mean agent responds before lower priority agents
-- **`transparent`** - When `true`, other agents won't be triggered to respond after this agent speaks. Useful for Narrator-type agents whose commentary shouldn't prompt replies. Messages are still visible to all agents.
-
-**Example: Narrator Agent Group**
-```yaml
-# agents/group_tool/group_config.yaml
-interrupt_every_turn: true  # Narrator always comments after each message
-priority: 5                 # Narrator responds first
-transparent: true           # Other agents don't reply to narrator
-```
+See `agents/group_config.yaml.example` for examples.
 
 **`guidelines_3rd.yaml`** - Role guidelines for agent behavior
 - Defines system prompt template and behavioral guidelines
-- Uses third-person perspective in agent configurations (explained below)
-- Currently uses `v3` (enhanced guidelines with explicit scene handling)
-- Guidelines are injected via tool descriptions
-- Supports situation builder notes
+- Uses third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why)
 
 **`debug.yaml`** - Debug logging configuration
 - Control what gets logged (system prompt, tools, messages, responses)
-- Configure output format (separator, timestamps, etc.)
-- Message formatting options (truncation, length limits)
 - Can be overridden by `DEBUG_AGENTS` environment variable
-
-### Third-Person Perspective System
-
-ChitChats uses a **third-person perspective** approach for agent configurations, which separates character description from AI instructions.
-
-**Why third-person?** When running through Claude Agent SDK (via Claude Code), agents inherit an immutable system prompt ("You are Claude Code...") from the parent environment. Third-person character descriptions avoid conflicting "You are..." statements, allowing our system prompt to layer character identity on top of the inherited prompt. See [how_it_works.md](how_it_works.md#why-third-person-perspective) for technical details.
-
-**How it works:**
-1. **Agent configuration files** describe the character in third-person:
-   - English: "Dr. Sarah Chen is a seasoned data scientist..."
-   - Korean: "프리렌은 1000년 이상 살아온 엘프 마법사로..."
-
-2. **System prompt** (in `guidelines_3rd.yaml`) uses `{agent_name}` placeholders:
-   - "In here, you are fully embodying the character {agent_name}..."
-   - "Think only 'what would {agent_name} do?', not 'what is morally correct?'"
-
-3. **At runtime**, the agent name is substituted into the template, creating instructions like:
-   - "You are 프리렌. Embody 프리렌's complete personality..."
-   - "Think only 'what would 프리렌 do?', not 'what is morally correct?'"
-
-**Benefits:**
-- **Clearer separation** between AI instructions and character descriptions
-- **Consistent format** across all agents (English and Korean)
-- **Proper Korean grammar** with automatic particle selection (은/는, 이/가, etc.)
-- **Better roleplay quality** by reinforcing character identity throughout guidelines
-
-**Example: Enabling debug logging**
-```yaml
-# backend/config/tools/debug.yaml
-debug:
-  enabled: true  # Or set DEBUG_AGENTS=true in .env
-  output_file: "debug.txt"
-```
 
 ## Quick Start
 

@@ -44,7 +44,45 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $scriptDir
 
-Set-Location $repoRoot
+# Handle UNC paths (common when running from WSL)
+# CMD.exe doesn't support UNC paths as current directory, so we track this for special handling
+$isUncPath = $repoRoot -match '^\\\\'
+if ($isUncPath) {
+    Write-Host "[*] UNC path detected: $repoRoot" -ForegroundColor Yellow
+    Write-Host "[*] Using cmd.exe pushd wrapper for npm commands" -ForegroundColor Yellow
+}
+
+# Helper function to run commands - uses pushd wrapper for UNC paths
+function Invoke-BuildCommand {
+    param(
+        [string]$Command,
+        [string]$WorkingDir = $script:repoRoot
+    )
+
+    if ($script:isUncPath) {
+        # Start cmd.exe from C:\ first to avoid UNC path error, then pushd to map UNC path
+        # pushd automatically creates a temporary drive letter (like Z:) for UNC paths
+        $cmdScript = "cd /d C:\ && pushd `"$WorkingDir`" && $Command"
+        $result = & cmd /c $cmdScript 2>&1
+        $code = $LASTEXITCODE
+        if ($result) {
+            # Filter out the "UNC path" warning if pushd succeeded
+            $result | Where-Object { $_ -notmatch 'UNC.*지원되지|CMD\.EXE.*실행' } | Write-Host
+        }
+        return $code
+    } else {
+        Push-Location $WorkingDir
+        Invoke-Expression $Command
+        $code = $LASTEXITCODE
+        Pop-Location
+        return $code
+    }
+}
+
+# Set location - for UNC paths, stay in a safe directory and use Invoke-BuildCommand for all operations
+if (-not $isUncPath) {
+    Set-Location $repoRoot
+}
 
 function Write-Step($message) {
     Write-Host "`n[+] $message" -ForegroundColor Cyan
@@ -155,8 +193,10 @@ function Sign-Executable {
 # Clean previous builds if requested
 if ($Clean) {
     Write-Step "Cleaning previous build artifacts..."
-    if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
-    if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+    $distPath = Join-Path $repoRoot "dist"
+    $buildPath = Join-Path $repoRoot "build"
+    if (Test-Path $distPath) { Remove-Item -Recurse -Force $distPath }
+    if (Test-Path $buildPath) { Remove-Item -Recurse -Force $buildPath }
     Write-Success "Clean complete"
 }
 
@@ -178,35 +218,34 @@ Write-Success "Prerequisites OK"
 # Build frontend
 if (-not $SkipFrontend) {
     Write-Step "Building frontend..."
-    Push-Location "frontend"
+    $frontendDir = Join-Path $repoRoot "frontend"
 
     # Always ensure dependencies are installed (check for vite specifically)
-    if (-not (Test-Path "node_modules/vite")) {
+    if (-not (Test-Path (Join-Path $frontendDir "node_modules/vite"))) {
         Write-Step "Installing frontend dependencies..."
-        npm install
-        if ($LASTEXITCODE -ne 0) {
-            Pop-Location
+        $exitCode = Invoke-BuildCommand -Command "npm install" -WorkingDir $frontendDir
+        if ($exitCode -ne 0) {
             Write-Error "npm install failed"
             exit 1
         }
     }
 
-    npm run build
-    if ($LASTEXITCODE -ne 0) {
-        Pop-Location
+    $exitCode = Invoke-BuildCommand -Command "npm run build" -WorkingDir $frontendDir
+    if ($exitCode -ne 0) {
         Write-Error "Frontend build failed"
         exit 1
     }
-    Pop-Location
 
-    if (-not (Test-Path "frontend/dist/index.html")) {
+    $frontendIndex = Join-Path $repoRoot "frontend/dist/index.html"
+    if (-not (Test-Path $frontendIndex)) {
         Write-Error "Frontend build failed - dist/index.html not found"
         exit 1
     }
     Write-Success "Frontend built successfully"
 } else {
     Write-Step "Skipping frontend build (using existing dist)"
-    if (-not (Test-Path "frontend/dist/index.html")) {
+    $frontendIndex = Join-Path $repoRoot "frontend/dist/index.html"
+    if (-not (Test-Path $frontendIndex)) {
         Write-Error "frontend/dist/index.html not found. Run without -SkipFrontend first."
         exit 1
     }
@@ -214,14 +253,14 @@ if (-not $SkipFrontend) {
 
 # Install PyInstaller if needed
 Write-Step "Ensuring PyInstaller is installed..."
-uv pip install pyinstaller --quiet
+$exitCode = Invoke-BuildCommand -Command "uv pip install pyinstaller --quiet"
 
 # Build the executable
 Write-Step "Building Windows executable with PyInstaller..."
-uv run pyinstaller ClaudeCodeRP.spec --noconfirm
+$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ClaudeCodeRP.spec --noconfirm"
 
 # Check output
-$exePath = "dist/ClaudeCodeRP.exe"
+$exePath = Join-Path $repoRoot "dist/ClaudeCodeRP.exe"
 if (Test-Path $exePath) {
     $size = (Get-Item $exePath).Length / 1MB
     Write-Success "Build complete!"
