@@ -19,11 +19,12 @@ agents_dir = project_root / 'agents'
 config_dir = backend_dir / 'config'
 
 # Data files to include
+# NOTE: Agents are NOT bundled here - they are distributed as agents.zip alongside the exe
+# This reduces exe size and allows users to update agents independently
+# Use `make agents-zip` to create agents.zip for distribution
 datas = [
     # Frontend static files
     (str(frontend_dist), 'static'),
-    # Agent configurations
-    (str(agents_dir), 'agents'),
     # Backend config files (YAML) - must be at config/ since settings.py looks for backend_dir/config
     # In bundled mode, backend modules are at root, so config should be at config/ not backend/config/
     (str(config_dir), 'config'),

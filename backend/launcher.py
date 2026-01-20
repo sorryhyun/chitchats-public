@@ -56,20 +56,41 @@ def setup_paths():
 
 
 def copy_default_agents():
-    """Copy default agents if they don't exist."""
+    """Extract default agents from zip if they don't exist.
+
+    In bundled mode, agents are distributed as agents.zip alongside the exe
+    rather than being bundled inside the exe. This reduces exe size and allows
+    users to update agents independently.
+    """
     if not getattr(sys, "frozen", False):
         return
 
-    base_path = get_base_path()
     work_dir = get_work_dir()
-
     agents_dest = work_dir / "agents"
-    agents_src = base_path / "agents"
-    if not agents_dest.exists() and agents_src.exists():
-        import shutil
+    agents_zip = work_dir / "agents.zip"
 
-        shutil.copytree(agents_src, agents_dest)
-        print(f"기본 에이전트를 복사했습니다: {agents_dest}")
+    if agents_dest.exists():
+        return  # Already extracted
+
+    if agents_zip.exists():
+        import zipfile
+
+        print("에이전트를 압축 해제하는 중...")
+        with zipfile.ZipFile(agents_zip, "r") as zf:
+            zf.extractall(work_dir)
+        print(f"에이전트를 압축 해제했습니다: {agents_dest}")
+    else:
+        # Fallback: check for bundled agents (legacy support)
+        base_path = get_base_path()
+        agents_src = base_path / "agents"
+        if agents_src.exists():
+            import shutil
+
+            shutil.copytree(agents_src, agents_dest)
+            print(f"기본 에이전트를 복사했습니다: {agents_dest}")
+        else:
+            print(f"경고: agents.zip을 찾을 수 없습니다: {agents_zip}")
+            print("에이전트 폴더를 수동으로 생성해주세요.")
 
 
 def is_env_configured(env_file: Path) -> bool:
