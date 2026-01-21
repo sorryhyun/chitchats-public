@@ -1,13 +1,24 @@
 """
 Singleton manager for the Codex MCP server process.
 
+.. deprecated::
+    This module provides the legacy single-server approach. For better performance
+    with multi-agent conversations, use :class:`CodexServerPool` from
+    :mod:`providers.codex.mcp_server_pool` instead.
+
+    The pool provides:
+    - Multiple MCP server instances (configurable via CODEX_POOL_SIZE)
+    - Thread ID affinity routing (follow-up messages route to same instance)
+    - Per-instance locks (enables parallel requests across instances)
+    - Selection strategies: round_robin (default) or least_busy
+
 This module provides the CodexMCPServerManager class that manages a single
 `codex mcp-server` process and MCP client session for all Codex requests.
 
 Architecture:
     - Single MCP server process shared across all agents
     - Async singleton pattern for thread-safe access
-    - Request locking to serialize tool calls
+    - Request locking to serialize tool calls (bottleneck for parallel requests)
     - Automatic restart on connection failure
     - Notification handler captures codex/event reasoning
 """

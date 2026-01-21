@@ -1,11 +1,12 @@
 """
 Codex MCP client implementation.
 
-This module provides a client that communicates with Codex via the MCP server,
+This module provides a client that communicates with Codex via the MCP server pool,
 implementing the AIClient interface for the provider abstraction.
 
-The client uses a persistent MCP server connection managed by CodexMCPServerManager,
-providing efficient communication without subprocess spawn overhead per query.
+The client uses a pool of persistent MCP server connections managed by CodexServerPool,
+enabling parallel request handling for multi-agent conversations without the
+bottleneck of a single shared server.
 """
 
 import asyncio
@@ -15,7 +16,8 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 from providers.base import AIClient
 
-from .mcp_server_manager import CodexMCPServerManager
+from .events import agent_message, error, reasoning, thread_started, tool_call
+from .mcp_server_pool import CodexServerPool
 
 logger = logging.getLogger("CodexMCPClient")
 
@@ -48,9 +50,12 @@ class CodexMCPOptions:
 class CodexMCPClient(AIClient):
     """Codex MCP client implementing AIClient interface.
 
-    This client uses the CodexMCPServerManager to communicate with Codex
+    This client uses the CodexServerPool to communicate with Codex
     via the MCP protocol, providing the same interface as the CLI-based client
-    but with better performance (no subprocess spawn per query).
+    but with better performance through:
+    - No subprocess spawn per query (persistent connections)
+    - Multiple server instances for parallel request handling
+    - Thread affinity routing for conversation continuity
 
     Usage:
         client = CodexMCPClient(options)
@@ -67,27 +72,33 @@ class CodexMCPClient(AIClient):
         self._connected = False
         self._pending_message: Optional[str] = None
         self._thread_id: Optional[str] = options.thread_id
-        self._manager: Optional[CodexMCPServerManager] = None
+        self._pool: Optional[CodexServerPool] = None
         self._response_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-        self._response_task: Optional[asyncio.Task] = None
+        self._response_task: Optional[asyncio.Task[None]] = None
 
     async def connect(self) -> None:
-        """Initialize the client by getting the MCP server manager.
+        """Initialize the client by getting the MCP server pool.
 
-        The actual server connection is managed by the singleton manager.
+        The actual server connections are managed by the pool singleton,
+        which spawns multiple instances for parallel request handling.
         """
-        self._manager = await CodexMCPServerManager.get_instance()
-        await self._manager.ensure_started()
+        self._pool = await CodexServerPool.get_instance()
+        await self._pool.ensure_started()
         self._connected = True
-        logger.debug("CodexMCPClient connected to MCP server manager")
+        logger.debug("CodexMCPClient connected to MCP server pool")
 
     async def disconnect(self) -> None:
         """Disconnect the client.
 
-        Note: This does NOT shutdown the MCP server since it's shared.
+        Note: This does NOT shutdown the pool since it's shared.
+        If a thread_id is active, it will be released from its instance.
         """
+        # Release thread affinity when disconnecting
+        if self._pool and self._thread_id:
+            await self._pool.release_thread(self._thread_id)
+
         self._connected = False
-        self._manager = None
+        self._pool = None
         if self._response_task and not self._response_task.done():
             self._response_task.cancel()
             try:
@@ -150,12 +161,14 @@ class CodexMCPClient(AIClient):
 
         MCP returns complete responses (not streaming), so we emit events
         in a format compatible with the existing CodexStreamParser.
+
+        Uses event helper functions from events.py for consistent event creation.
         """
         if self._pending_message is None:
             raise RuntimeError("No pending message. Call query() first.")
 
-        if self._manager is None:
-            raise RuntimeError("MCP manager not initialized")
+        if self._pool is None:
+            raise RuntimeError("MCP pool not initialized")
 
         message = self._pending_message
         self._pending_message = None
@@ -163,13 +176,11 @@ class CodexMCPClient(AIClient):
         # Build config for the MCP tool call
         config = self._build_config()
 
-        logger.info(f"Calling Codex MCP with thread_id={self._thread_id}, message: {message[:100]}...")
+        logger.info(f"Calling Codex MCP pool with thread_id={self._thread_id}, message: {message[:100]}...")
 
         try:
-            # Call the MCP tool
-            # system_prompt is in config as developer_instructions
-            # cwd is a top-level parameter
-            result = await self._manager.call_codex(
+            # Call the MCP tool via the pool (handles instance routing)
+            result = await self._pool.call_codex(
                 prompt=message,
                 config=config,
                 thread_id=self._thread_id,
@@ -179,13 +190,11 @@ class CodexMCPClient(AIClient):
             )
 
             # Extract thread_id from result
-            if result.get("thread_id"):
-                self._thread_id = result["thread_id"]
-                # Emit thread.started event
-                yield {
-                    "type": "thread.started",
-                    "data": {"thread_id": self._thread_id},
-                }
+            new_thread_id = result.get("thread_id")
+            if new_thread_id:
+                self._thread_id = new_thread_id
+                # Emit thread.started event using helper
+                yield thread_started(new_thread_id)
 
             # Process content into events
             for content_item in result.get("content", []):
@@ -195,80 +204,44 @@ class CodexMCPClient(AIClient):
                     text = content_item.get("text", "")
                     if text:
                         # Emit as item.completed with agent_message type
-                        yield {
-                            "type": "item.completed",
-                            "item": {
-                                "type": "agent_message",
-                                "text": text,
-                            },
-                        }
+                        yield agent_message(text)
 
                 elif content_type == "reasoning":
                     # Reasoning extracted from MCP result summary
                     text = content_item.get("text", "")
                     if text:
-                        yield {
-                            "type": "item.completed",
-                            "item": {
-                                "type": "reasoning",
-                                "text": text,
-                            },
-                        }
+                        yield reasoning(text)
 
                 elif content_type == "json":
                     data = content_item.get("data", {})
                     # Check for thread_id in JSON data
                     if "threadId" in data and not self._thread_id:
-                        self._thread_id = data["threadId"]
-                        yield {
-                            "type": "thread.started",
-                            "data": {"thread_id": self._thread_id},
-                        }
+                        json_thread_id: str = data["threadId"]
+                        self._thread_id = json_thread_id
+                        yield thread_started(json_thread_id)
 
                     # Check for message content
                     if "message" in data:
-                        yield {
-                            "type": "item.completed",
-                            "item": {
-                                "type": "agent_message",
-                                "text": data["message"],
-                            },
-                        }
+                        yield agent_message(data["message"])
 
                     # Check for reasoning/thinking content
                     if "reasoning" in data:
-                        yield {
-                            "type": "item.completed",
-                            "item": {
-                                "type": "reasoning",
-                                "text": data["reasoning"],
-                            },
-                        }
+                        yield reasoning(data["reasoning"])
 
                     # Check for tool calls
                     if "toolCalls" in data:
-                        for tool_call in data["toolCalls"]:
-                            tool_name = tool_call.get("name", "")
-                            tool_args = tool_call.get("arguments", {})
-                            yield {
-                                "type": "item.completed",
-                                "item": {
-                                    "type": "mcp_tool_call",
-                                    "tool": tool_name,
-                                    "arguments": tool_args,
-                                },
-                            }
+                        for tc in data["toolCalls"]:
+                            tool_name = tc.get("name", "")
+                            tool_args = tc.get("arguments", {})
+                            yield tool_call(tool_name, tool_args)
 
             # Check for error
             if result.get("is_error"):
-                yield {
-                    "type": "error",
-                    "data": {"message": "MCP tool call returned error"},
-                }
+                yield error("MCP tool call returned error")
 
         except Exception as e:
             logger.error(f"Error calling Codex MCP: {e}")
-            yield {"type": "error", "data": {"message": str(e)}}
+            yield error(str(e))
 
     def _build_config(self) -> Dict[str, Any]:
         """Build the config dict for the MCP tool call."""
