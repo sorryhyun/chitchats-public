@@ -60,9 +60,9 @@ def __getattr__(name: str):
     settings = get_settings()
 
     # Map old constant names to settings properties
+    # Note: TOOLS_CONFIG removed - tools now defined in Python registry (tools.py)
     path_map = {
         "CONFIG_DIR": settings.config_dir,
-        "TOOLS_CONFIG": settings.tools_config_path,
         "DEBUG_CONFIG": settings.debug_config_path,
         "CONVERSATION_CONTEXT_CONFIG": settings.conversation_context_config_path,
         "GUIDELINES_FILE": settings.guidelines_file,
@@ -77,14 +77,31 @@ def __getattr__(name: str):
 
 def get_tools_config() -> Dict[str, Any]:
     """
-    Load the tools configuration from tools.yaml.
+    Get tools configuration from the Python registry (tools.py).
+
+    Returns a dictionary compatible with the old YAML format for backwards compatibility.
 
     Returns:
-        Dictionary containing tool definitions
+        Dictionary containing tool definitions with 'tools' key
     """
-    from core import get_settings
+    from .tools import TOOLS
 
-    return get_cached_config(get_settings().tools_config_path)
+    # Convert ToolDef objects to dictionary format for backwards compatibility
+    tools_dict = {}
+    for tool_name, tool_def in TOOLS.items():
+        tools_dict[tool_name] = {
+            "name": tool_def.name,
+            "group": tool_def.group,
+            "description": tool_def.description,
+            "response": tool_def.response,
+            "enabled": tool_def.enabled,
+        }
+        if tool_def.providers:
+            tools_dict[tool_name]["providers"] = tool_def.providers
+        if tool_def.requires:
+            tools_dict[tool_name]["requires"] = tool_def.requires
+
+    return {"tools": tools_dict}
 
 
 def get_guidelines_config() -> Dict[str, Any]:

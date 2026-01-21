@@ -235,59 +235,38 @@ class TestGetToolDescription:
 
     @pytest.mark.unit
     def test_get_tool_description_basic(self):
-        """Test getting basic tool description."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("tools:\n  test_tool:\n    enabled: true\n    description: 'Test {agent_name}'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("test_tool", agent_name="Alice")
-                assert desc == "Test Alice"
-        finally:
-            tmp_path.unlink()
+        """Test getting basic tool description from Python registry."""
+        # Test with real tool from registry (skip tool has {agent_name} placeholder)
+        desc = get_tool_description("skip", agent_name="Alice")
+        assert desc is not None
+        assert "Alice" in desc
+        assert "skip" in desc.lower()
 
     @pytest.mark.unit
     def test_get_tool_description_disabled_tool(self):
         """Test getting description of disabled tool returns None."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("tools:\n  test_tool:\n    enabled: false\n    description: 'Test description'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("test_tool")
-                assert desc is None
-        finally:
-            tmp_path.unlink()
+        # 'read' tool is disabled by default in the registry
+        desc = get_tool_description("read")
+        assert desc is None
 
     @pytest.mark.unit
     def test_get_tool_description_not_found(self):
         """Test getting description of nonexistent tool returns None."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("tools:\n  other_tool:\n    enabled: true\n    description: 'Test'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("nonexistent_tool")
-                assert desc is None
-        finally:
-            tmp_path.unlink()
+        desc = get_tool_description("nonexistent_tool")
+        assert desc is None
 
     @pytest.mark.unit
     def test_get_tool_description_with_variables(self):
-        """Test tool description with multiple template variables."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("tools:\n  test_tool:\n    enabled: true\n    description: '{agent_name} - {config_sections}'\n")
-            tmp_path = Path(tmp.name)
-
-        try:
-            with patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tmp_path):
-                desc = get_tool_description("test_tool", agent_name="Alice", config_sections="memory, background")
-                assert desc == "Alice - memory, background"
-        finally:
-            tmp_path.unlink()
+        """Test tool description with template variables."""
+        # Test recall tool which has {agent_name} and {memory_subtitles} placeholders
+        desc = get_tool_description(
+            "recall",
+            agent_name="Alice",
+            memory_subtitles="memory1, memory2",
+        )
+        assert desc is not None
+        assert "Alice" in desc
+        assert "memory1, memory2" in desc
 
     @pytest.mark.unit
     def test_get_tool_description_guidelines_tool(self):

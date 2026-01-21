@@ -24,13 +24,14 @@ import logging
 import os
 from typing import Optional
 
-from domain.action_models import GuidelinesAnthropicInput, GuidelinesReadInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Resource, ResourceTemplate, TextContent, Tool
 from pydantic import AnyUrl
 
 from .config import (
+    GuidelinesAnthropicInput,
+    GuidelinesReadInput,
     get_extreme_traits,
     get_situation_builder_note,
     get_tool_description,

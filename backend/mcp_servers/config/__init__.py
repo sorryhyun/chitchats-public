@@ -13,22 +13,31 @@ from .loaders import (
     get_guidelines_config,
     get_guidelines_config_path,
     get_guidelines_file,
-    get_tools_config,
     merge_tool_configs,
 )
 from .tool_config import (
+    TOOLS,
+    ToolDef,
     get_situation_builder_note,
     get_tool_description,
     get_tool_group,
+    get_tool_input_model,
     get_tool_names_by_group,
     get_tool_response,
     get_tools_by_group,
     is_tool_enabled,
 )
+from .tools import (
+    CurrentTimeInput,
+    GuidelinesAnthropicInput,
+    GuidelinesReadInput,
+    MemorizeInput,
+    RecallInput,
+    SkipInput,
+)
 
 __all__ = [
     # Loaders
-    "get_tools_config",
     "get_guidelines_config",
     "get_guidelines_config_path",
     "get_guidelines_file",
@@ -38,6 +47,8 @@ __all__ = [
     "get_group_config",
     "merge_tool_configs",
     # Tool config
+    "TOOLS",
+    "ToolDef",
     "get_tool_description",
     "get_tool_response",
     "get_situation_builder_note",
@@ -45,4 +56,12 @@ __all__ = [
     "get_tools_by_group",
     "get_tool_names_by_group",
     "get_tool_group",
+    "get_tool_input_model",
+    # Input models
+    "SkipInput",
+    "MemorizeInput",
+    "RecallInput",
+    "GuidelinesReadInput",
+    "GuidelinesAnthropicInput",
+    "CurrentTimeInput",
 ]

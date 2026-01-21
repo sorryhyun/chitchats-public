@@ -35,27 +35,27 @@ def validate_config_schema() -> list[str]:
     """
     errors = []
 
-    # Validate tools.yaml
+    # Validate tools registry (Python-based, from tools.py)
     tools_config = get_tools_config()
     if not tools_config:
-        errors.append("tools.yaml is empty or missing")
+        errors.append("Tools registry is empty")
     elif "tools" not in tools_config:
-        errors.append("tools.yaml missing 'tools' section")
+        errors.append("Tools registry missing 'tools' section")
     else:
         # Check for required tools
-        # Note: "guidelines" content comes from guidelines_3rd.yaml, not tools.yaml
+        # Note: "guidelines" content comes from guidelines.yaml, not tools registry
         required_tools = ["skip", "memorize", "recall", "read"]
         for tool_name in required_tools:
             if tool_name not in tools_config["tools"]:
-                errors.append(f"tools.yaml missing required tool: {tool_name}")
+                errors.append(f"Tools registry missing required tool: {tool_name}")
             else:
                 tool = tools_config["tools"][tool_name]
                 # Validate tool structure
                 if "name" not in tool:
-                    errors.append(f"tools.yaml tool '{tool_name}' missing 'name' field")
-                # Tools must have either 'description' or 'source' (for loading from separate file)
-                if "description" not in tool and "source" not in tool:
-                    errors.append(f"tools.yaml tool '{tool_name}' missing 'description' or 'source' field")
+                    errors.append(f"Tools registry tool '{tool_name}' missing 'name' field")
+                # Tools must have description
+                if "description" not in tool:
+                    errors.append(f"Tools registry tool '{tool_name}' missing 'description' field")
 
     # Validate guidelines yaml (guidelines_3rd.yaml or guidelines_v2.yaml)
     guidelines_config = get_guidelines_config()

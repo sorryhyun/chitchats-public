@@ -1,42 +1,32 @@
 """
-Codex CLI stream parser implementation.
+Codex MCP stream parser implementation.
 
-This module parses streaming JSON output from the Codex CLI
-and converts it to the unified ParsedStreamMessage format.
+This module parses events from the CodexMCPClient and converts them
+to the unified ParsedStreamMessage format.
 
-Codex Event Types:
+Event Types (from MCP client):
     - thread.started: Thread creation, contains thread_id
-    - turn.started: New turn in conversation
-    - item.started: Start of a response item
-    - item.completed: Completed response item with content
+    - item.completed: Completed response item
         - item.type="agent_message": Final response text
         - item.type="reasoning": Thinking/reasoning text
-        - item.type="message": Content array with text/thinking blocks
-        - item.type="function_call": Tool call (legacy format)
-        - item.type="mcp_tool_call": MCP tool call (new format)
+        - item.type="mcp_tool_call": MCP tool call
     - error: Error event
 """
 
-import json
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from providers.base import AIStreamParser, ParsedStreamMessage
+
+from .events import EventType, ItemType
 
 logger = logging.getLogger("CodexStreamParser")
 
 
 class CodexStreamParser(AIStreamParser):
-    """Parser for Codex CLI streaming JSON output.
+    """Parser for Codex MCP client events.
 
-    Codex outputs newline-delimited JSON events that need to be
-    translated to our unified message format.
-
-    Event Structure:
-        {
-            "type": "event_type",
-            "data": { ... event-specific data ... }
-        }
+    Translates events from CodexMCPClient to the unified ParsedStreamMessage format.
     """
 
     @staticmethod
@@ -45,28 +35,16 @@ class CodexStreamParser(AIStreamParser):
         current_response: str,
         current_thinking: str,
     ) -> ParsedStreamMessage:
-        """Parse a streaming message from Codex CLI.
+        """Parse a message from the Codex MCP client.
 
         Args:
-            message: JSON event dict from Codex CLI
+            message: Event dict from CodexMCPClient
             current_response: Accumulated response text so far
             current_thinking: Accumulated thinking text so far
 
         Returns:
             ParsedStreamMessage with extracted fields and updated accumulated text
         """
-        # Handle raw JSON string
-        if isinstance(message, str):
-            try:
-                message = json.loads(message)
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse JSON: {message[:100]}...")
-                return ParsedStreamMessage(
-                    response_text=current_response,
-                    thinking_text=current_thinking,
-                )
-
-        # Handle dict events
         if not isinstance(message, dict):
             return ParsedStreamMessage(
                 response_text=current_response,
@@ -82,206 +60,59 @@ class CodexStreamParser(AIStreamParser):
         thinking_delta = ""
         new_session_id = None
         skip_tool_called = False
-        memory_entries = []
-        anthropic_calls = []
+        memory_entries: list[str] = []
 
-        # Handle different event types
-        if event_type == "thread.started":
+        if event_type == EventType.THREAD_STARTED:
             # Extract thread_id for session resume
-            new_session_id = (
-                message.get("thread_id")
-                or message.get("id")
-                or message.get("item", {}).get("thread_id")
-                or message.get("item", {}).get("id")
-                or message.get("payload", {}).get("thread_id")
-                or message.get("payload", {}).get("id")
-                or data.get("thread_id")
-                or data.get("id")
-            )
+            new_session_id = data.get("thread_id")
             logger.info(f"[CodexParser] thread.started: session_id={new_session_id}")
 
-        elif event_type == "item.completed":
+        elif event_type == EventType.ITEM_COMPLETED:
             # Completed response item - extract content
             item = message.get("item", {})
             item_type = item.get("type", "")
 
             logger.info(f"[CodexParser] item.completed: item_type={item_type}")
 
-            if item_type == "agent_message":
-                # Direct text in item["text"]
+            if item_type == ItemType.AGENT_MESSAGE:
+                # Direct text response
                 text = item.get("text", "")
                 if text:
                     content_delta = text
                     logger.info(f"[CodexParser] Extracted agent_message: {len(text)} chars")
 
-            elif item_type == "reasoning":
-                # Codex reasoning (equivalent to thinking)
-                text = item.get("summary_text", "")
+            elif item_type == ItemType.REASONING:
+                # Reasoning/thinking text
+                text = item.get("text", "")
                 if text:
                     thinking_delta = text
                     logger.info(f"[CodexParser] Extracted reasoning: {len(text)} chars")
 
-            elif item_type == "message":
-                # Content array format
-                content_list = item.get("content", [])
-                for content_block in content_list:
-                    block_type = content_block.get("type", "")
-                    if block_type == "text":
-                        text = content_block.get("text", "")
-                        content_delta += text
-                    elif block_type == "output_text":
-                        text = content_block.get("text", "")
-                        content_delta += text
-                    elif block_type == "thinking":
-                        thinking_delta += content_block.get("text", "")
-                        thinking_delta += content_block.get("thinking", "")
-
-            elif item_type == "function_call":
-                # Handle tool calls
-                tool_name = item.get("name", "")
-                tool_args = item.get("arguments", {})
-
-                if tool_name.endswith("skip") or tool_name == "skip":
-                    skip_tool_called = True
-                    logger.info("Codex skip tool called")
-
-                elif tool_name.endswith("memorize") or tool_name == "memorize":
-                    memory_entry = tool_args.get("memory_entry", "")
-                    if memory_entry:
-                        memory_entries.append(memory_entry)
-                        logger.info(f"Codex memorize: {memory_entry}")
-
-                elif tool_name.endswith("anthropic") or tool_name == "anthropic":
-                    situation = tool_args.get("situation", "")
-                    if situation:
-                        anthropic_calls.append(situation)
-                        logger.info(f"Codex anthropic call: {situation[:50]}...")
-
-            elif item_type == "mcp_tool_call":
-                # Handle MCP tool calls (Codex format)
+            elif item_type == ItemType.MCP_TOOL_CALL:
+                # Handle MCP tool calls
                 tool_name = item.get("tool", "")
                 tool_args = item.get("arguments", {})
 
                 if tool_name == "skip":
                     skip_tool_called = True
-                    logger.info("Codex MCP skip tool called")
+                    logger.info("[CodexParser] skip tool called")
 
                 elif tool_name == "memorize":
                     memory_entry = tool_args.get("memory_entry", "")
                     if memory_entry:
                         memory_entries.append(memory_entry)
-                        logger.info(f"Codex MCP memorize: {memory_entry}")
+                        logger.info(f"[CodexParser] memorize: {memory_entry[:50]}...")
 
-                elif tool_name == "anthropic":
-                    situation = tool_args.get("situation", "")
-                    if situation:
-                        anthropic_calls.append(situation)
-                        logger.info(f"Codex MCP anthropic call: {situation[:50]}...")
-
-        elif event_type == "item.started":
-            # Item starting - might have initial content
-            item = data.get("item", data)
-            item_type = item.get("type", "")
-
-            if item_type == "message":
-                content_list = item.get("content", [])
-                for content_block in content_list:
-                    block_type = content_block.get("type", "")
-                    if block_type == "text":
-                        content_delta += content_block.get("text", "")
-
-        elif event_type == "content.delta":
-            # Streaming content delta
-            delta_data = data.get("delta", data)
-            content_delta = delta_data.get("text", "")
-
-        elif event_type == "thinking.delta":
-            # Streaming thinking delta
-            delta_data = data.get("delta", data)
-            thinking_delta = delta_data.get("text", "")
-            thinking_delta += delta_data.get("thinking", "")
-
-        elif event_type == "error":
+        elif event_type == EventType.ERROR:
             # Error event
-            error_msg = data.get("message", data.get("error", str(data)))
-            logger.error(f"Codex error: {error_msg}")
+            error_msg = data.get("message", str(data))
+            logger.error(f"[CodexParser] error: {error_msg}")
             content_delta = f"Error: {error_msg}"
 
-        elif event_type == "event_msg":
-            # Event message - can contain agent_reasoning or agent_message
-            payload = message.get("payload", {})
-            payload_type = payload.get("type", "")
-
-            if payload_type == "agent_reasoning":
-                # Plain text reasoning from event_msg
-                text = payload.get("text", "")
-                if text:
-                    thinking_delta = text
-                    logger.info(f"[CodexParser] Extracted agent_reasoning from event_msg: {len(text)} chars")
-
-            elif payload_type == "agent_message":
-                # Agent message from event_msg
-                text = payload.get("message", "")
-                if text:
-                    content_delta = text
-                    logger.info(f"[CodexParser] Extracted agent_message from event_msg: {len(text)} chars")
-
-        elif event_type == "response_item":
-            # Response item - extract from payload
-            payload = message.get("payload", {})
-            payload_type = payload.get("type", "")
-
-            if payload_type == "reasoning":
-                # Reasoning response item - try summary if content is encrypted
-                content = payload.get("content")
-                if content:
-                    # Plain content available
-                    thinking_delta = content
-                    logger.info(f"[CodexParser] Extracted reasoning content: {len(content)} chars")
-                else:
-                    # Content encrypted - use summary
-                    summary_list = payload.get("summary", [])
-                    for summary_item in summary_list:
-                        if summary_item.get("type") == "summary_text":
-                            text = summary_item.get("text", "")
-                            if text:
-                                thinking_delta += text
-                    if thinking_delta:
-                        logger.info(f"[CodexParser] Extracted reasoning from summary: {len(thinking_delta)} chars")
-
-            elif payload_type == "message":
-                content_list = payload.get("content", [])
-                for content_block in content_list:
-                    block_type = content_block.get("type", "")
-                    if block_type == "output_text":
-                        text = content_block.get("text", "")
-                        content_delta += text
-                    elif block_type == "text":
-                        text = content_block.get("text", "")
-                        content_delta += text
-                    elif block_type == "thinking":
-                        thinking_delta += content_block.get("text", "")
-                        thinking_delta += content_block.get("thinking", "")
-
-        # Return accumulated text with deltas applied
         return ParsedStreamMessage(
             response_text=current_response + content_delta,
             thinking_text=current_thinking + thinking_delta,
             session_id=new_session_id,
             skip_used=skip_tool_called,
             memory_entries=memory_entries,
-            anthropic_calls=anthropic_calls,
         )
-
-    @staticmethod
-    def parse_json_line(line: str) -> Dict[str, Any]:
-        """Parse a single JSON line from Codex output."""
-        line = line.strip()
-        if not line:
-            return {}
-
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError:
-            logger.debug(f"Non-JSON line: {line[:100]}")
-            return {}
