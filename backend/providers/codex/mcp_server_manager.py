@@ -27,67 +27,17 @@ import asyncio
 import json
 import logging
 import os
-import platform
 import shutil
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import ServerNotification
 
+from .windows_support import get_bundled_codex_path
+
 logger = logging.getLogger("CodexMCPServerManager")
-
-
-def _get_bundled_codex_path() -> Optional[str]:
-    """Get the path to the bundled Codex Rust binary."""
-    import sys
-
-    # Binary filenames by platform
-    binary_names = {
-        "windows-amd64": "codex-x86_64-pc-windows-msvc.exe",
-        "windows-x86_64": "codex-x86_64-pc-windows-msvc.exe",
-        "darwin-arm64": "codex-aarch64-apple-darwin",
-        "darwin-x86_64": "codex-x86_64-apple-darwin",
-        "linux-x86_64": "codex-x86_64-unknown-linux-gnu",
-        "linux-aarch64": "codex-aarch64-unknown-linux-gnu",
-    }
-
-    key = f"{platform.system().lower()}-{platform.machine().lower()}"
-    binary_name = binary_names.get(key)
-
-    if not binary_name:
-        logger.warning(f"No bundled binary configured for platform: {key}")
-        return None
-
-    # Check multiple locations in order of priority
-    search_paths = []
-
-    if getattr(sys, "frozen", False):
-        # Running as PyInstaller bundle
-        # 1. Check next to the exe (work directory)
-        exe_dir = Path(sys.executable).parent
-        search_paths.append(exe_dir / binary_name)
-        search_paths.append(exe_dir / "bundled" / binary_name)
-        # 2. Check in _MEIPASS (temp extraction directory)
-        meipass = Path(sys._MEIPASS)
-        search_paths.append(meipass / binary_name)
-        search_paths.append(meipass / "bundled" / binary_name)
-    else:
-        # Running in development
-        # Project root: 4 levels up from backend/providers/codex/mcp_server_manager.py
-        project_root = Path(__file__).parent.parent.parent.parent
-        search_paths.append(project_root / "bundled" / binary_name)
-
-    for path in search_paths:
-        logger.debug(f"Checking bundled path: {path}")
-        if path.exists():
-            logger.info(f"Found bundled Codex binary: {path}")
-            return str(path)
-
-    logger.warning(f"Bundled Codex binary not found in any of: {[str(p) for p in search_paths]}")
-    return None
 
 
 class _MCPNotificationFilter(logging.Filter):
@@ -246,7 +196,7 @@ class CodexMCPServerManager:
         """Start the Codex MCP server process and establish connection."""
         # Prefer bundled Rust binary over npm-installed Node.js version
         # The Rust binary properly supports MCP server mode
-        codex_path = _get_bundled_codex_path()
+        codex_path = get_bundled_codex_path()
         if not codex_path:
             codex_path = shutil.which("codex")
         if not codex_path:

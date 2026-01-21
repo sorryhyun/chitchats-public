@@ -12,6 +12,7 @@ multi-provider architecture.
 from .events import EventType, ItemType, agent_message, error, reasoning, thread_started, tool_call
 from .mcp_client import CodexMCPClient, CodexMCPOptions
 from .mcp_server_instance import CodexMCPServerInstance, ReasoningCapture
+from .windows_support import get_bundled_codex_path
 from .mcp_server_manager import CodexMCPServerManager, get_mcp_server_manager
 from .mcp_server_pool import CodexServerPool, SelectionStrategy
 from .parser import CodexStreamParser
@@ -31,6 +32,7 @@ __all__ = [
     # Server instance
     "CodexMCPServerInstance",
     "ReasoningCapture",
+    "get_bundled_codex_path",
     # Server management (legacy, deprecated)
     "CodexMCPServerManager",
     "get_mcp_server_manager",

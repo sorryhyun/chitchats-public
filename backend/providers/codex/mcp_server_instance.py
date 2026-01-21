@@ -20,6 +20,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from .events import extract_reasoning_from_raw
+from .windows_support import get_bundled_codex_path
 
 logger = logging.getLogger("CodexMCPServerInstance")
 
@@ -168,7 +169,10 @@ class CodexMCPServerInstance:
         if self._started:
             return
 
-        codex_path = shutil.which("codex")
+        # Prefer bundled Rust binary over npm-installed version
+        codex_path = get_bundled_codex_path()
+        if not codex_path:
+            codex_path = shutil.which("codex")
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
