@@ -311,7 +311,7 @@ class CodexStreamParser(AIStreamParser):
         event_type = message.get("type", "")
         data = message.get("data", {})
 
-        logger.info(f"[CodexParser] Event type: {event_type}")
+        logger.debug(f"[CodexParser] Event type: {event_type}")
 
         content_delta = ""
         thinking_delta = ""
@@ -319,31 +319,49 @@ class CodexStreamParser(AIStreamParser):
         skip_tool_called = False
         memory_entries: list[str] = []
 
-        if event_type == EventType.THREAD_STARTED:
+        if event_type == EventType.CONTENT_DELTA:
+            # Streaming content delta
+            content_delta = message.get("delta", "")
+            if content_delta:
+                return ParsedStreamMessage(
+                    response_text=current_response + content_delta,
+                    thinking_text=current_thinking,
+                )
+
+        elif event_type == EventType.THINKING_DELTA:
+            # Streaming thinking/reasoning delta
+            thinking_delta_text = message.get("delta", "")
+            if thinking_delta_text:
+                return ParsedStreamMessage(
+                    response_text=current_response,
+                    thinking_text=current_thinking + thinking_delta_text,
+                )
+
+        elif event_type == EventType.THREAD_STARTED:
             # Extract thread_id for session resume
             new_session_id = data.get("thread_id")
-            logger.info(f"[CodexParser] thread.started: session_id={new_session_id}")
+            logger.debug(f"[CodexParser] thread.started: session_id={new_session_id}")
 
         elif event_type == EventType.ITEM_COMPLETED:
             # Completed response item - extract content
             item = message.get("item", {})
             item_type = item.get("type", "")
 
-            logger.info(f"[CodexParser] item.completed: item_type={item_type}")
+            logger.debug(f"[CodexParser] item.completed: item_type={item_type}")
 
             if item_type == ItemType.AGENT_MESSAGE:
                 # Direct text response
                 text = item.get("text", "")
                 if text:
                     content_delta = text
-                    logger.info(f"[CodexParser] Extracted agent_message: {len(text)} chars")
+                    logger.debug(f"[CodexParser] Extracted agent_message: {len(text)} chars")
 
             elif item_type == ItemType.REASONING:
                 # Reasoning/thinking text
                 text = item.get("text", "")
                 if text:
                     thinking_delta = text
-                    logger.info(f"[CodexParser] Extracted reasoning: {len(text)} chars")
+                    logger.debug(f"[CodexParser] Extracted reasoning: {len(text)} chars")
 
             elif item_type == ItemType.MCP_TOOL_CALL:
                 # Handle MCP tool calls

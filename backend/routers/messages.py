@@ -17,7 +17,7 @@ from core import (
 from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException, Request
 from infrastructure.database import get_db
-from infrastructure.images import compress_image_base64
+from infrastructure.images import compress_image_base64, get_target_format_for_provider
 from orchestration import ChatOrchestrator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -158,18 +158,22 @@ async def send_message(
     MAX_IMAGES = 5
     if message.images:
         try:
+            # Get room's provider to determine image format
+            room = await crud.get_room_cached(db, room_id)
+            target_format = get_target_format_for_provider(room.default_provider) if room else "webp"
+
             images_to_process = message.images[:MAX_IMAGES]  # Limit to 5 images
             compressed_images = []
             total_original = 0
             total_compressed = 0
 
-            logger.info(f"[send_message] Compressing {len(images_to_process)} image(s) for room {room_id}")
+            logger.info(f"[send_message] Compressing {len(images_to_process)} image(s) for room {room_id} (format: {target_format})")
 
             for i, img in enumerate(images_to_process):
                 original_size = len(img.data)
                 total_original += original_size
 
-                compressed_data, compressed_media_type = compress_image_base64(img.data, img.media_type)
+                compressed_data, compressed_media_type = compress_image_base64(img.data, img.media_type, target_format)
                 compressed_size = len(compressed_data)
                 total_compressed += compressed_size
 
@@ -189,8 +193,12 @@ async def send_message(
     # Backward compatibility: handle old single-image format
     elif message.image_data and message.image_media_type:
         try:
-            logger.info(f"[send_message] Compressing single image for room {room_id} (legacy format)")
-            compressed_data, compressed_media_type = compress_image_base64(message.image_data, message.image_media_type)
+            # Get room's provider to determine image format
+            room = await crud.get_room_cached(db, room_id)
+            target_format = get_target_format_for_provider(room.default_provider) if room else "webp"
+
+            logger.info(f"[send_message] Compressing single image for room {room_id} (legacy format, {target_format})")
+            compressed_data, compressed_media_type = compress_image_base64(message.image_data, message.image_media_type, target_format)
             # Convert to new images format
             message.images = [schemas.ImageItem(data=compressed_data, media_type=compressed_media_type)]
             # Clear deprecated fields

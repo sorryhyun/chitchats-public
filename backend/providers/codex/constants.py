@@ -43,6 +43,8 @@ class EventType:
 
     THREAD_STARTED = "thread.started"
     ITEM_COMPLETED = "item.completed"
+    CONTENT_DELTA = "content.delta"
+    THINKING_DELTA = "thinking.delta"
     ERROR = "error"
 
 
@@ -198,6 +200,22 @@ def error(message: str) -> Dict[str, Any]:
     return {
         "type": EventType.ERROR,
         "data": {"message": message},
+    }
+
+
+def content_delta(delta: str) -> Dict[str, Any]:
+    """Create a content.delta event for streaming text."""
+    return {
+        "type": EventType.CONTENT_DELTA,
+        "delta": delta,
+    }
+
+
+def thinking_delta(delta: str) -> Dict[str, Any]:
+    """Create a thinking.delta event for streaming reasoning."""
+    return {
+        "type": EventType.THINKING_DELTA,
+        "delta": delta,
     }
 
 

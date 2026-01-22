@@ -201,7 +201,7 @@ class CodexAppServerInstance:
         params["sandbox"] = map_sandbox(config.sandbox)
         params["approvalPolicy"] = map_approval_policy(config.approval_policy)
 
-        logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
+        # logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
 
         result = await self._send_request("thread/start", params)
 
@@ -449,32 +449,43 @@ class CodexAppServerInstance:
         line = json.dumps(message) + "\n"
         self._process.stdin.write(line.encode())
         await self._process.stdin.drain()
-        logger.debug(f"[Instance {self._instance_id}] Sent: {line.strip()}")
+        # logger.debug(f"[Instance {self._instance_id}] Sent: {line.strip()}")
 
     async def _read_stdout(self) -> None:
-        """Read and process messages from stdout."""
+        """Read and process messages from stdout.
+
+        Uses manual buffering to handle large messages (e.g., base64 images)
+        that exceed the default readline() buffer limit of 64KB.
+        """
         if not self._process or not self._process.stdout:
             return
 
+        buffer = b""
+        chunk_size = 1024 * 1024  # 1MB chunks
+
         try:
             while True:
-                line = await self._process.stdout.readline()
-                if not line:
+                # Read a chunk
+                chunk = await self._process.stdout.read(chunk_size)
+                if not chunk:
                     logger.warning(f"[Instance {self._instance_id}] stdout closed")
                     self._healthy = False
                     break
 
-                line_str = line.decode().strip()
-                if not line_str:
-                    continue
+                buffer += chunk
 
-                logger.debug(f"[Instance {self._instance_id}] Received: {line_str}")
+                # Process complete lines
+                while b'\n' in buffer:
+                    line, buffer = buffer.split(b'\n', 1)
+                    line_str = line.decode().strip()
+                    if not line_str:
+                        continue
 
-                try:
-                    message = json.loads(line_str)
-                    await self._handle_message(message)
-                except json.JSONDecodeError as e:
-                    logger.warning(f"[Instance {self._instance_id}] Invalid JSON: {e}")
+                    try:
+                        message = json.loads(line_str)
+                        await self._handle_message(message)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"[Instance {self._instance_id}] Invalid JSON: {e}")
 
         except asyncio.CancelledError:
             pass

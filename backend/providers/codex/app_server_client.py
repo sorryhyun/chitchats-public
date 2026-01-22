@@ -22,8 +22,10 @@ from .constants import (
     AppServerMethod,
     SessionRecoveryError,
     agent_message,
+    content_delta,
     error,
     reasoning,
+    thinking_delta,
     thread_started,
     tool_call,
 )
@@ -230,13 +232,17 @@ class CodexAppServerClient(AIClient):
                     if method == AppServerMethod.TURN_STARTED:
                         pass
                     elif method == AppServerMethod.AGENT_MESSAGE_DELTA:
-                        delta = params.get("delta", "")
-                        if delta:
-                            accumulator.add_text(delta)
+                        delta_text = params.get("delta", "")
+                        if delta_text:
+                            accumulator.add_text(delta_text)
+                            self._streamed_content = True
+                            yield content_delta(delta_text)
                     elif method == AppServerMethod.REASONING_DELTA:
-                        delta = params.get("delta", "")
-                        if delta:
-                            accumulator.add_reasoning(delta)
+                        delta_text = params.get("delta", "")
+                        if delta_text:
+                            accumulator.add_reasoning(delta_text)
+                            self._streamed_reasoning = True
+                            yield thinking_delta(delta_text)
                     elif method == AppServerMethod.ITEM_COMPLETED:
                         item = params.get("item", {})
                         item_type = item.get("type", "")
@@ -265,11 +271,16 @@ class CodexAppServerClient(AIClient):
                 if accumulator.is_completed:
                     break
 
-            # Emit accumulated content
-            if accumulator.accumulated_text:
+            # Emit accumulated content only if we didn't stream it
+            # (streaming via deltas already sent the content incrementally)
+            if accumulator.accumulated_text and not getattr(self, '_streamed_content', False):
                 yield agent_message(accumulator.accumulated_text)
-            if accumulator.accumulated_reasoning:
+            if accumulator.accumulated_reasoning and not getattr(self, '_streamed_reasoning', False):
                 yield reasoning(accumulator.accumulated_reasoning)
+
+            # Reset streaming flags for next turn
+            self._streamed_content = False
+            self._streamed_reasoning = False
 
         except SessionRecoveryError:
             # Let this propagate up to ResponseGenerator for retry with full history
