@@ -122,7 +122,6 @@ class Settings(BaseSettings):
 
     # Codex provider configuration
     codex_model: str = "gpt-5.2"  # Default model for Codex provider
-    use_codex_app_server: bool = True  # App Server mode for better parallelism (default)
 
     @field_validator("enable_guest_login", mode="before")
     @classmethod
@@ -158,16 +157,6 @@ class Settings(BaseSettings):
     @classmethod
     def validate_experimental_custom_cli(cls, v: Optional[str]) -> bool:
         """Parse experimental_custom_cli from string to bool."""
-        if isinstance(v, bool):
-            return v
-        if isinstance(v, str):
-            return v.lower() == "true"
-        return False
-
-    @field_validator("use_codex_app_server", mode="before")
-    @classmethod
-    def validate_use_codex_app_server(cls, v: Optional[str]) -> bool:
-        """Parse use_codex_app_server from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):

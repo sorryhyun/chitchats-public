@@ -16,9 +16,8 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 from providers.base import AIClient
 
 from .app_server_instance import AppServerConfig
-from .app_server_parser import AppServerStreamAccumulator, parse_streaming_event
 from .app_server_pool import CodexAppServerPool
-from .events import (
+from .constants import (
     AppServerMethod,
     SessionRecoveryError,
     agent_message,
@@ -27,6 +26,7 @@ from .events import (
     thread_started,
     tool_call,
 )
+from .parser import AppServerStreamAccumulator, parse_streaming_event
 
 logger = logging.getLogger("CodexAppServerClient")
 

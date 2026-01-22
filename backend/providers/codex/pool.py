@@ -1,52 +1,39 @@
 """
 Codex-specific client pool implementation.
 
-This module provides a client pool class for managing Codex client lifecycle.
-The pool supports two modes based on USE_CODEX_APP_SERVER setting:
-- MCP mode: Uses CodexMCPClient with codex mcp-server
-- App Server mode: Uses CodexAppServerClient with codex app-server
+This module provides a client pool class for managing Codex App Server client lifecycle.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Tuple, Union
+from typing import Any, Tuple
 
-from core import get_settings
 from domain.task_identifier import TaskIdentifier
 
 from providers.base import AIClient, ClientPoolInterface
 
 from .app_server_client import CodexAppServerClient, CodexAppServerOptions
-from .mcp_client import CodexMCPClient, CodexMCPOptions
 
 logger = logging.getLogger("CodexClientPool")
-
-# Type alias for either client type
-CodexClient = Union[CodexMCPClient, CodexAppServerClient]
-CodexOptions = Union[CodexMCPOptions, CodexAppServerOptions]
 
 
 class CodexClientPool(ClientPoolInterface):
     """
-    Codex client pool supporting both MCP and App Server modes.
+    Codex client pool for App Server mode.
 
-    Manages pooling and lifecycle of Codex clients.
-    Mode is determined by USE_CODEX_APP_SERVER setting:
-    - MCP mode (default=false): Uses CodexMCPClient
-    - App Server mode (default=true): Uses CodexAppServerClient
+    Manages pooling and lifecycle of Codex App Server clients.
     """
 
-    # Allow up to 10 concurrent "connections" (lightweight for MCP)
+    # Allow up to 10 concurrent "connections" (lightweight for App Server)
     MAX_CONCURRENT_CONNECTIONS = 10
     # Timeout for disconnect operations (seconds)
     DISCONNECT_TIMEOUT = 5.0
 
     def __init__(self):
         """Initialize the client pool."""
-        self._pool: dict[TaskIdentifier, CodexClient] = {}
-        self._settings = get_settings()
+        self._pool: dict[TaskIdentifier, CodexAppServerClient] = {}
         self._connection_semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_CONNECTIONS)
         self._task_locks: dict[TaskIdentifier, asyncio.Lock] = {}
         self._cleanup_tasks: set[asyncio.Task] = set()
@@ -62,47 +49,16 @@ class CodexClientPool(ClientPoolInterface):
             self._task_locks[task_id] = asyncio.Lock()
         return self._task_locks[task_id]
 
-    def _use_app_server(self) -> bool:
-        """Check if App Server mode is enabled."""
-        return self._settings.use_codex_app_server
-
-    def _create_client(self, options: CodexMCPOptions) -> CodexClient:
-        """Create the appropriate client based on mode setting.
-
-        Args:
-            options: CodexMCPOptions (will be converted for App Server mode)
-
-        Returns:
-            CodexMCPClient or CodexAppServerClient
-        """
-        if self._use_app_server():
-            # Convert MCP options to App Server options
-            app_options = CodexAppServerOptions(
-                system_prompt=options.system_prompt,
-                model=options.model,
-                thread_id=options.thread_id,
-                mcp_servers=options.mcp_servers,
-                approval_policy=options.approval_policy,
-                sandbox=options.sandbox,
-                extra_config=options.extra_config,
-                cwd=options.cwd,
-            )
-            logger.debug("Creating Codex App Server client")
-            return CodexAppServerClient(app_options)
-        else:
-            logger.debug("Creating Codex MCP client")
-            return CodexMCPClient(options)
-
     async def get_or_create(
         self,
         task_id: TaskIdentifier,
-        options: CodexMCPOptions,
+        options: CodexAppServerOptions,
     ) -> Tuple[AIClient, bool]:
         """Get existing client or create new one.
 
         Args:
             task_id: Identifier for this agent task
-            options: CodexMCPOptions for client configuration
+            options: CodexAppServerOptions for client configuration
 
         Returns:
             (client, is_new) tuple
@@ -121,21 +77,8 @@ class CodexClientPool(ClientPoolInterface):
                 self._remove_from_pool(task_id)
             else:
                 logger.debug(f"Reusing existing client for {task_id}")
-                # Update options - handle both client types
-                if self._use_app_server():
-                    app_options = CodexAppServerOptions(
-                        system_prompt=options.system_prompt,
-                        model=options.model,
-                        thread_id=options.thread_id,
-                        mcp_servers=options.mcp_servers,
-                        approval_policy=options.approval_policy,
-                        sandbox=options.sandbox,
-                        extra_config=options.extra_config,
-                        cwd=options.cwd,
-                    )
-                    self._pool[task_id].options = app_options
-                else:
-                    self._pool[task_id].options = options
+                # Update options
+                self._pool[task_id].options = options
                 return self._pool[task_id], False
 
         # Use per-task lock to prevent duplicate client creation
@@ -152,30 +95,16 @@ class CodexClientPool(ClientPoolInterface):
                     self._remove_from_pool(task_id)
                 else:
                     logger.debug(f"Client for {task_id} was created while waiting for lock")
-                    # Update options - handle both client types
-                    if self._use_app_server():
-                        app_options = CodexAppServerOptions(
-                            system_prompt=options.system_prompt,
-                            model=options.model,
-                            thread_id=options.thread_id,
-                            mcp_servers=options.mcp_servers,
-                            approval_policy=options.approval_policy,
-                            sandbox=options.sandbox,
-                            extra_config=options.extra_config,
-                            cwd=options.cwd,
-                        )
-                        self._pool[task_id].options = app_options
-                    else:
-                        self._pool[task_id].options = options
+                    # Update options
+                    self._pool[task_id].options = options
                     return self._pool[task_id], False
 
             # Use semaphore to limit overall connection concurrency
             async with self._connection_semaphore:
-                mode = "App Server" if self._use_app_server() else "MCP"
-                logger.debug(f"Creating new Codex {mode} client for {task_id}")
+                logger.debug(f"Creating new Codex App Server client for {task_id}")
 
                 try:
-                    client = self._create_client(options)
+                    client = CodexAppServerClient(options)
                     await client.connect()
                     self._pool[task_id] = client
                     return client, True
@@ -232,7 +161,7 @@ class CodexClientPool(ClientPoolInterface):
         """Get all pool keys."""
         return self._pool.keys()
 
-    async def _disconnect_client_background(self, client: CodexClient, task_id: TaskIdentifier):
+    async def _disconnect_client_background(self, client: CodexAppServerClient, task_id: TaskIdentifier):
         """Background task for client disconnection with timeout."""
         try:
             await asyncio.wait_for(

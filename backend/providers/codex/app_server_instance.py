@@ -19,8 +19,7 @@ import shutil
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, Optional, Set
 
-from .events import AppServerMethod
-from .format_mapper import map_approval_policy, map_sandbox
+from .constants import AppServerMethod, map_approval_policy, map_sandbox
 from .windows_support import get_bundled_codex_path
 
 logger = logging.getLogger("CodexAppServerInstance")

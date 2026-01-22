@@ -1,16 +1,22 @@
 """
-Codex event types and factory functions.
+Codex constants, event types, and factory functions.
 
 This module provides:
 - Event type constants for consistent event identification
 - Item type constants for content classification
+- App Server method constants (JSON-RPC)
+- Format mapping utilities for kebab-case conversion
 - Factory functions for creating standardized event dictionaries
-- Reasoning extraction utilities
 - Custom exceptions for session recovery
 """
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+
+# =============================================================================
+# Exceptions
+# =============================================================================
 
 
 class SessionRecoveryError(Exception):
@@ -27,8 +33,13 @@ class SessionRecoveryError(Exception):
         super().__init__(message)
 
 
+# =============================================================================
+# Event Type Constants
+# =============================================================================
+
+
 class EventType:
-    """Event type constants for Codex MCP protocol."""
+    """Event type constants for unified Codex protocol."""
 
     THREAD_STARTED = "thread.started"
     ITEM_COMPLETED = "item.completed"
@@ -78,7 +89,66 @@ class TurnStatus:
     NEEDS_APPROVAL = "needs_approval"
 
 
-# Factory functions for creating event dictionaries
+# =============================================================================
+# Format Mapping (kebab-case conversion)
+# =============================================================================
+
+# Sandbox mode mapping to kebab-case
+SANDBOX_MAP: Dict[str, str] = {
+    # kebab-case (canonical)
+    "danger-full-access": "danger-full-access",
+    "workspace-write": "workspace-write",
+    "read-only": "read-only",
+    # camelCase variants
+    "dangerFullAccess": "danger-full-access",
+    "workspaceWrite": "workspace-write",
+    "readOnly": "read-only",
+}
+
+# Approval policy mapping to kebab-case
+APPROVAL_POLICY_MAP: Dict[str, str] = {
+    # kebab-case (canonical)
+    "never": "never",
+    "on-request": "on-request",
+    "on-failure": "on-failure",
+    "untrusted": "untrusted",
+    # camelCase variants
+    "onRequest": "on-request",
+    "onFailure": "on-failure",
+}
+
+# Default values
+DEFAULT_SANDBOX = "danger-full-access"
+DEFAULT_APPROVAL_POLICY = "never"
+
+
+def map_sandbox(value: str) -> str:
+    """Map sandbox value to kebab-case format.
+
+    Args:
+        value: Sandbox value in any format (kebab-case or camelCase)
+
+    Returns:
+        Kebab-case sandbox value for Codex App Server API
+    """
+    return SANDBOX_MAP.get(value, DEFAULT_SANDBOX)
+
+
+def map_approval_policy(value: str) -> str:
+    """Map approval policy value to kebab-case format.
+
+    Args:
+        value: Approval policy in any format (kebab-case or camelCase)
+
+    Returns:
+        Kebab-case approval policy for Codex App Server API
+    """
+    return APPROVAL_POLICY_MAP.get(value, DEFAULT_APPROVAL_POLICY)
+
+
+# =============================================================================
+# Event Factory Functions
+# =============================================================================
 
 
 def thread_started(thread_id: str) -> Dict[str, Any]:
@@ -131,7 +201,9 @@ def error(message: str) -> Dict[str, Any]:
     }
 
 
-# Reasoning extraction utilities
+# =============================================================================
+# Reasoning Extraction Utilities
+# =============================================================================
 
 # Patterns for extracting reasoning from raw notification messages
 # Each tuple: (regex pattern, source description for logging)

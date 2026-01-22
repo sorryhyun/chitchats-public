@@ -2,7 +2,7 @@
 Codex provider implementation.
 
 This module provides the CodexProvider class that implements AIProvider
-for the Codex MCP backend using persistent `codex mcp-server` connection.
+for the Codex backend using `codex app-server` connection.
 """
 
 import asyncio
@@ -20,7 +20,6 @@ from core import get_settings
 from providers.base import AIClient, AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
 from .app_server_client import CodexAppServerClient, CodexAppServerOptions
-from .mcp_client import CodexMCPClient, CodexMCPOptions
 from .parser import CodexStreamParser
 from .pool import CodexClientPool
 
@@ -43,14 +42,8 @@ def _get_codex_working_dir() -> str:
 class CodexProvider(AIProvider):
     """Codex provider implementing AIProvider interface.
 
-    This provider wraps the Codex MCP server to provide a unified
+    This provider wraps the Codex App Server to provide a unified
     interface compatible with the multi-provider abstraction.
-
-    Supports two modes:
-    - MCP mode (default): Uses `codex mcp-server` subprocess
-    - App Server mode: Uses `codex app-server` for better parallelism
-
-    Mode selection is controlled by USE_CODEX_APP_SERVER environment variable.
 
     Note: Codex uses threads instead of sessions for conversation state.
     """
@@ -60,48 +53,22 @@ class CodexProvider(AIProvider):
         self._parser = CodexStreamParser()
         self._pool: Optional[CodexClientPool] = None
 
-    def _use_app_server(self) -> bool:
-        """Check if App Server mode is enabled.
-
-        Returns:
-            True if USE_CODEX_APP_SERVER=true, False otherwise (default)
-        """
-        return _settings.use_codex_app_server
-
     @property
     def provider_type(self) -> ProviderType:
         """Get the provider type identifier."""
         return ProviderType.CODEX
 
-    def create_client(self, options: CodexMCPOptions) -> AIClient:
-        """Create a new Codex client with the given options.
-
-        The client type depends on the mode:
-        - MCP mode (default): Returns CodexMCPClient
-        - App Server mode: Returns CodexAppServerClient
+    def create_client(self, options: CodexAppServerOptions) -> AIClient:
+        """Create a new Codex App Server client with the given options.
 
         Args:
-            options: CodexMCPOptions for client configuration
+            options: CodexAppServerOptions for client configuration
 
         Returns:
             AIClient implementation ready for connection
         """
-        if self._use_app_server():
-            # Convert MCP options to App Server options
-            app_options = CodexAppServerOptions(
-                system_prompt=options.system_prompt,
-                model=options.model,
-                thread_id=options.thread_id,
-                mcp_servers=options.mcp_servers,
-                approval_policy=options.approval_policy,
-                sandbox=options.sandbox,
-                extra_config=options.extra_config,
-                cwd=options.cwd,
-            )
-            logger.info("Creating Codex App Server client")
-            return CodexAppServerClient(app_options)
-
-        return CodexMCPClient(options)
+        logger.info("Creating Codex App Server client")
+        return CodexAppServerClient(options)
 
     def get_client_pool(self) -> CodexClientPool:
         """Get the client pool for this provider."""
@@ -114,8 +81,8 @@ class CodexProvider(AIProvider):
         base_options: AIClientOptions,
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
-    ) -> CodexMCPOptions:
-        """Build Codex MCP options from base configuration.
+    ) -> CodexAppServerOptions:
+        """Build Codex App Server options from base configuration.
 
         Args:
             base_options: Provider-agnostic configuration
@@ -123,7 +90,7 @@ class CodexProvider(AIProvider):
             skip_tool_capture: Not used for Codex (tool capture via parsing)
 
         Returns:
-            CodexMCPOptions ready for client creation
+            CodexAppServerOptions ready for client creation
 
         Note:
             Codex doesn't support hooks like Claude SDK, so tool capture
@@ -151,7 +118,7 @@ class CodexProvider(AIProvider):
             "model_reasoning_summary": "detailed",
         }
 
-        return CodexMCPOptions(
+        return CodexAppServerOptions(
             system_prompt=base_options.system_prompt,
             model=base_options.model if base_options.model else None,
             thread_id=base_options.session_id,  # Codex uses thread_id
@@ -208,9 +175,9 @@ class CodexProvider(AIProvider):
             return False
 
     def _build_mcp_server_dict(self, mcp_tools: dict) -> Dict[str, Any]:
-        """Build MCP servers config dict for MCP mode.
+        """Build MCP servers config dict.
 
-        Converts mcp_tools into the format expected by the MCP server's
+        Converts mcp_tools into the format expected by the App Server's
         config parameter.
 
         Args:

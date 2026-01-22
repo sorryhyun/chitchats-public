@@ -96,21 +96,8 @@ def create_app() -> FastAPI:
         # Start background scheduler
         background_scheduler.start()
 
-        # Initialize Codex server (MCP mode only - App Server creates instances on-demand)
-        codex_mcp_manager = None
-        if not settings.use_codex_app_server:
-            try:
-                from providers.codex import CodexMCPServerManager
-
-                logger.info("🔧 Starting Codex MCP server...")
-                codex_mcp_manager = await CodexMCPServerManager.get_instance()
-                await codex_mcp_manager.ensure_started()
-                logger.info("✅ Codex MCP server started")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to start Codex MCP server: {e}")
-                logger.warning("   Codex provider will not be available")
-        else:
-            logger.info("🔧 Codex App Server mode enabled (instances created on-demand)")
+        # Codex App Server uses on-demand instance creation
+        logger.info("🔧 Codex App Server mode enabled (instances created on-demand)")
 
         logger.info("✅ Application startup complete")
 
@@ -119,26 +106,17 @@ def create_app() -> FastAPI:
         # Shutdown
         logger.info("🛑 Application shutdown...")
 
-        # Shutdown Codex server based on mode
-        if codex_mcp_manager is not None:
-            try:
-                logger.info("🔧 Shutting down Codex MCP server...")
-                await codex_mcp_manager.shutdown()
-                logger.info("✅ Codex MCP server shutdown complete")
-            except Exception as e:
-                logger.warning(f"⚠️ Error shutting down Codex MCP server: {e}")
-        elif settings.use_codex_app_server:
-            # Shutdown App Server pool if it was created
-            try:
-                from providers.codex import CodexAppServerPool
+        # Shutdown Codex App Server pool if it was created
+        try:
+            from providers.codex import CodexAppServerPool
 
-                pool = await CodexAppServerPool.get_instance()
-                if pool.is_started:
-                    logger.info("🔧 Shutting down Codex App Server pool...")
-                    await pool.shutdown()
-                    logger.info("✅ Codex App Server pool shutdown complete")
-            except Exception as e:
-                logger.warning(f"⚠️ Error shutting down Codex App Server pool: {e}")
+            pool = await CodexAppServerPool.get_instance()
+            if pool.is_started:
+                logger.info("🔧 Shutting down Codex App Server pool...")
+                await pool.shutdown()
+                logger.info("✅ Codex App Server pool shutdown complete")
+        except Exception as e:
+            logger.warning(f"⚠️ Error shutting down Codex App Server pool: {e}")
 
         background_scheduler.stop()
         await agent_manager.shutdown()
