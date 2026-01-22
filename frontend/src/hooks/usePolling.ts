@@ -91,7 +91,13 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
             const existingIds = new Set(prev.map(m => m.id));
             const uniqueNewMessages = newMessages.filter((m: Message) => !existingIds.has(m.id));
             if (uniqueNewMessages.length === 0) return prev;
-            return [...prev, ...uniqueNewMessages];
+
+            // Separate chatting indicators from real messages
+            // Insert new messages BEFORE chatting indicators to maintain correct order
+            const realMessages = prev.filter(m => !m.is_chatting);
+            const chattingIndicators = prev.filter(m => m.is_chatting);
+
+            return [...realMessages, ...uniqueNewMessages, ...chattingIndicators];
           });
           // Update last message ID
           lastMessageIdRef.current = newMessages[newMessages.length - 1].id;
