@@ -19,6 +19,7 @@ from core import get_settings
 
 from providers.base import AIClient, AIClientOptions, AIProvider, AIStreamParser, ProviderType
 
+from .app_server_client import CodexAppServerClient, CodexAppServerOptions
 from .mcp_client import CodexMCPClient, CodexMCPOptions
 from .parser import CodexStreamParser
 from .pool import CodexClientPool
@@ -45,6 +46,12 @@ class CodexProvider(AIProvider):
     This provider wraps the Codex MCP server to provide a unified
     interface compatible with the multi-provider abstraction.
 
+    Supports two modes:
+    - MCP mode (default): Uses `codex mcp-server` subprocess
+    - App Server mode: Uses `codex app-server` for better parallelism
+
+    Mode selection is controlled by USE_CODEX_APP_SERVER environment variable.
+
     Note: Codex uses threads instead of sessions for conversation state.
     """
 
@@ -53,20 +60,47 @@ class CodexProvider(AIProvider):
         self._parser = CodexStreamParser()
         self._pool: Optional[CodexClientPool] = None
 
+    def _use_app_server(self) -> bool:
+        """Check if App Server mode is enabled.
+
+        Returns:
+            True if USE_CODEX_APP_SERVER=true, False otherwise (default)
+        """
+        return _settings.use_codex_app_server
+
     @property
     def provider_type(self) -> ProviderType:
         """Get the provider type identifier."""
         return ProviderType.CODEX
 
     def create_client(self, options: CodexMCPOptions) -> AIClient:
-        """Create a new Codex MCP client with the given options.
+        """Create a new Codex client with the given options.
+
+        The client type depends on the mode:
+        - MCP mode (default): Returns CodexMCPClient
+        - App Server mode: Returns CodexAppServerClient
 
         Args:
             options: CodexMCPOptions for client configuration
 
         Returns:
-            CodexMCPClient ready for connection
+            AIClient implementation ready for connection
         """
+        if self._use_app_server():
+            # Convert MCP options to App Server options
+            app_options = CodexAppServerOptions(
+                system_prompt=options.system_prompt,
+                model=options.model,
+                thread_id=options.thread_id,
+                mcp_servers=options.mcp_servers,
+                approval_policy=options.approval_policy,
+                sandbox=options.sandbox,
+                extra_config=options.extra_config,
+                cwd=options.cwd,
+            )
+            logger.info("Creating Codex App Server client")
+            return CodexAppServerClient(app_options)
+
         return CodexMCPClient(options)
 
     def get_client_pool(self) -> CodexClientPool:

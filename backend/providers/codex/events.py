@@ -6,10 +6,25 @@ This module provides:
 - Item type constants for content classification
 - Factory functions for creating standardized event dictionaries
 - Reasoning extraction utilities
+- Custom exceptions for session recovery
 """
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
+
+class SessionRecoveryError(Exception):
+    """Raised when Codex session is invalid and needs to be restarted with full history.
+
+    This exception signals to the caller (ResponseGenerator) that:
+    1. The existing thread_id is invalid (e.g., Codex MCP server was restarted)
+    2. A fresh session needs to be started with FULL conversation history
+    3. The caller should rebuild conversation context without limits
+    """
+
+    def __init__(self, old_thread_id: str, message: str = "Session recovery needed"):
+        self.old_thread_id = old_thread_id
+        super().__init__(message)
 
 
 class EventType:
@@ -26,6 +41,41 @@ class ItemType:
     AGENT_MESSAGE = "agent_message"
     REASONING = "reasoning"
     MCP_TOOL_CALL = "mcp_tool_call"
+
+
+class AppServerMethod:
+    """JSON-RPC method names for Codex App Server protocol.
+
+    These are the notification/response methods returned by `codex app-server`.
+    """
+
+    # Turn lifecycle
+    TURN_STARTED = "turn/started"
+    TURN_COMPLETED = "turn/completed"
+
+    # Item lifecycle
+    ITEM_STARTED = "item/started"
+    ITEM_COMPLETED = "item/completed"
+
+    # Streaming deltas
+    AGENT_MESSAGE_DELTA = "item/agentMessage/delta"
+    REASONING_DELTA = "item/reasoning/textDelta"
+
+    # Tool calls
+    MCP_TOOL_CALL_STARTED = "item/mcpToolCall/started"
+    MCP_TOOL_CALL_COMPLETED = "item/mcpToolCall/completed"
+
+    # Error/status
+    EXEC_ERROR = "item/execError"
+
+
+class TurnStatus:
+    """Turn completion status values."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+    NEEDS_APPROVAL = "needs_approval"
 
 
 # Factory functions for creating event dictionaries
