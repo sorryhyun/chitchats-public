@@ -24,13 +24,16 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from domain.etc_models import CurrentTimeInput
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Resource, ResourceTemplate, TextContent, Tool
-from pydantic import AnyUrl
+from mcp.types import TextContent, Tool
 
-from .config import get_tool_description, get_tool_response, is_tool_enabled
+from .config import (
+    get_tool_description,
+    get_tool_response,
+    get_tools_by_group,
+    is_tool_enabled,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EtcServer")
@@ -52,60 +55,71 @@ def create_etc_server(
     Returns:
         Configured MCP Server instance
     """
-    server = Server("etc")
+    server = Server("chitchats_etc")
+
+    # Context for tools
+    context = {
+        "agent_name": agent_name,
+        "agent_group": group_name,
+        "provider": provider,
+    }
 
     @server.list_tools()
     async def list_tools():
-        """List available utility tools."""
+        """List available utility tools based on registry."""
         tools = []
 
-        # Current time tool
-        if is_tool_enabled("current_time", group_name=group_name, provider=provider):
+        for tool_id, tool_def in get_tools_by_group("etc").items():
+            # Check if enabled for this provider/group
+            if not is_tool_enabled(tool_id, group_name=group_name, provider=provider):
+                continue
+
+            # Get description with variable substitution
             description = get_tool_description(
-                "current_time", agent_name=agent_name, group_name=group_name, provider=provider
+                tool_id,
+                agent_name=agent_name,
+                group_name=group_name,
+                provider=provider,
             )
+
             tools.append(
                 Tool(
-                    name="current_time",
-                    description=description or "Get the current date and time",
-                    inputSchema=CurrentTimeInput.model_json_schema(),
+                    name=tool_id,
+                    description=description or tool_def.description,
+                    inputSchema=tool_def.input_model.model_json_schema(),
                 )
             )
 
         return tools
 
     @server.call_tool()
-    async def call_tool(name: str, arguments: dict):
+    async def call_tool(name: str, _arguments: dict):
         """Handle tool calls."""
         if name == "current_time":
-            now = datetime.now()
-            time_str = now.strftime("%Y-%m-%d %H:%M:%S (%A)")
-
-            response_text = get_tool_response(
-                "current_time", group_name=group_name, provider=provider, current_time=time_str
-            )
-            return [TextContent(type="text", text=response_text)]
+            return _handle_current_time(context)
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
-    # Resources (empty for etc server, but required for MCP compliance)
-    @server.list_resources()
-    async def list_resources():
-        """List available resources (none for etc server)."""
-        return []
-
-    @server.read_resource()
-    async def read_resource(uri: AnyUrl) -> str:
-        """Read a resource by URI."""
-        raise ValueError(f"Unknown resource URI: {uri}")
-
-    @server.list_resource_templates()
-    async def list_resource_templates():
-        """List resource templates (none for etc server)."""
-        return []
-
     return server
+
+
+# =============================================================================
+# Tool Handlers
+# =============================================================================
+
+
+def _handle_current_time(context: dict) -> list[TextContent]:
+    """Handle current_time tool call."""
+    now = datetime.now()
+    time_str = now.strftime("%Y-%m-%d %H:%M:%S (%A)")
+
+    response_text = get_tool_response(
+        "current_time",
+        group_name=context["agent_group"],
+        current_time=time_str,
+    )
+    return [TextContent(type="text", text=response_text)]
 
 
 # =============================================================================

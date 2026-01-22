@@ -13,7 +13,7 @@ from mcp_servers.config.loaders import (
     get_guidelines_file,
     get_tools_config,
 )
-from mcp_servers.config.tool_config import is_tool_enabled
+from mcp_servers.config.tools import is_tool_enabled
 
 from .cache import clear_cache
 

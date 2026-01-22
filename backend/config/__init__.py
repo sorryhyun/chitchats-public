@@ -50,7 +50,7 @@ def __getattr__(name):
 
         return getattr(loaders, name)
 
-    # Tool config - now in mcp_servers.config
+    # Tool config - now in mcp_servers.config.tools
     if name in (
         "get_situation_builder_note",
         "get_tool_description",
@@ -60,9 +60,9 @@ def __getattr__(name):
         "get_tools_by_group",
         "is_tool_enabled",
     ):
-        from mcp_servers.config import tool_config
+        from mcp_servers.config import tools
 
-        return getattr(tool_config, name)
+        return getattr(tools, name)
 
     # Validation
     if name in ("log_config_validation", "reload_all_configs", "validate_config_schema"):

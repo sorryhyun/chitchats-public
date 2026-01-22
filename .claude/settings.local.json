@@ -17,7 +17,8 @@
       "WebSearch",
       "Bash(python -c:*)",
       "Bash(npm run build:*)",
-      "Bash(dir /b \"C:\\\\Users\\\\stand\\\\Desktop\\\\etc\\\\claude_code_RP\\\\*.md\")"
+      "Bash(dir /b \"C:\\\\Users\\\\stand\\\\Desktop\\\\etc\\\\claude_code_RP\\\\*.md\")",
+      "Bash(comm:*)"
     ],
     "deny": [],
     "ask": []

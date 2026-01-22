@@ -11,11 +11,12 @@ enabling parallel request processing with thread ID affinity routing.
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from providers.base import AIClient
 
 from .app_server_instance import AppServerConfig
+from .parser import AppServerStreamAccumulator, parse_streaming_event
 from .app_server_pool import CodexAppServerPool
 from .constants import (
     AppServerMethod,
@@ -26,7 +27,7 @@ from .constants import (
     thread_started,
     tool_call,
 )
-from .parser import AppServerStreamAccumulator, parse_streaming_event
+from .images import CodexImageManager
 
 logger = logging.getLogger("CodexAppServerClient")
 
@@ -75,11 +76,12 @@ class CodexAppServerClient(AIClient):
         """Initialize with Codex App Server options."""
         self._options = options
         self._connected = False
-        self._pending_message: Optional[str] = None
+        self._pending_input_items: Optional[List[Dict[str, Any]]] = None
         self._thread_id: Optional[str] = options.thread_id
         self._pool: Optional[CodexAppServerPool] = None
         self._interrupt_requested = False
         self._current_turn_task: Optional[asyncio.Task] = None
+        self._image_manager: Optional[CodexImageManager] = None
 
     async def connect(self) -> None:
         """Initialize the client by getting the App Server pool.
@@ -100,43 +102,63 @@ class CodexAppServerClient(AIClient):
         self._pool = None
         logger.debug("CodexAppServerClient disconnected")
 
-    async def query(self, message: Union[str, AsyncIterator[dict]]) -> None:
+    async def query(self, message: Union[str, AsyncIterator[dict], List[dict]]) -> None:
         """Send a message to Codex.
 
         This stores the message to be sent when receive_response() is called.
+        Supports multimodal content with images (saved to temp files).
 
         Args:
-            message: The message content (string only for Codex)
+            message: The message content - can be:
+                - A string (text only)
+                - A list of content blocks (text and image)
+                - An async iterator of content blocks
 
         Raises:
             RuntimeError: If client is not connected
-            ValueError: If message is not a string
         """
         if not self._connected:
             raise RuntimeError("Client not connected. Call connect() first.")
 
-        # Extract string message
+        # Create new image manager for this turn (will be cleaned up after turn)
+        self._image_manager = CodexImageManager()
+
+        # Handle different message formats
         if isinstance(message, str):
-            self._pending_message = message
+            # Simple text message
+            self._pending_input_items = [{"type": "text", "text": message}]
+
+        elif isinstance(message, list):
+            # List of content blocks - process with image manager
+            self._pending_input_items = self._image_manager.process_content_blocks(message)
+            if self._image_manager.temp_file_count > 0:
+                logger.info(f"Created {self._image_manager.temp_file_count} temp image files for Codex")
+
         elif hasattr(message, "__aiter__"):
-            # Async iterator - try to extract text content
-            text_parts = []
+            # Async iterator - collect blocks then process
+            content_blocks = []
             async for block in message:
                 if isinstance(block, dict):
+                    # Handle various formats from different providers
                     msg_data = block.get("message", block)
                     if isinstance(msg_data, dict):
                         content = msg_data.get("content", "")
                         if isinstance(content, str):
-                            text_parts.append(content)
+                            content_blocks.append({"type": "text", "text": content})
                         elif isinstance(content, list):
-                            for item in content:
-                                if isinstance(item, dict) and item.get("type") == "text":
-                                    text_parts.append(item.get("text", ""))
+                            content_blocks.extend(content)
                     elif isinstance(msg_data, str):
-                        text_parts.append(msg_data)
-            self._pending_message = "\n".join(text_parts)
+                        content_blocks.append({"type": "text", "text": msg_data})
+                    elif block.get("type"):
+                        # Direct content block
+                        content_blocks.append(block)
+
+            self._pending_input_items = self._image_manager.process_content_blocks(content_blocks)
+            if self._image_manager.temp_file_count > 0:
+                logger.info(f"Created {self._image_manager.temp_file_count} temp image files for Codex")
+
         else:
-            raise ValueError("Codex App Server client only supports string messages")
+            raise ValueError(f"Unsupported message type: {type(message)}")
 
     def receive_response(self) -> AsyncIterator[Dict[str, Any]]:
         """Receive response from Codex.
@@ -155,29 +177,36 @@ class CodexAppServerClient(AIClient):
         App Server provides streaming notifications, which we translate
         to the unified event format.
         """
-        if self._pending_message is None:
-            raise RuntimeError("No pending message. Call query() first.")
+        if self._pending_input_items is None:
+            raise RuntimeError("No pending input items. Call query() first.")
 
         if self._pool is None:
             raise RuntimeError("App Server pool not initialized")
 
-        message = self._pending_message
-        self._pending_message = None
+        input_items = self._pending_input_items
+        self._pending_input_items = None
         self._interrupt_requested = False
 
         # Build config for the turn
         config = self._build_config()
 
+        # Log input summary
+        text_preview = ""
+        for item in input_items:
+            if item.get("type") == "text":
+                text_preview = item.get("text", "")[:100]
+                break
+        image_count = sum(1 for item in input_items if item.get("type") in ("localImage", "image"))
         logger.info(
-            f"Starting App Server turn thread_id={self._thread_id}, message: {message[:100]}..."
+            f"Starting App Server turn thread_id={self._thread_id}, "
+            f"items: {len(input_items)} ({image_count} images), text: {text_preview}..."
         )
 
         try:
             # Create thread if needed
             if not self._thread_id:
-                new_thread_id = await self._pool.create_thread(config)
-                self._thread_id = new_thread_id
-                yield thread_started(new_thread_id)
+                self._thread_id = await self._pool.create_thread(config)
+                yield thread_started(self._thread_id)  # thread_id is guaranteed non-None here
 
             # Ensure we have a valid thread_id at this point
             thread_id = self._thread_id
@@ -188,7 +217,7 @@ class CodexAppServerClient(AIClient):
             accumulator = AppServerStreamAccumulator()
 
             # Stream turn events
-            async for event in self._pool.start_turn(thread_id, message, config):
+            async for event in self._pool.start_turn(thread_id, input_items, config):
                 if self._interrupt_requested:
                     await self._pool.interrupt_turn(thread_id)
                     break
@@ -249,6 +278,14 @@ class CodexAppServerClient(AIClient):
         except Exception as e:
             logger.error(f"Error in App Server turn: {e}")
             yield error(str(e))
+
+        finally:
+            # Clean up temporary image files
+            if self._image_manager:
+                removed = self._image_manager.cleanup()
+                if removed > 0:
+                    logger.debug(f"Cleaned up {removed} temp image files")
+                self._image_manager = None
 
     def _build_config(self) -> AppServerConfig:
         """Build the AppServerConfig for the turn."""

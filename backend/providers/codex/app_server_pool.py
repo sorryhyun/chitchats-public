@@ -247,7 +247,7 @@ class CodexAppServerPool:
     async def start_turn(
         self,
         thread_id: str,
-        text: str,
+        input_items: List[Dict[str, Any]],
         config: AppServerConfig,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Start a turn on an existing thread.
@@ -256,7 +256,7 @@ class CodexAppServerPool:
 
         Args:
             thread_id: Thread ID from create_thread
-            text: User message text
+            input_items: List of input items (text, localImage, image)
             config: Turn configuration
 
         Yields:
@@ -278,7 +278,7 @@ class CodexAppServerPool:
 
         logger.debug(f"Routing turn to instance {instance.instance_id} (thread={thread_id})")
 
-        async for event in instance.start_turn(thread_id, text, config):
+        async for event in instance.start_turn(thread_id, input_items, config):
             yield event
 
     async def interrupt_turn(self, thread_id: str) -> bool:

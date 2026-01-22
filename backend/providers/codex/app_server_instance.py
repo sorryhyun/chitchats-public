@@ -17,7 +17,7 @@ import logging
 import os
 import shutil
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, Optional, Set
+from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from .constants import AppServerMethod, map_approval_policy, map_sandbox
 from .windows_support import get_bundled_codex_path
@@ -219,22 +219,22 @@ class CodexAppServerInstance:
     async def start_turn(
         self,
         thread_id: str,
-        text: str,
+        input_items: List[Dict[str, Any]],
         config: AppServerConfig,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Start a turn and stream events.
 
         Args:
             thread_id: Thread ID from create_thread
-            text: User message text
+            input_items: List of input items (text, localImage, etc.)
+                - Text: {"type": "text", "text": "..."}
+                - Local image: {"type": "localImage", "path": "/tmp/..."}
+                - Remote image: {"type": "image", "url": "https://..."}
             config: Turn configuration
 
         Yields:
             Streaming events (deltas, item completions, etc.)
         """
-        # Build input array with typed content (per API docs)
-        input_items = [{"type": "text", "text": text}]
-
         params: Dict[str, Any] = {
             "threadId": thread_id,
             "input": input_items,
@@ -258,9 +258,13 @@ class CodexAppServerInstance:
                 if key not in params:
                     params[key] = value
 
+        # Log input summary
+        text_items = [item.get("text", "")[:50] for item in input_items if item.get("type") == "text"]
+        image_count = sum(1 for item in input_items if item.get("type") in ("localImage", "image"))
         logger.info(
             f"[Instance {self._instance_id}] Starting turn on thread {thread_id}, "
-            f"message: {text[:100]}..."
+            f"items: {len(input_items)} ({image_count} images), "
+            f"text preview: {text_items[0] if text_items else '(no text)'}..."
         )
 
         # Use a queue to collect streaming events

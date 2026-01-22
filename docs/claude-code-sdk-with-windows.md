@@ -711,158 +711,416 @@ The screenshot feature uses:
 
 All without requiring API keys - uses the user's Claude Code authentication.
 
-## Additional Notes: Codex CLI Integration
+## Additional Notes: Codex App Server Integration
 
-As an alternative to Claude Code CLI, you can also integrate with [OpenAI Codex CLI](https://github.com/openai/codex). This provides similar capabilities with OpenAI's models.
+As an alternative to Claude Code CLI, you can integrate with [OpenAI Codex](https://github.com/openai/codex) using the **App Server** mode. This provides a persistent JSON-RPC 2.0 server over stdio, enabling efficient multi-turn conversations without subprocess spawn overhead.
 
-### Codex CLI Command
+### Why App Server (vs CLI exec)?
 
-```bash
-codex exec --json --full-auto --skip-git-repo-check "Your prompt here"
-```
+| Approach | Pros | Cons |
+|----------|------|------|
+| `codex exec` | Simple one-shot usage | Subprocess spawn per query |
+| `codex app-server` | Persistent connection, parallel threads | More complex setup |
 
-Key flags:
-- `exec` - Execute mode for running prompts
-- `--json` - Output streaming JSON events
-- `--full-auto` - Autonomous mode without user confirmations
-- `--skip-git-repo-check` - Skip git repository validation (important for desktop apps)
+For desktop applications with ongoing conversations, App Server is recommended.
 
-### With Session Resume
+### Starting the App Server
 
 ```bash
-codex exec resume <thread-id> --json --full-auto --skip-git-repo-check "follow-up prompt"
+codex app-server
 ```
 
-### Codex Streaming JSON Events
+The server communicates via JSON-RPC 2.0 over stdin/stdout (streaming JSONL).
 
-Codex outputs different event types than Claude Code:
+### JSON-RPC Protocol
+
+App Server uses a simplified JSON-RPC 2.0 format (no `jsonrpc` field required):
 
 ```jsonc
-// Thread initialization
-{"type": "thread.started", "thread_id": "abc123"}
+// Request
+{"id": 1, "method": "thread/start", "params": {"config": {...}}}
 
-// Turn lifecycle
-{"type": "turn.started", "turn_id": "xyz789"}
-{"type": "turn.completed", "turn_id": "xyz789"}
+// Response
+{"id": 1, "result": {"threadId": "abc123"}}
 
-// Content items
-{"type": "item.started", "item": {"type": "message", "content": [...]}}
-{"type": "item.completed", "item": {"type": "message", "content": [...]}}
-
-// Tool calls
-{"type": "item.started", "item": {"type": "tool_call", "name": "tool_name", "arguments": {...}}}
-
-// MCP tool calls
-{"type": "item.completed", "item": {"type": "mcp_tool_call", "server": "mascot", "tool": "set_emotion", ...}}
-
-// Errors
-{"type": "turn.failed", "error": "Something went wrong"}
-{"type": "error", "message": "Error details"}
+// Streaming notification (no id)
+{"method": "agent/message/delta", "params": {"delta": "Hello"}}
 ```
 
-### Rust Event Types
+### Core Methods
 
-```rust
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub enum CodexStreamEvent {
-    #[serde(rename = "thread.started")]
-    ThreadStarted { thread_id: Option<String> },
+| Method | Description |
+|--------|-------------|
+| `thread/start` | Create a new conversation thread |
+| `turn/start` | Start a new turn in a thread |
+| `turn/interrupt` | Interrupt an ongoing turn |
 
-    #[serde(rename = "turn.started")]
-    TurnStarted { turn_id: Option<String> },
+### Thread Configuration
 
-    #[serde(rename = "turn.completed")]
-    TurnCompleted { turn_id: Option<String> },
-
-    #[serde(rename = "turn.failed")]
-    TurnFailed { error: Option<String> },
-
-    #[serde(rename = "item.started")]
-    ItemStarted { item: Option<CodexItem> },
-
-    #[serde(rename = "item.completed")]
-    ItemCompleted { item: Option<CodexItem> },
-
-    #[serde(rename = "error")]
-    Error { message: Option<String> },
+```jsonc
+// thread/start request
+{
+  "id": 1,
+  "method": "thread/start",
+  "params": {
+    "config": {
+      "cwd": "/tmp/empty",
+      "model": "gpt-5.2",
+      "baseInstructions": "You are a helpful assistant",
+      "sandbox": "danger-full-access",
+      "approvalPolicy": "never",
+      "mcpServers": {
+        "mascot": {
+          "command": "path/to/mcp-server.exe",
+          "args": []
+        }
+      }
+    }
+  }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub enum CodexItem {
-    #[serde(rename = "message")]
-    Message { content: Vec<CodexContent> },
+// Response
+{"id": 1, "result": {"threadId": "thread_abc123"}}
+```
 
-    #[serde(rename = "tool_call")]
-    ToolCall { name: Option<String>, arguments: Option<serde_json::Value> },
+### Turn Configuration
 
-    #[serde(rename = "mcp_tool_call")]
-    McpToolCall {
-        server: Option<String>,
-        tool: Option<String>,
-        arguments: Option<serde_json::Value>,
-        result: Option<serde_json::Value>,
-    },
+```jsonc
+// turn/start request
+{
+  "id": 2,
+  "method": "turn/start",
+  "params": {
+    "threadId": "thread_abc123",
+    "input": [
+      {"type": "text", "text": "Hello!"}
+    ],
+    "baseInstructions": "Optional override for this turn"
+  }
 }
 ```
 
-### Codex MCP Configuration
+### Streaming Notifications
 
-Unlike Claude Code which uses a JSON config file, Codex reads MCP config from `~/.codex/config.toml`:
+During a turn, the server emits notifications:
 
-```toml
-[mcp_servers.mascot]
-command = "C:\\path\\to\\your-mcp-server.exe"
-args = []
+```jsonc
+// Turn started
+{"method": "turn/started", "params": {"turnId": "turn_xyz"}}
+
+// Text output (incremental)
+{"method": "agent/message/delta", "params": {"delta": "Hello"}}
+
+// Reasoning/thinking (incremental)
+{"method": "agent/reasoning/delta", "params": {"delta": "Let me think..."}}
+
+// Item completed (message, tool call, etc.)
+{"method": "item/completed", "params": {"item": {"type": "message", "content": [...]}}}
+
+// MCP tool call completed
+{"method": "item/completed", "params": {"item": {"type": "mcpToolCall", "name": "set_emotion", "arguments": {...}, "result": {...}}}}
+
+// Turn completed
+{"method": "turn/completed", "params": {"turnId": "turn_xyz", "status": "completed"}}
+
+// Turn failed
+{"method": "turn/completed", "params": {"turnId": "turn_xyz", "status": "failed", "codexErrorInfo": {"message": "..."}}}
 ```
 
-Write this config programmatically before spawning Codex:
+### Rust Implementation
 
 ```rust
-fn write_codex_mcp_config(mcp_exe_path: &str) -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let config_path = home.join(".codex").join("config.toml");
+use std::process::Stdio;
+use tokio::process::{Command, Child, ChildStdin, ChildStdout};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-    // Create directory if needed
-    std::fs::create_dir_all(config_path.parent().unwrap())
-        .map_err(|e| format!("Failed to create .codex directory: {}", e))?;
+#[derive(Debug, Serialize)]
+struct JsonRpcRequest {
+    id: u64,
+    method: String,
+    params: Value,
+}
 
-    // Escape backslashes for TOML
-    let escaped_path = mcp_exe_path.replace('\\', "\\\\");
+#[derive(Debug, Deserialize)]
+struct JsonRpcResponse {
+    id: Option<u64>,
+    result: Option<Value>,
+    error: Option<JsonRpcError>,
+    method: Option<String>,  // For notifications
+    params: Option<Value>,   // For notifications
+}
 
-    let config = format!(
-        "[mcp_servers.mascot]\ncommand = \"{}\"\nargs = []\n",
-        escaped_path
-    );
+#[derive(Debug, Deserialize)]
+struct JsonRpcError {
+    code: i32,
+    message: String,
+}
 
-    std::fs::write(&config_path, config)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
+pub struct CodexAppServer {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    request_id: u64,
+}
+
+impl CodexAppServer {
+    pub async fn spawn() -> Result<Self, Box<dyn std::error::Error>> {
+        let mut child = Command::new("codex")
+            .arg("app-server")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+
+        Ok(Self {
+            child,
+            stdin,
+            stdout,
+            request_id: 0,
+        })
+    }
+
+    async fn send_request(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        self.request_id += 1;
+        let request = JsonRpcRequest {
+            id: self.request_id,
+            method: method.to_string(),
+            params,
+        };
+
+        let mut line = serde_json::to_string(&request).unwrap();
+        line.push('\n');
+        self.stdin.write_all(line.as_bytes()).await
+            .map_err(|e| format!("Write error: {}", e))?;
+
+        // Read response (skip notifications)
+        loop {
+            let mut buf = String::new();
+            self.stdout.read_line(&mut buf).await
+                .map_err(|e| format!("Read error: {}", e))?;
+
+            let response: JsonRpcResponse = serde_json::from_str(&buf)
+                .map_err(|e| format!("Parse error: {}", e))?;
+
+            // Check if this is our response (has matching id)
+            if response.id == Some(self.request_id) {
+                if let Some(error) = response.error {
+                    return Err(format!("RPC error: {}", error.message));
+                }
+                return Ok(response.result.unwrap_or(Value::Null));
+            }
+            // Otherwise it's a notification, continue reading
+        }
+    }
+
+    pub async fn create_thread(&mut self, config: ThreadConfig) -> Result<String, String> {
+        let params = serde_json::json!({ "config": config });
+        let result = self.send_request("thread/start", params).await?;
+        result["threadId"].as_str()
+            .map(|s| s.to_string())
+            .ok_or("Missing threadId".to_string())
+    }
+
+    pub async fn start_turn(
+        &mut self,
+        thread_id: &str,
+        text: &str,
+    ) -> Result<TurnStream, String> {
+        self.request_id += 1;
+        let request = JsonRpcRequest {
+            id: self.request_id,
+            method: "turn/start".to_string(),
+            params: serde_json::json!({
+                "threadId": thread_id,
+                "input": [{"type": "text", "text": text}]
+            }),
+        };
+
+        let mut line = serde_json::to_string(&request).unwrap();
+        line.push('\n');
+        self.stdin.write_all(line.as_bytes()).await
+            .map_err(|e| format!("Write error: {}", e))?;
+
+        Ok(TurnStream { request_id: self.request_id })
+    }
+
+    pub async fn read_event(&mut self) -> Result<TurnEvent, String> {
+        let mut buf = String::new();
+        self.stdout.read_line(&mut buf).await
+            .map_err(|e| format!("Read error: {}", e))?;
+
+        let response: JsonRpcResponse = serde_json::from_str(&buf)
+            .map_err(|e| format!("Parse error: {}", e))?;
+
+        // Check for notifications
+        if let Some(method) = &response.method {
+            let params = response.params.unwrap_or(Value::Null);
+            return Ok(match method.as_str() {
+                "agent/message/delta" => {
+                    TurnEvent::TextDelta(params["delta"].as_str().unwrap_or("").to_string())
+                }
+                "agent/reasoning/delta" => {
+                    TurnEvent::ReasoningDelta(params["delta"].as_str().unwrap_or("").to_string())
+                }
+                "turn/completed" => {
+                    let status = params["status"].as_str().unwrap_or("completed");
+                    if status == "failed" {
+                        let msg = params["codexErrorInfo"]["message"]
+                            .as_str().unwrap_or("Unknown error");
+                        TurnEvent::Failed(msg.to_string())
+                    } else {
+                        TurnEvent::Completed
+                    }
+                }
+                "item/completed" => {
+                    let item = &params["item"];
+                    if item["type"] == "mcpToolCall" {
+                        TurnEvent::ToolCall {
+                            name: item["name"].as_str().unwrap_or("").to_string(),
+                            arguments: item["arguments"].clone(),
+                        }
+                    } else {
+                        TurnEvent::ItemCompleted(item.clone())
+                    }
+                }
+                _ => TurnEvent::Other(method.clone(), params),
+            });
+        }
+
+        // Response to our request
+        if response.id.is_some() {
+            if let Some(error) = response.error {
+                return Ok(TurnEvent::Failed(error.message));
+            }
+        }
+
+        Ok(TurnEvent::Other("response".to_string(), response.result.unwrap_or(Value::Null)))
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThreadConfig {
+    pub cwd: String,
+    pub model: String,
+    #[serde(rename = "baseInstructions")]
+    pub base_instructions: String,
+    pub sandbox: String,
+    #[serde(rename = "approvalPolicy")]
+    pub approval_policy: String,
+    #[serde(rename = "mcpServers", skip_serializing_if = "Option::is_none")]
+    pub mcp_servers: Option<Value>,
+}
+
+pub struct TurnStream {
+    request_id: u64,
+}
+
+#[derive(Debug)]
+pub enum TurnEvent {
+    TextDelta(String),
+    ReasoningDelta(String),
+    ToolCall { name: String, arguments: Value },
+    ItemCompleted(Value),
+    Completed,
+    Failed(String),
+    Other(String, Value),
+}
+```
+
+### Tauri Integration
+
+```rust
+use tauri::{AppHandle, Manager, State};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+struct AppState {
+    codex: Arc<Mutex<Option<CodexAppServer>>>,
+    thread_id: Arc<Mutex<Option<String>>>,
+}
+
+#[tauri::command]
+async fn init_codex(state: State<'_, AppState>) -> Result<(), String> {
+    let server = CodexAppServer::spawn().await?;
+    *state.codex.lock().await = Some(server);
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_message(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    message: String,
+) -> Result<(), String> {
+    let mut codex_guard = state.codex.lock().await;
+    let codex = codex_guard.as_mut().ok_or("Codex not initialized")?;
+
+    // Create thread if needed
+    let mut thread_guard = state.thread_id.lock().await;
+    if thread_guard.is_none() {
+        let config = ThreadConfig {
+            cwd: "/tmp/empty".to_string(),
+            model: "gpt-5.2".to_string(),
+            base_instructions: "You are a helpful assistant".to_string(),
+            sandbox: "danger-full-access".to_string(),
+            approval_policy: "never".to_string(),
+            mcp_servers: None,
+        };
+        *thread_guard = Some(codex.create_thread(config).await?);
+    }
+
+    let thread_id = thread_guard.as_ref().unwrap().clone();
+    drop(thread_guard);
+
+    // Start turn
+    codex.start_turn(&thread_id, &message).await?;
+
+    // Stream events to frontend
+    loop {
+        let event = codex.read_event().await?;
+        match &event {
+            TurnEvent::TextDelta(text) => {
+                let _ = app.emit_all("codex-text", text);
+            }
+            TurnEvent::ToolCall { name, arguments } => {
+                let _ = app.emit_all("codex-tool", serde_json::json!({
+                    "name": name,
+                    "arguments": arguments
+                }));
+            }
+            TurnEvent::Completed => break,
+            TurnEvent::Failed(msg) => return Err(msg.clone()),
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 ```
 
-### Codex Model Configuration
-
-Pass model settings via `--config` flag:
-
-```bash
-codex exec --json --full-auto \
-  --config model="\"gpt-4o\"" \
-  --config model_reasoning_effort="\"high\"" \
-  "Your prompt"
-```
-
 ### Image Support
 
-Codex supports image inputs via file paths (not base64):
+Codex supports images via `localImage` (file path) input type:
 
-```bash
-codex exec --json --full-auto --image "/path/to/image.png" "Describe this image"
+```jsonc
+{
+  "method": "turn/start",
+  "params": {
+    "threadId": "...",
+    "input": [
+      {"type": "text", "text": "What's in this image?"},
+      {"type": "localImage", "path": "/path/to/image.png"}
+    ]
+  }
+}
 ```
 
-Save base64 images to temp files before passing to Codex:
+For base64 images, save to a temp file first:
 
 ```rust
 fn save_image_to_temp(base64_data: &str, index: usize) -> Result<PathBuf, String> {
@@ -881,24 +1139,30 @@ fn save_image_to_temp(base64_data: &str, index: usize) -> Result<PathBuf, String
 }
 ```
 
-### Key Differences: Claude Code vs Codex
+### Key Differences: Claude Code vs Codex App Server
 
-| Feature | Claude Code CLI | Codex CLI |
-|---------|-----------------|-----------|
+| Feature | Claude Code CLI | Codex App Server |
+|---------|-----------------|------------------|
 | Auth | Claude Code login | OpenAI API key |
-| MCP Config | JSON file via `--mcp-config` | TOML at `~/.codex/config.toml` |
-| Session Resume | `--resume <session-id>` | `exec resume <thread-id>` |
-| Output Format | `--output-format stream-json` | `--json` |
-| Auto Mode | N/A (always interactive) | `--full-auto` |
-| Git Check | N/A | `--skip-git-repo-check` |
-| Image Input | Base64 in prompt | File path via `--image` |
+| Protocol | Spawn per query, stream-json | Persistent JSON-RPC 2.0 |
+| Session | `--resume <session-id>` | `threadId` in requests |
+| Parallelism | Multiple processes | Multiple threads, one server |
+| MCP Config | JSON file via `--mcp-config` | In `thread/start` config |
+| Image Input | Base64 in prompt | `localImage` with file path |
 
-### Download Codex CLI
+### Setup Notes
 
-Download the Windows executable from [OpenAI Codex Releases](https://github.com/openai/codex/releases):
-- `codex-x86_64-pc-windows-msvc.exe` for Windows x64
+**Disable Skills Injection:** Codex injects skills from `~/.codex/skills/` which can break character immersion. Disable with:
 
-Bundle it with your application or expect users to install it separately.
+```bash
+chmod 000 ~/.codex/skills
+```
+
+**Empty Working Directory:** Set `cwd` to an empty directory (e.g., `/tmp/codex-empty`) to prevent Codex from picking up `AGENTS.md` or other project files.
+
+### Download Codex
+
+Install via npm or download from [OpenAI Codex Releases](https://github.com/openai/codex/releases).
 
 ## Resources
 
