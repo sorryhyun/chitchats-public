@@ -53,26 +53,6 @@ def get_system_prompt_config_path() -> Path:
     return get_settings().system_prompt_config_path
 
 
-# Backward compatibility: module-level constants that delegate to settings
-def __getattr__(name: str):
-    from core import get_settings
-
-    settings = get_settings()
-
-    # Map old constant names to settings properties
-    # Note: TOOLS_CONFIG removed - tools now defined in Python registry (tools.py)
-    path_map = {
-        "CONFIG_DIR": settings.config_dir,
-        "DEBUG_CONFIG": settings.debug_config_path,
-        "CONVERSATION_CONTEXT_CONFIG": settings.conversation_context_config_path,
-        "GUIDELINES_FILE": settings.guidelines_file,
-        "GUIDELINES_CONFIG": settings.guidelines_config_path,
-    }
-
-    if name in path_map:
-        return path_map[name]
-
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_tools_config() -> Dict[str, Any]:
