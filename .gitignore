@@ -62,3 +62,6 @@ htmlcov/
 backend/chitchats.db
 /cloudflared.db
 chitchats.db
+
+# Bundled binaries
+bundled/*.exe
