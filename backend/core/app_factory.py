@@ -17,6 +17,7 @@ from infrastructure.scheduler import BackgroundScheduler
 from orchestration import ChatOrchestrator
 
 from core import get_logger, get_settings
+from core.events import EventBroadcaster
 from core.manager import AgentManager
 
 logger = get_logger("AppFactory")
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
         room_agents,
         rooms,
         serve_mcp,
+        sse,
     )
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
@@ -67,6 +69,9 @@ def create_app() -> FastAPI:
 
         # Create singleton instances
         agent_manager = AgentManager()
+        event_broadcaster = EventBroadcaster()
+        agent_manager.set_event_broadcaster(event_broadcaster)
+
         priority_agent_names = settings.get_priority_agent_names()
         chat_orchestrator = ChatOrchestrator(priority_agent_names=priority_agent_names)
         background_scheduler = BackgroundScheduler(
@@ -87,6 +92,7 @@ def create_app() -> FastAPI:
         app.state.agent_manager = agent_manager
         app.state.chat_orchestrator = chat_orchestrator
         app.state.background_scheduler = background_scheduler
+        app.state.event_broadcaster = event_broadcaster
 
         # Seed agents from config files
         async for db in get_db():
@@ -105,6 +111,9 @@ def create_app() -> FastAPI:
 
         # Shutdown
         logger.info("🛑 Application shutdown...")
+
+        # Shutdown SSE connections first (allows clients to disconnect gracefully)
+        await event_broadcaster.shutdown()
 
         # Shutdown Codex App Server pool if it was created
         try:
@@ -157,6 +166,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/agents", tags=["Agents"])
     app.include_router(room_agents.router, prefix="/rooms", tags=["Room-Agents"])
     app.include_router(messages.router, prefix="/rooms", tags=["Messages"])
+    app.include_router(sse.router, prefix="/rooms", tags=["SSE"])
     app.include_router(debug.router, prefix="/debug", tags=["Debug"])
     app.include_router(providers.router, tags=["Providers"])
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])

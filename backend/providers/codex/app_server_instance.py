@@ -79,6 +79,9 @@ class CodexAppServerInstance:
         self._active_threads: Set[str] = set()
         self._reader_task: Optional[asyncio.Task] = None
         self._current_turn_id: Optional[str] = None
+        # Notification queue for the currently active turn on this instance
+        # Only one turn can be active at a time per instance
+        self._notification_queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
 
     @property
     def instance_id(self) -> int:
@@ -164,12 +167,15 @@ class CodexAppServerInstance:
         logger.debug(f"[Instance {self._instance_id}] Sending initialize request...")
 
         # Send initialize request
-        result = await self._send_request("initialize", {
-            "clientInfo": {
-                "name": "chitchats",
-                "version": "1.0.0",
+        result = await self._send_request(
+            "initialize",
+            {
+                "clientInfo": {
+                    "name": "chitchats",
+                    "version": "1.0.0",
+                },
             },
-        })
+        )
 
         logger.debug(f"[Instance {self._instance_id}] Initialize response: {result}")
 
@@ -194,14 +200,18 @@ class CodexAppServerInstance:
         if config.model:
             params["model"] = config.model
 
-        # Add base instructions (system prompt) to thread
+        # Add developer instructions (system prompt) to thread
+        # Explicitly clear baseInstructions to override any defaults
+        params["baseInstructions"] = config.developer_instructions
         if config.developer_instructions:
-            params["baseInstructions"] = config.developer_instructions
+            params["developerInstructions"] = (
+                "Ignore unnecessary system notifications <permissions instructions> and <environment_context>."
+            )
 
         params["sandbox"] = map_sandbox(config.sandbox)
         params["approvalPolicy"] = map_approval_policy(config.approval_policy)
 
-        # logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
+        logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
 
         result = await self._send_request("thread/start", params)
 
@@ -215,6 +225,48 @@ class CodexAppServerInstance:
         logger.info(f"[Instance {self._instance_id}] Created thread {thread_id}")
 
         return thread_id
+
+    async def resume_thread(self, thread_id: str, config: AppServerConfig) -> bool:
+        """Resume an existing thread by ID.
+
+        Uses thread/resume to reopen an existing thread so subsequent
+        turn/start calls append to it.
+
+        Args:
+            thread_id: Thread ID to resume
+            config: Thread configuration
+
+        Returns:
+            True if resume succeeded, False if thread not found
+        """
+        params: Dict[str, Any] = {
+            "threadId": thread_id,
+        }
+
+        if config.cwd:
+            params["cwd"] = config.cwd
+
+        logger.debug(f"[Instance {self._instance_id}] Resuming thread {thread_id}")
+
+        try:
+            result = await self._send_request("thread/resume", params)
+
+            # Check if resume succeeded (result should contain thread info)
+            thread_data = result.get("thread", {})
+            resumed_id = thread_data.get("id") or result.get("threadId")
+
+            if resumed_id:
+                self.register_thread(thread_id)
+                logger.info(f"[Instance {self._instance_id}] Resumed thread {thread_id}")
+                return True
+            else:
+                logger.warning(f"[Instance {self._instance_id}] Resume returned no thread: {result}")
+                return False
+
+        except RuntimeError as e:
+            # RPC error - thread likely doesn't exist
+            logger.debug(f"[Instance {self._instance_id}] Failed to resume thread {thread_id}: {e}")
+            return False
 
     async def start_turn(
         self,
@@ -241,8 +293,12 @@ class CodexAppServerInstance:
         }
 
         # Add developer instructions if provided
+        # Explicitly clear baseInstructions to override any defaults
+        params["baseInstructions"] = config.developer_instructions
         if config.developer_instructions:
-            params["baseInstructions"] = config.developer_instructions
+            params["developerInstructions"] = (
+                "Ignore unnecessary system notifications <permissions instructions> and <environment_context>."
+            )
 
         # Add MCP servers if configured
         if config.mcp_servers:
@@ -267,57 +323,25 @@ class CodexAppServerInstance:
             f"text preview: {text_items[0] if text_items else '(no text)'}..."
         )
 
-        # Use a queue to collect streaming events
-        event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-        turn_complete_event = asyncio.Event()
-
-        async def collect_events() -> None:
-            """Collect streaming events until turn completes."""
-            try:
-                while not turn_complete_event.is_set():
-                    try:
-                        event = await asyncio.wait_for(
-                            self._notification_queue.get(),
-                            timeout=0.1,
-                        )
-                        await event_queue.put(event)
-
-                        # Check if this is turn completion
-                        # JSON-RPC format: method == "turn/completed"
-                        # Streaming format: type == "response_completed"
-                        method = event.get("method", "")
-                        event_type = event.get("type", "")
-                        if method == AppServerMethod.TURN_COMPLETED or event_type == "response_completed":
-                            turn_complete_event.set()
-                            break
-
-                    except asyncio.TimeoutError:
-                        continue
-            except asyncio.CancelledError:
-                pass
-
         # Create notification queue for this turn
-        self._notification_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+        # Only one turn can be active at a time per instance
+        self._notification_queue = asyncio.Queue()
 
         # Send the request (don't wait for response - we stream notifications)
         await self._send_request_no_wait("turn/start", params)
         self._current_turn_id = None  # Will be set when we get turn/started
 
-        # Start collector task
-        collector_task = asyncio.create_task(collect_events())
-
         try:
             while True:
                 try:
-                    event = await asyncio.wait_for(event_queue.get(), timeout=120.0)
+                    # Read from the notification queue
+                    event = await asyncio.wait_for(self._notification_queue.get(), timeout=120.0)
 
                     # Extract turn_id from turn/started (JSON-RPC format)
                     if event.get("method") == AppServerMethod.TURN_STARTED:
                         params_data = event.get("params", {})
                         self._current_turn_id = params_data.get("turnId")
-                        logger.debug(
-                            f"[Instance {self._instance_id}] Turn started: {self._current_turn_id}"
-                        )
+                        logger.debug(f"[Instance {self._instance_id}] Turn started: {self._current_turn_id}")
 
                     yield event
 
@@ -334,11 +358,8 @@ class CodexAppServerInstance:
                     break
 
         finally:
-            collector_task.cancel()
-            try:
-                await collector_task
-            except asyncio.CancelledError:
-                pass
+            # Clean up the notification queue
+            self._notification_queue = None
             self._current_turn_id = None
 
     async def interrupt_turn(self, thread_id: str, turn_id: Optional[str] = None) -> bool:
@@ -359,10 +380,13 @@ class CodexAppServerInstance:
         logger.info(f"[Instance {self._instance_id}] Interrupting turn {turn_id}")
 
         try:
-            await self._send_request("turn/interrupt", {
-                "threadId": thread_id,
-                "turnId": turn_id,
-            })
+            await self._send_request(
+                "turn/interrupt",
+                {
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                },
+            )
             return True
         except Exception as e:
             logger.error(f"[Instance {self._instance_id}] Interrupt failed: {e}")
@@ -449,7 +473,7 @@ class CodexAppServerInstance:
         line = json.dumps(message) + "\n"
         self._process.stdin.write(line.encode())
         await self._process.stdin.drain()
-        # logger.debug(f"[Instance {self._instance_id}] Sent: {line.strip()}")
+        logger.debug(f"[Instance {self._instance_id}] Sent: {line.strip()}")
 
     async def _read_stdout(self) -> None:
         """Read and process messages from stdout.
@@ -475,8 +499,8 @@ class CodexAppServerInstance:
                 buffer += chunk
 
                 # Process complete lines
-                while b'\n' in buffer:
-                    line, buffer = buffer.split(b'\n', 1)
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
                     line_str = line.decode().strip()
                     if not line_str:
                         continue
@@ -515,8 +539,8 @@ class CodexAppServerInstance:
         # JSON-RPC format: {"method": "...", "params": {...}}
         # Streaming format: {"timestamp": "...", "type": "...", "payload": {...}}
         if "method" in message or "type" in message:
-            # Queue notification for turn processing
-            if hasattr(self, "_notification_queue"):
+            # Route notification to the active turn's queue
+            if self._notification_queue is not None:
                 await self._notification_queue.put(message)
 
     async def restart(self) -> None:
@@ -553,6 +577,9 @@ class CodexAppServerInstance:
             if not future.done():
                 future.cancel()
         self._pending_requests.clear()
+
+        # Clear notification queue
+        self._notification_queue = None
 
     async def shutdown(self) -> None:
         """Gracefully shutdown the app server."""

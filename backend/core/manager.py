@@ -12,10 +12,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator, Optional, Union
 
 from config import get_debug_config
 from domain.contexts import AgentResponseContext
+from domain.streaming import (
+    ResponseAccumulator,
+    StreamEndEvent,
+    StreamStartEvent,
+)
 from domain.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
@@ -26,6 +31,10 @@ from providers import (
     ProviderType,
     get_provider,
 )
+from providers.codex.constants import SessionRecoveryError
+
+if TYPE_CHECKING:
+    from core.events import EventBroadcaster
 
 # Configure from settings
 DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)
@@ -50,6 +59,17 @@ class AgentManager:
         self._client_pools: dict[ProviderType, ClientPoolInterface] = {}
         # Streaming state: tracks current thinking text per task during generation
         self.streaming_state: dict[TaskIdentifier, dict] = {}
+        # Event broadcaster for SSE streaming (optional, set via set_event_broadcaster)
+        self.event_broadcaster: Optional[EventBroadcaster] = None
+
+    def set_event_broadcaster(self, broadcaster: EventBroadcaster) -> None:
+        """Set the event broadcaster for SSE streaming.
+
+        Args:
+            broadcaster: EventBroadcaster instance to use for broadcasting events
+        """
+        self.event_broadcaster = broadcaster
+        logger.info("Event broadcaster configured for SSE streaming")
 
     def _get_pool(self, provider_type: ProviderType) -> ClientPoolInterface:
         """Get or create client pool for a provider.
@@ -177,6 +197,121 @@ class AgentManager:
 
         return result
 
+    async def _cleanup_response_state(
+        self,
+        task_id: TaskIdentifier,
+        pool: ClientPoolInterface,
+        remove_from_pool: bool = False,
+    ) -> None:
+        """Consolidate cleanup logic from exception handlers.
+
+        Args:
+            task_id: The task identifier for cleanup
+            pool: The client pool to cleanup from
+            remove_from_pool: If True, also remove client from pool
+        """
+        # Unregister from active clients
+        if task_id in self.active_clients:
+            del self.active_clients[task_id]
+            logger.debug(f"Unregistered client for task: {task_id}")
+
+        # Clean up streaming state
+        if task_id in self.streaming_state:
+            del self.streaming_state[task_id]
+
+        # Optionally remove from pool (for errors requiring fresh client)
+        if remove_from_pool and task_id in pool.pool:
+            await pool.cleanup(task_id)
+
+    def _build_final_system_prompt(self, context: AgentResponseContext) -> str:
+        """Build the final system prompt with timestamp if conversation has started.
+
+        Args:
+            context: The agent response context
+
+        Returns:
+            Final system prompt string
+        """
+        if context.conversation_started:
+            return f"{context.system_prompt}\n\n---\n\nCurrent time: {context.conversation_started}"
+        return context.system_prompt
+
+    def _build_message_content(
+        self,
+        context: AgentResponseContext,
+    ) -> Union[str, list[dict]]:
+        """Build the message content, handling both string and content block formats.
+
+        Args:
+            context: The agent response context
+
+        Returns:
+            Message content (string or list of content blocks)
+        """
+        if isinstance(context.user_message, list):
+            # Content blocks with potential inline images
+            content_blocks = context.user_message
+            if context.conversation_history:
+                # Prepend conversation history to first text block
+                for block in content_blocks:
+                    if block.get("type") == "text":
+                        block["text"] = f"{context.conversation_history}\n\n{block['text']}"
+                        break
+            return content_blocks
+        else:
+            # Simple string message
+            message = context.user_message
+            if context.conversation_history:
+                message = f"{context.conversation_history}\n\n{context.user_message}"
+            return message
+
+    async def _prepare_query_content(
+        self,
+        message_to_send: Union[str, list[dict]],
+        has_images: bool,
+        task_id: TaskIdentifier,
+    ) -> Union[str, AsyncIterator]:
+        """Prepare the query content based on message type.
+
+        Args:
+            message_to_send: The message to send (string or content blocks)
+            has_images: Whether the message contains images
+            task_id: Task identifier for logging
+
+        Returns:
+            Query content ready for client.query()
+        """
+        if isinstance(message_to_send, list) and has_images:
+            # SDK requires async generator for multimodal content
+            async def multimodal_message_generator():
+                yield {
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": message_to_send,
+                    },
+                }
+
+            logger.info(f"📸 Sending multimodal message with inline images | Task: {task_id}")
+            return multimodal_message_generator()
+        elif isinstance(message_to_send, list):
+            # Content blocks but no images - extract text
+            return "\n".join(b.get("text", "") for b in message_to_send if b.get("type") == "text")
+        else:
+            return message_to_send
+
+    def _is_interruption_error(self, error: Exception) -> bool:
+        """Check if an exception is related to interruption.
+
+        Args:
+            error: The exception to check
+
+        Returns:
+            True if the error is interruption-related
+        """
+        error_str = str(error).lower()
+        return "interrupt" in error_str or "cancelled" in error_str
+
     async def generate_sdk_response(self, context: AgentResponseContext) -> AsyncIterator[dict]:
         """
         Generate a response from an agent using the AI provider with session persistence.
@@ -223,23 +358,24 @@ class AgentManager:
 
         try:
             # Yield stream_start event
-            yield {
-                "type": "stream_start",
-                "temp_id": temp_id,
-            }
+            start_event = StreamStartEvent(temp_id=temp_id).to_dict()
+            yield start_event
 
-            # Build final system prompt
-            final_system_prompt = context.system_prompt
-            if context.conversation_started:
-                final_system_prompt = f"{context.system_prompt}\n\n---\n\nCurrent time: {context.conversation_started}"
+            # Broadcast stream_start via SSE
+            if self.event_broadcaster:
+                sse_start = {
+                    **start_event,
+                    "agent_id": context.agent_id,
+                    "agent_name": context.agent_name,
+                    "agent_profile_pic": context.config.profile_pic,
+                }
+                await self.event_broadcaster.broadcast(context.room_id, sse_start)
 
-            response_text = ""
-            thinking_text = ""
-            new_session_id = context.session_id
-            skip_tool_called = False
-            memory_entries = []  # Track memory entries from memorize tool calls
-            anthropic_calls = []  # Track anthropic tool calls (via hook)
-            skip_tool_capture = []  # Track skip tool calls (via hook)
+            # Build final system prompt using helper
+            final_system_prompt = self._build_final_system_prompt(context)
+
+            # Initialize response accumulator (replaces 6 separate variables)
+            accumulator = ResponseAccumulator(session_id=context.session_id)
 
             # Determine model based on provider
             from core import get_settings
@@ -249,46 +385,14 @@ class AgentManager:
             if provider_type == ProviderType.CODEX and settings.codex_model:
                 model = settings.codex_model
 
-            # Build provider-agnostic options
-            base_options = AIClientOptions(
-                system_prompt=final_system_prompt,
-                model=model,
-                session_id=context.session_id,
-                agent_name=context.agent_name,
-                agent_id=context.agent_id,
-                config_file=context.config.config_file,
-                group_name=context.group_name,
-                has_situation_builder=context.has_situation_builder,
-                long_term_memory_index=context.config.long_term_memory_index,
-                mcp_tools={
-                    "agent_name": context.agent_name,
-                    "agent_group": context.group_name or "default",
-                    "agent_id": context.agent_id,
-                    "room_id": context.room_id,
-                    "config_file": context.config.config_file,
-                },
-            )
+            # Build provider-agnostic options from context
+            base_options = AIClientOptions.from_context(context, final_system_prompt, model)
 
             # Build provider-specific options with tool capture hooks
-            options = provider.build_options(base_options, anthropic_calls, skip_tool_capture)
+            options = provider.build_options(base_options, accumulator.anthropic_calls, accumulator.skip_tool_capture)
 
-            # Build the message content - can be string or list of content blocks
-            # Content blocks may include inline images within <conversation_so_far>
-            if isinstance(context.user_message, list):
-                # Content blocks with potential inline images
-                content_blocks = context.user_message
-                if context.conversation_history:
-                    # Prepend conversation history to first text block
-                    for block in content_blocks:
-                        if block.get("type") == "text":
-                            block["text"] = f"{context.conversation_history}\n\n{block['text']}"
-                            break
-                message_to_send = content_blocks
-            else:
-                # Simple string message
-                message_to_send = context.user_message
-                if context.conversation_history:
-                    message_to_send = f"{context.conversation_history}\n\n{context.user_message}"
+            # Build the message content using helper
+            message_to_send = self._build_message_content(context)
 
             # Get or create client from provider pool (reuses client for same room-agent pair)
             # This prevents creating hundreds of agent session files
@@ -331,25 +435,8 @@ class AgentManager:
             )
 
             try:
-                # Build query content based on message type
-                if isinstance(message_to_send, list) and has_images:
-                    # SDK requires async generator for multimodal content
-                    async def multimodal_message_generator():
-                        yield {
-                            "type": "user",
-                            "message": {
-                                "role": "user",
-                                "content": message_to_send,
-                            },
-                        }
-
-                    logger.info(f"📸 Sending multimodal message with inline images | Task: {context.task_id}")
-                    query_content = multimodal_message_generator()
-                elif isinstance(message_to_send, list):
-                    # Content blocks but no images - extract text
-                    query_content = "\n".join(b.get("text", "") for b in message_to_send if b.get("type") == "text")
-                else:
-                    query_content = message_to_send
+                # Build query content using helper
+                query_content = await self._prepare_query_content(message_to_send, has_images, task_id)
 
                 # Add timeout to query to prevent hanging
                 await asyncio.wait_for(client.query(query_content), timeout=10.0)
@@ -363,70 +450,37 @@ class AgentManager:
 
             # Receive and stream the response
             async for message in client.receive_response():
-                # Parse the message using provider's stream parser
-                parsed = stream_parser.parse_message(message, response_text, thinking_text)
+                # Parse the message and update accumulator
+                parsed = stream_parser.parse_message(message, accumulator.response_text, accumulator.thinking_text)
 
-                # Calculate deltas for yielding
-                content_delta = parsed.response_text[len(response_text) :]
-                thinking_delta = parsed.thinking_text[len(thinking_text) :]
-
-                # Update session if found
-                if parsed.session_id:
-                    new_session_id = parsed.session_id
-
-                # Update skip flag via hook capture (MCP tools detected via PostToolUse hook)
-                if skip_tool_capture and not skip_tool_called:
-                    skip_tool_called = True
+                # Log skip tool if just detected
+                if accumulator.skip_tool_capture and not accumulator.skip_tool_called:
                     logger.info("⏭️  Skip tool called")
 
-                # Collect memory entries
-                memory_entries.extend(parsed.memory_entries)
-
-                # Note: anthropic_calls are now captured via PostToolUse hook
-                # (stream parser may not see tool_use blocks for MCP tools)
-
-                # Update accumulated text
-                response_text = parsed.response_text
-                thinking_text = parsed.thinking_text
+                # Update accumulator and get delta events
+                events = accumulator.update_from_parsed(parsed, temp_id)
 
                 # Update streaming state for polling access
-                # When skip is used, clear response_text and mark as skipped
-                # This prevents showing skipped content in UI and saving on interrupt
                 if task_id in self.streaming_state:
-                    if skip_tool_called:
-                        self.streaming_state[task_id]["thinking_text"] = thinking_text
-                        self.streaming_state[task_id]["response_text"] = ""
-                        self.streaming_state[task_id]["skip_used"] = True
-                    else:
-                        self.streaming_state[task_id]["thinking_text"] = thinking_text
-                        self.streaming_state[task_id]["response_text"] = response_text
+                    self.streaming_state[task_id] = accumulator.get_streaming_state()
 
-                # Yield delta events for content and thinking
-                # Don't yield content deltas after skip tool is called
-                # (content after skip is the "reason for skipping" which should be hidden)
-                if content_delta and not skip_tool_called:
-                    yield {
-                        "type": "content_delta",
-                        "delta": content_delta,
-                        "temp_id": temp_id,
-                    }
+                # Yield delta events and broadcast via SSE
+                for event in events:
+                    event_dict = event.to_dict()
+                    yield event_dict
 
-                if thinking_delta:
-                    yield {
-                        "type": "thinking_delta",
-                        "delta": thinking_delta,
-                        "temp_id": temp_id,
-                    }
+                    # Broadcast to SSE clients if broadcaster is configured
+                    if self.event_broadcaster:
+                        # Add agent_id to event for client-side routing
+                        sse_event = {**event_dict, "agent_id": task_id.agent_id}
+                        await self.event_broadcaster.broadcast(task_id.room_id, sse_event)
 
                 # Debug log each message received from the SDK
-                # Configuration loaded from debug.yaml
                 if DEBUG_MODE:
-                    # Get streaming config from debug.yaml
                     config = get_debug_config()
                     streaming_config = config.get("debug", {}).get("logging", {}).get("streaming", {})
 
                     if streaming_config.get("enabled", True):
-                        # Skip system init messages if configured
                         is_system_init = (
                             message.__class__.__name__ == "SystemMessage"
                             and hasattr(message, "subtype")
@@ -447,106 +501,113 @@ class AgentManager:
                 del self.streaming_state[task_id]
 
             # Log response summary
-            final_response = response_text if response_text else None
-            if skip_tool_called:
-                logger.info(f"⏭️  Agent skipped | Session: {new_session_id}")
-                final_response = None
+            if accumulator.skip_tool_called:
+                logger.info(f"⏭️  Agent skipped | Session: {accumulator.session_id}")
             else:
                 logger.info(
-                    f"✅ Response generated | Length: {len(response_text)} chars | Thinking: {len(thinking_text)} chars | Session: {new_session_id}"
+                    f"✅ Response generated | Length: {len(accumulator.response_text)} chars | "
+                    f"Thinking: {len(accumulator.thinking_text)} chars | Session: {accumulator.session_id}"
                 )
-            if memory_entries:
-                logger.info(f"💾 Recorded {len(memory_entries)} memory entries")
-            if anthropic_calls:
-                logger.info(f"🔒 Agent called anthropic {len(anthropic_calls)} times: {anthropic_calls}")
+            if accumulator.memory_entries:
+                logger.info(f"💾 Recorded {len(accumulator.memory_entries)} memory entries")
+            if accumulator.anthropic_calls:
+                logger.info(
+                    f"🔒 Agent called anthropic {len(accumulator.anthropic_calls)} times: {accumulator.anthropic_calls}"
+                )
+
+            # Create the end event
+            end_event = accumulator.create_end_event(temp_id)
 
             # Append response to debug log
             append_response_to_debug_log(
                 agent_name=context.agent_name,
-                task_id=context.task_id or "default",
-                response_text=final_response or "",
-                thinking_text=thinking_text,
-                skipped=skip_tool_called,
+                task_id=str(context.task_id) if context.task_id else "default",
+                response_text=end_event.response_text or "",
+                thinking_text=end_event.thinking_text,
+                skipped=end_event.skipped,
             )
 
             # Yield stream_end event with final data
-            yield {
-                "type": "stream_end",
-                "temp_id": temp_id,
-                "response_text": final_response,
-                "thinking_text": thinking_text,
-                "session_id": new_session_id,
-                "memory_entries": memory_entries,
-                "anthropic_calls": anthropic_calls,
-                "skipped": skip_tool_called,
-            }
+            end_event_dict = end_event.to_dict()
+            yield end_event_dict
+
+            # Broadcast stream_end via SSE
+            if self.event_broadcaster:
+                sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                await self.event_broadcaster.broadcast(context.room_id, sse_end)
 
         except asyncio.CancelledError:
             # Task was cancelled due to interruption - this is expected
-            # Clean up client from active_clients (but keep it in pool for reuse)
-            if context.task_id and context.task_id in self.active_clients:
-                del self.active_clients[context.task_id]
-                logger.debug(f"Unregistered client for task (interrupted): {context.task_id}")
-
-            # Clean up streaming state
-            if task_id in self.streaming_state:
-                del self.streaming_state[task_id]
-
+            await self._cleanup_response_state(task_id, pool)
             logger.info(f"🛑 Agent response interrupted | Task: {context.task_id}")
+
             # Yield stream_end to indicate interruption
-            yield {
-                "type": "stream_end",
-                "temp_id": temp_id,
-                "response_text": None,
-                "thinking_text": "",
-                "session_id": context.session_id,
-                "memory_entries": [],
-                "anthropic_calls": [],
-                "skipped": True,
-            }
+            end_event = StreamEndEvent(
+                temp_id=temp_id,
+                response_text=None,
+                thinking_text="",
+                session_id=context.session_id,
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=True,
+            )
+            end_event_dict = end_event.to_dict()
+            yield end_event_dict
+
+            # Broadcast stream_end via SSE
+            if self.event_broadcaster:
+                sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                await self.event_broadcaster.broadcast(context.room_id, sse_end)
+
+        except SessionRecoveryError:
+            # Session recovery needed - propagate to ResponseGenerator for retry with full history
+            await self._cleanup_response_state(task_id, pool, remove_from_pool=True)
+            # Re-raise so ResponseGenerator can handle retry with full history
+            raise
 
         except Exception as e:
-            # Clean up client on error
-            if context.task_id and context.task_id in self.active_clients:
-                del self.active_clients[context.task_id]
-                logger.debug(f"Unregistered client for task (error cleanup): {context.task_id}")
-
-            # Clean up streaming state
-            if task_id in self.streaming_state:
-                del self.streaming_state[task_id]
-
             # Check if this is an interruption-related error
-            error_str = str(e).lower()
-            if "interrupt" in error_str or "cancelled" in error_str:
+            if self._is_interruption_error(e):
+                await self._cleanup_response_state(task_id, pool)
                 logger.info(f"🛑 Agent response interrupted | Task: {context.task_id}")
-                # Yield stream_end to indicate interruption
-                yield {
-                    "type": "stream_end",
-                    "temp_id": temp_id,
-                    "response_text": None,
-                    "thinking_text": "",
-                    "session_id": context.session_id,
-                    "memory_entries": [],
-                    "anthropic_calls": [],
-                    "skipped": True,
-                }
+
+                end_event = StreamEndEvent(
+                    temp_id=temp_id,
+                    response_text=None,
+                    thinking_text="",
+                    session_id=context.session_id,
+                    memory_entries=[],
+                    anthropic_calls=[],
+                    skipped=True,
+                )
+                end_event_dict = end_event.to_dict()
+                yield end_event_dict
+
+                # Broadcast stream_end via SSE
+                if self.event_broadcaster:
+                    sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                    await self.event_broadcaster.broadcast(context.room_id, sse_end)
                 return
 
-            # Remove client from pool on any error to ensure fresh client next time
-            # task_id was already created at the beginning of the function
-            if task_id in pool.pool:
-                # Use cleanup to properly disconnect in background task
-                await pool.cleanup(task_id)
+            # Clean up and remove from pool on error to ensure fresh client next time
+            await self._cleanup_response_state(task_id, pool, remove_from_pool=True)
 
             logger.error(f"❌ Error generating response: {str(e)}", exc_info=DEBUG_MODE)
+
             # Yield error as stream_end
-            yield {
-                "type": "stream_end",
-                "temp_id": temp_id,
-                "response_text": f"Error generating response: {str(e)}",
-                "thinking_text": "",
-                "session_id": context.session_id,
-                "memory_entries": [],
-                "anthropic_calls": [],
-                "skipped": False,
-            }
+            end_event = StreamEndEvent(
+                temp_id=temp_id,
+                response_text=f"Error generating response: {str(e)}",
+                thinking_text="",
+                session_id=context.session_id,
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=False,
+            )
+            end_event_dict = end_event.to_dict()
+            yield end_event_dict
+
+            # Broadcast stream_end via SSE
+            if self.event_broadcaster:
+                sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                await self.event_broadcaster.broadcast(context.room_id, sse_end)

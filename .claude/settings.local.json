@@ -18,7 +18,8 @@
       "Bash(python -c:*)",
       "Bash(npm run build:*)",
       "Bash(dir /b \"C:\\\\Users\\\\stand\\\\Desktop\\\\etc\\\\claude_code_RP\\\\*.md\")",
-      "Bash(comm:*)"
+      "Bash(comm:*)",
+      "Bash(npm run typecheck:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Message, ImageItem } from '../types';
 import { getApiKey, API_BASE_URL } from '../services';
+import { useSSE } from './useSSE';
 
 interface UsePollingReturn {
   messages: Message[];
@@ -8,12 +9,13 @@ interface UsePollingReturn {
   isConnected: boolean;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   resetMessages: () => Promise<void>;
+  sseConnected: boolean;
 }
 
-const POLL_INTERVAL = 500; // Poll every 500ms
-const STATUS_POLL_INTERVAL = 500; // Poll agent status every 500ms (for typing indicators)
+const POLL_INTERVAL = 5000; // Poll every 5s for new messages (fallback - SSE handles real-time)
+const STATUS_POLL_INTERVAL = 5000; // Poll agent status every 5s (fallback when SSE not connected)
 
-export const usePolling = (roomId: number | null): UsePollingReturn => {
+export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePollingReturn => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const pollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -21,6 +23,12 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
   const immediatePollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMessageIdRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
+
+  // SSE streaming for real-time updates
+  const { isConnected: sseConnected, streamingAgents } = useSSE(useSSEStreaming ? roomId : null);
+
+  // Track previous streaming agent count to detect when agents finish streaming
+  const prevStreamingCountRef = useRef<number>(0);
 
   // Fetch all messages (initial load)
   const fetchAllMessages = useCallback(async () => {
@@ -185,6 +193,88 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     }
   }, [roomId]);
 
+  // Update chatting indicators from SSE streaming agents
+  useEffect(() => {
+    if (!sseConnected) return;
+
+    setMessages((prev) => {
+      const prevChatting = prev.filter(m => m.is_chatting);
+
+      // If nothing is streaming now and nothing was chatting before, avoid rewriting state
+      if (streamingAgents.size === 0 && prevChatting.length === 0) {
+        return prev;
+      }
+
+      // Remove old chatting indicators
+      const withoutChatting = prev.filter(m => !m.is_chatting);
+
+      // Build a map of previous profile pics for fallback (from polling data)
+      const prevProfilePics = new Map<number, string | null | undefined>();
+      prevChatting.forEach(m => {
+        if (m.agent_id !== undefined && m.agent_id !== null) {
+          prevProfilePics.set(m.agent_id, m.agent_profile_pic);
+        }
+      });
+
+      // Add new chatting indicators from SSE streaming agents
+      const chattingMessages: Message[] = [];
+      streamingAgents.forEach((state, agentId) => {
+        // Use SSE profile_pic if available, otherwise fall back to previous (from polling)
+        const profilePic = state.agent_profile_pic ?? prevProfilePics.get(agentId);
+        chattingMessages.push({
+          id: `chatting_${agentId}` as any,
+          agent_id: agentId,
+          agent_name: state.agent_name,
+          agent_profile_pic: profilePic,
+          content: state.response_text || '',
+          role: 'assistant' as const,
+          timestamp: new Date().toISOString(),
+          is_chatting: true,
+          thinking: state.thinking_text || null,
+        });
+      });
+
+      // If the chatting state hasn't changed (same agents with same thinking/content), avoid state churn
+      const hasSameChattingState =
+        chattingMessages.length === prevChatting.length &&
+        chattingMessages.every((msg) =>
+          prevChatting.some((prevMsg) =>
+            prevMsg.agent_id === msg.agent_id &&
+            prevMsg.agent_name === msg.agent_name &&
+            prevMsg.agent_profile_pic === msg.agent_profile_pic &&
+            prevMsg.thinking === msg.thinking &&
+            prevMsg.content === msg.content
+          )
+        );
+
+      if (hasSameChattingState) {
+        return prev;
+      }
+
+      return [...withoutChatting, ...chattingMessages];
+    });
+  }, [sseConnected, streamingAgents]);
+
+  // Trigger immediate poll when an agent finishes streaming (stream_end received)
+  // This reduces the delay between chatting indicator disappearing and message appearing
+  useEffect(() => {
+    const currentCount = streamingAgents.size;
+    const prevCount = prevStreamingCountRef.current;
+
+    // If count decreased, an agent finished streaming - poll immediately for the new message
+    if (prevCount > 0 && currentCount < prevCount) {
+      // Small delay to ensure DB write completes before polling
+      const timeoutId = setTimeout(() => {
+        pollNewMessages();
+      }, 100);
+
+      prevStreamingCountRef.current = currentCount;
+      return () => clearTimeout(timeoutId);
+    }
+
+    prevStreamingCountRef.current = currentCount;
+  }, [streamingAgents, pollNewMessages]);
+
   // Setup polling
   useEffect(() => {
     if (!roomId) {
@@ -201,6 +291,10 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     // Initial load
     fetchAllMessages();
 
+    // Immediately fetch chatting agents on room switch (don't wait for poll interval)
+    // This ensures we see streaming indicators right away when switching back to a room
+    pollChattingAgents();
+
     // Start polling for new messages using setTimeout to prevent stacking
     const scheduleNextPoll = () => {
       if (!isActive) return;
@@ -211,19 +305,26 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       }, POLL_INTERVAL);
     };
 
-    // Start polling for chatting agent status (faster polling)
+    // Start polling for chatting agent status (fallback when SSE not connected)
     const scheduleNextStatusPoll = () => {
       if (!isActive) return;
 
       statusPollIntervalRef.current = setTimeout(async () => {
-        await pollChattingAgents();
+        // Only poll for chatting agents if SSE is not connected
+        // SSE provides real-time streaming updates when connected
+        if (!sseConnected) {
+          await pollChattingAgents();
+        }
         scheduleNextStatusPoll(); // Schedule next poll after this one completes
       }, STATUS_POLL_INTERVAL);
     };
 
     // Start both polling cycles
     scheduleNextPoll();
-    scheduleNextStatusPoll();
+    // Only start status polling if SSE is not connected
+    if (!sseConnected) {
+      scheduleNextStatusPoll();
+    }
 
     return () => {
       // Cleanup on unmount or room change
@@ -242,7 +343,7 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
       }
       setIsConnected(false);
     };
-  }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents]);
+  }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents, sseConnected]);
 
   const sendMessage = async (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => {
     if (!roomId) return;
@@ -315,5 +416,5 @@ export const usePolling = (roomId: number | null): UsePollingReturn => {
     await fetchAllMessages();
   }, [fetchAllMessages]);
 
-  return { messages, sendMessage, isConnected, setMessages, resetMessages };
+  return { messages, sendMessage, isConnected, setMessages, resetMessages, sseConnected };
 };

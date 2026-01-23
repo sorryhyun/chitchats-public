@@ -200,6 +200,68 @@ def validate_jwt_token(token: str) -> dict | None:
         return None
 
 
+def generate_sse_ticket(room_id: int, expiration_seconds: int = 60) -> str:
+    """
+    Generate a short-lived SSE ticket for a specific room.
+
+    This ticket is used for SSE connections where the browser's EventSource API
+    doesn't support custom headers. The ticket is short-lived to minimize exposure
+    if it appears in logs or browser history.
+
+    Args:
+        room_id: The room ID this ticket is valid for
+        expiration_seconds: Seconds until ticket expires (default: 60)
+
+    Returns:
+        str: Encoded JWT ticket
+    """
+    secret = get_jwt_secret()
+    payload = {
+        "exp": datetime.utcnow() + timedelta(seconds=expiration_seconds),
+        "iat": datetime.utcnow(),
+        "type": "sse_ticket",
+        "room_id": room_id,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
+def validate_sse_ticket(ticket: str, room_id: int) -> bool:
+    """
+    Validate an SSE ticket for a specific room.
+
+    Args:
+        ticket: The SSE ticket to validate
+        room_id: The room ID to validate against
+
+    Returns:
+        bool: True if ticket is valid for this room, False otherwise
+    """
+    try:
+        secret = get_jwt_secret()
+        payload = jwt.decode(ticket, secret, algorithms=["HS256"])
+
+        # Verify this is an SSE ticket
+        if payload.get("type") != "sse_ticket":
+            logger.warning("⚠️  Token is not an SSE ticket")
+            return False
+
+        # Verify room_id matches
+        if payload.get("room_id") != room_id:
+            logger.warning(f"⚠️  SSE ticket room_id mismatch: expected {room_id}, got {payload.get('room_id')}")
+            return False
+
+        return True
+    except jwt.ExpiredSignatureError:
+        logger.warning("⚠️  SSE ticket has expired")
+        return False
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"⚠️  Invalid SSE ticket: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error validating SSE ticket: {e}")
+        return False
+
+
 def get_role_from_token(token: str) -> str | None:
     """
     Extract the role from a JWT token.
@@ -309,6 +371,12 @@ class AuthMiddleware:
 
         # Skip auth for profile picture requests (needed for <img> tags)
         if path.startswith("/agents/") and path.endswith("/profile-pic"):
+            await self.app(scope, receive, send)
+            return
+
+        # Skip auth for SSE stream endpoints (they handle auth via query param)
+        # EventSource API doesn't support custom headers, so auth is passed as query param
+        if path.startswith("/rooms/") and path.endswith("/stream"):
             await self.app(scope, receive, send)
             return
 

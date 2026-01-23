@@ -13,9 +13,10 @@ dependencies = [
     "uvicorn>=0.30.0",
     "python-multipart>=0.0.9",
     "slowapi>=0.1.9",
+    "sse-starlette>=3.0.0",
 
     # AI Integration
-    "claude-agent-sdk>=0.1.20",
+    "claude-agent-sdk>=0.1.21",
     "mcp>=1.0.0",
     "fastapi-mcp>=0.3.0",
 
