@@ -1,13 +1,13 @@
 # Chat Orchestration Sequence Diagrams
 
-This document describes the message flow for both Claude SDK and Codex MCP providers.
+This document describes the message flow for both Claude SDK and Codex providers.
 
 ## Overview
 
 ChitChats supports two AI providers through a unified abstraction layer:
 
 - **Claude SDK**: Uses Claude Agent SDK via Claude Code CLI (subprocess-based)
-- **Codex MCP**: Uses Codex via MCP server pool (persistent connections)
+- **Codex**: Uses Codex via app server pool (persistent connections)
 
 Both providers share the same orchestration logic but differ in their client implementations.
 
@@ -90,7 +90,7 @@ sequenceDiagram
 
 ---
 
-## Codex MCP Flow
+## Codex App Server Flow
 
 ```mermaid
 sequenceDiagram
@@ -101,9 +101,9 @@ sequenceDiagram
     participant RG as ResponseGenerator
     participant AM as AgentManager
     participant Pool as CodexClientPool
-    participant Client as CodexMCPClient
-    participant SP as CodexServerPool<br/>(singleton)
-    participant MCP as MCP Server<br/>Instance
+    participant Client as CodexAppServerClient
+    participant SP as CodexAppServerPool<br/>(singleton)
+    participant Server as App Server<br/>Instance
 
     FE->>API: POST /api/rooms/{id}/messages
     activate API
@@ -142,11 +142,11 @@ sequenceDiagram
     activate SP
 
     SP->>SP: route by thread_id affinity
-    SP->>MCP: call tool
-    activate MCP
-    MCP->>MCP: call Codex API
-    MCP-->>SP: result (batch)
-    deactivate MCP
+    SP->>Server: start_turn (JSON-RPC)
+    activate Server
+    Server->>Server: call Codex API
+    Server-->>SP: streaming notifications
+    deactivate Server
 
     SP-->>Client: {thread_id, content[]}
     deactivate SP
@@ -251,7 +251,7 @@ sequenceDiagram
         else Codex Provider
             RG->>Codex: options.thread_id = null
             Codex->>Codex: creates new thread
-            Codex-->>RG: thread_started {thread_id: "thread-xxx"}
+            Codex-->>RG: turn_started {thread_id: "thread-xxx"}
         end
 
         RG->>DB: update_room_agent_session(new_id)
@@ -267,7 +267,7 @@ sequenceDiagram
             Note right of Claude: Resumes conversation<br/>context from session
         else Codex Provider
             RG->>Codex: options.thread_id = "existing-session-id"
-            Note right of Codex: Routes to same MCP<br/>instance via affinity
+            Note right of Codex: Routes to same app server<br/>instance via affinity
         end
     end
 ```
@@ -276,15 +276,15 @@ sequenceDiagram
 
 ## Provider Comparison
 
-| Aspect | Claude SDK | Codex MCP |
-|--------|-----------|-----------|
-| **Connection** | Subprocess per client | Shared MCP pool |
-| **Streaming** | True streaming | Batch → event emission |
+| Aspect | Claude SDK | Codex |
+|--------|-----------|-------|
+| **Connection** | Subprocess per client | Shared app server pool |
+| **Streaming** | True streaming | JSON-RPC streaming notifications |
 | **Session ID** | `options.resume` (UUID) | `thread_id` |
-| **Pool Limit** | 10 concurrent | 10 concurrent |
+| **Pool Limit** | 10 concurrent | Configurable (default: 3) |
 | **Server Mgmt** | Per-client subprocess | Singleton pool w/ instances |
 | **Tool Capture** | PostToolUse hooks | Stream parsing |
-| **Parallelism** | Multiple subprocesses | Multiple MCP instances |
+| **Parallelism** | Multiple subprocesses | Multiple app server instances |
 
 ---
 
@@ -333,12 +333,13 @@ Both providers emit the same event types for downstream processing:
 | `ClaudeClientPool` | `backend/providers/claude/pool.py` |
 | `ClaudeStreamParser` | `backend/providers/claude/parser.py` |
 
-### Codex MCP Provider
+### Codex Provider
 
 | Component | File |
 |-----------|------|
 | `CodexProvider` | `backend/providers/codex/provider.py` |
-| `CodexMCPClient` | `backend/providers/codex/mcp_client.py` |
+| `CodexAppServerClient` | `backend/providers/codex/app_server_client.py` |
 | `CodexClientPool` | `backend/providers/codex/pool.py` |
-| `CodexServerPool` | `backend/providers/codex/mcp_server_pool.py` |
-| `CodexStreamParser` | `backend/providers/codex/parser.py` |
+| `CodexAppServerPool` | `backend/providers/codex/app_server_pool.py` |
+| `CodexAppServerInstance` | `backend/providers/codex/app_server_instance.py` |
+| `CodexAppServerParser` | `backend/providers/codex/app_server_parser.py` |
