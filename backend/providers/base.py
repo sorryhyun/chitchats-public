@@ -16,7 +16,10 @@ Architecture:
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Union
+
+if TYPE_CHECKING:
+    from domain.contexts import AgentResponseContext
 
 
 class ProviderType(str, Enum):
@@ -122,6 +125,35 @@ class AIClientOptions:
     long_term_memory_index: Optional[Dict[str, str]] = None
     working_dir: Optional[str] = None
     extra_options: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_context(
+        cls,
+        context: "AgentResponseContext",
+        final_system_prompt: str,
+        model: str = "",
+    ) -> "AIClientOptions":
+        """Create AIClientOptions from an AgentResponseContext.
+
+        Args:
+            context: The agent response context containing all parameters
+            final_system_prompt: The processed system prompt to use
+            model: Optional model identifier (provider-specific)
+
+        Returns:
+            AIClientOptions configured from the context
+        """
+        return cls(
+            system_prompt=final_system_prompt,
+            model=model,
+            session_id=context.session_id,
+            agent_name=context.agent_name,
+            agent_id=context.agent_id,
+            config_file=context.config.config_file,
+            group_name=context.group_name,
+            has_situation_builder=context.has_situation_builder,
+            long_term_memory_index=context.config.long_term_memory_index,
+        )
 
 
 class AIStreamParser(ABC):
