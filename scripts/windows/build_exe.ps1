@@ -265,6 +265,23 @@ if (Test-Path $exePath) {
     Write-Host "Output: $exePath" -ForegroundColor Yellow
     Write-Host "Size: $([math]::Round($size, 2)) MB" -ForegroundColor Yellow
 
+    # Generate checksum (compatible with all PowerShell versions)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $fileStream = [System.IO.File]::OpenRead($exePath)
+    try {
+        $hashBytes = $sha256.ComputeHash($fileStream)
+        $hashString = [BitConverter]::ToString($hashBytes) -replace '-', ''
+    } finally {
+        $fileStream.Close()
+        $sha256.Dispose()
+    }
+    Write-Host "SHA256: $hashString" -ForegroundColor Yellow
+
+    # Save checksum to file
+    $checksumFile = Join-Path $repoRoot "dist/ChitChats.exe.sha256"
+    "$hashString  ChitChats.exe" | Out-File -FilePath $checksumFile -Encoding ASCII
+    Write-Host "Checksum saved to: $checksumFile" -ForegroundColor Yellow
+
     # Sign the executable if requested
     if ($Sign) {
         Write-Host ""
