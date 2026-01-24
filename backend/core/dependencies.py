@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .exceptions import RoomNotFoundError
 
 if TYPE_CHECKING:
-    from orchestration import ChatOrchestrator
+    from chatroom_orchestration import ChatOrchestrator
 
     from core.manager import AgentManager
 

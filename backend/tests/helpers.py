@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from infrastructure.database import get_db, init_db
 from infrastructure.scheduler import BackgroundScheduler
-from orchestration import ChatOrchestrator
+from chatroom_orchestration import ChatOrchestrator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 

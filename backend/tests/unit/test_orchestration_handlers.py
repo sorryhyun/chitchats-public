@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from domain.contexts import AgentMessageData, MessageContext
-from orchestration.handlers import save_agent_message
+from chatroom_orchestration.handlers import save_agent_message
 
 
 class TestSaveAgentMessage:
@@ -23,7 +23,7 @@ class TestSaveAgentMessage:
 
         saved_message = Mock(id=123, content="Hello world", role="assistant", timestamp=datetime.utcnow())
 
-        with patch("orchestration.handlers.crud.create_message", return_value=saved_message) as mock_create:
+        with patch("chatroom_orchestration.handlers.crud.create_message", return_value=saved_message) as mock_create:
             context = MessageContext(
                 db=mock_db,
                 room_id=1,
@@ -55,7 +55,7 @@ class TestSaveAgentMessage:
 
         saved_message = Mock(id=456, content="Hello", timestamp=datetime.utcnow())
 
-        with patch("orchestration.handlers.crud.create_message", return_value=saved_message) as mock_create:
+        with patch("chatroom_orchestration.handlers.crud.create_message", return_value=saved_message) as mock_create:
             context = MessageContext(
                 db=mock_db,
                 room_id=1,
@@ -80,7 +80,7 @@ class TestSaveAgentMessage:
 
         saved_message = Mock(id=789, timestamp=datetime.utcnow())
 
-        with patch("orchestration.handlers.crud.create_message", return_value=saved_message) as mock_create:
+        with patch("chatroom_orchestration.handlers.crud.create_message", return_value=saved_message) as mock_create:
             context = MessageContext(
                 db=mock_db,
                 room_id=1,

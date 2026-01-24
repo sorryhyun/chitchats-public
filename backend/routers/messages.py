@@ -18,7 +18,7 @@ from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException, Request
 from infrastructure.database import get_db
 from infrastructure.images import compress_image_base64, get_target_format_for_provider
-from orchestration import ChatOrchestrator
+from chatroom_orchestration import ChatOrchestrator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession

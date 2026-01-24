@@ -2,25 +2,90 @@
 Conversation context builder for multi-agent chat rooms.
 
 This module provides functionality to build conversation context from
-recent room messages for multi-agent awareness.
+recent room messages for multi-agent awareness, including utilities for
+detecting conversation types and participants.
 """
 
 import logging
 import random
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from core import get_settings
-
-logger = logging.getLogger("ContextBuilder")
 from config import get_conversation_context_config
+from core import get_settings
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.enums import ParticipantType
 from i18n.korean import format_with_particles
 
-from orchestration.whiteboard import process_messages_for_whiteboard
+from .whiteboard import process_messages_for_whiteboard
+
+logger = logging.getLogger("ContextBuilder")
 
 # Get settings singleton
 _settings = get_settings()
+
+
+def detect_conversation_type(messages: List, agent_count: int) -> Tuple[bool, Optional[str], bool]:
+    """
+    Analyze messages to detect conversation type and participants.
+
+    Args:
+        messages: List of message objects (must have .role, .participant_type, .participant_name)
+        agent_count: Number of agents in the room
+
+    Returns:
+        Tuple of (is_one_on_one, user_name, has_situation_builder):
+            - is_one_on_one: True if this is a 1-on-1 conversation between agent and user/character
+            - user_name: Name of the user/character participant (None if not found or not 1-on-1)
+            - has_situation_builder: True if conversation includes situation_builder messages
+    """
+    user_name = None
+    has_user_or_character = False
+    has_situation_builder = False
+
+    for msg in messages:
+        if msg.role == "user":
+            if msg.participant_type == ParticipantType.SITUATION_BUILDER:
+                has_situation_builder = True
+            elif msg.participant_type == ParticipantType.CHARACTER and msg.participant_name:
+                has_user_or_character = True
+                if user_name is None:  # Take the first one found
+                    user_name = msg.participant_name
+            elif msg.participant_type == ParticipantType.USER:
+                has_user_or_character = True
+                if user_name is None:
+                    user_name = _settings.user_name
+
+    # It's a 1-on-1 conversation if:
+    # - Only 1 agent in the room
+    # - At least one user/character message exists
+    # - No situation_builder messages
+    is_one_on_one = agent_count == 1 and has_user_or_character and not has_situation_builder
+
+    return is_one_on_one, user_name, has_situation_builder
+
+
+def get_user_name_from_messages(messages: List) -> Optional[str]:
+    """
+    Extract user/character name from messages.
+
+    Priority:
+    1. Character participant name
+    2. USER_NAME from environment or "User"
+
+    Args:
+        messages: List of message objects
+
+    Returns:
+        User/character name or None if no user messages found
+    """
+    for msg in messages:
+        if msg.role == "user":
+            if msg.participant_type == ParticipantType.CHARACTER and msg.participant_name:
+                return msg.participant_name
+            elif msg.participant_type == ParticipantType.USER:
+                return _settings.user_name
+
+    return None
 
 
 def build_conversation_context(
@@ -85,9 +150,14 @@ def build_conversation_context(
     # Build content blocks list for multimodal support
     content_blocks: List[dict] = []
 
-    # Start with header
+    # Start with before_header content (provider-specific)
+    before_header_config = config.get("before_header", {})
+    before_header = before_header_config.get(provider, "")
+    current_text = before_header + "\n" if before_header else ""
+
+    # Add header
     header = config.get("header", "Here's the conversation so far:")
-    current_text = header + "\n"
+    current_text += header + "\n"
 
     # Process whiteboard messages to get rendered content (accumulated state)
     # This converts diff format to full rendered whiteboard for other agents
@@ -194,11 +264,11 @@ def build_conversation_context(
         # Pseudo-random sampling for uncommon/rare thought instructions
         roll = random.random()
         if roll < 0.05:
-            logger.info(f"🎲 Rare thought triggered for {agent_name} (roll={roll:.3f} < 0.05)")
-            rare_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 5% of the time.</special_instruction>\n"
+            logger.info(f"Rare thought triggered for {agent_name} (roll={roll:.3f} < 0.05)")
+            rare_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 10% of the time.</special_instruction>\n"
             current_text += rare_instruction
-        elif roll < 0.20:  # 15% chance (0.05 to 0.20)
-            logger.info(f"🎲 Uncommon thought triggered for {agent_name} (roll={roll:.3f} < 0.20)")
+        elif roll < 0.10:
+            logger.info(f"Uncommon thought triggered for {agent_name} (roll={roll:.3f} < 0.10)")
             uncommon_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 20% of the time.</special_instruction>\n"
             current_text += uncommon_instruction
 

@@ -34,7 +34,7 @@ from providers import (
 from providers.codex.constants import SessionRecoveryError
 
 if TYPE_CHECKING:
-    from core.events import EventBroadcaster
+    from core.sse import EventBroadcaster
 
 # Configure from settings
 DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)

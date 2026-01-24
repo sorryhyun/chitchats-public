@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 import crud
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from core.manager import AgentManager
-from orchestration import ChatOrchestrator
-from orchestration.agent_ordering import separate_interrupt_agents
-from orchestration.tape import TapeExecutor, TapeGenerator
+from chatroom_orchestration import ChatOrchestrator
+from chatroom_orchestration.agent_ordering import separate_interrupt_agents
+from chatroom_orchestration.tape import TapeExecutor, TapeGenerator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload

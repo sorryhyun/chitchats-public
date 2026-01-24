@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from core.manager import AgentManager
 from infrastructure.database import Base, get_db, models
 from main import app
-from orchestration import ChatOrchestrator
+from chatroom_orchestration import ChatOrchestrator
 
 
 # Configure pytest-asyncio

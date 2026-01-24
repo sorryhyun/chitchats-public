@@ -7,7 +7,7 @@ Tests conversation context building from room messages.
 import os
 from unittest.mock import Mock, patch
 
-from orchestration.context import build_conversation_context
+from chatroom_orchestration.context import build_conversation_context
 
 
 def extract_text_from_blocks(content_blocks: list) -> str:
@@ -20,7 +20,7 @@ def extract_text_from_blocks(content_blocks: list) -> str:
 class TestBuildConversationContext:
     """Tests for build_conversation_context function."""
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_with_no_messages(self, mock_get_config):
         """Test building context with no messages."""
         mock_get_config.return_value = {
@@ -34,8 +34,8 @@ class TestBuildConversationContext:
 
         assert content_blocks == []
 
-    @patch("orchestration.context.get_conversation_context_config")
-    @patch("orchestration.context._settings")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context._settings")
     def test_build_context_with_user_messages(self, mock_settings, mock_get_config):
         """Test building context with user messages."""
         mock_get_config.return_value = {
@@ -76,7 +76,7 @@ class TestBuildConversationContext:
         assert "TestUser:\nHello!" in context
         assert "TestUser:\nHow are you?" in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_with_agent_messages(self, mock_get_config):
         """Test building context with agent messages."""
         mock_get_config.return_value = {"conversation_context": {"header": "Conversation:", "footer": ""}}
@@ -92,7 +92,7 @@ class TestBuildConversationContext:
 
         assert "Alice:\nHi there!" in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_skips_skip_messages(self, mock_get_config):
         """Test that skip messages are excluded from context."""
         mock_get_config.return_value = {"conversation_context": {"header": "Conversation:", "footer": ""}}
@@ -120,7 +120,7 @@ class TestBuildConversationContext:
         assert SKIP_MESSAGE_TEXT not in context
         assert "Real message" in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_with_agent_id_filter(self, mock_get_config):
         """Test building context with agent_id filter (only new messages)."""
         mock_get_config.return_value = {"conversation_context": {"header": "Conversation:", "footer": ""}}
@@ -156,7 +156,7 @@ class TestBuildConversationContext:
         assert "Message 2" in context
         assert "Message 3" in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_with_limit(self, mock_get_config):
         """Test building context respects message limit."""
         mock_get_config.return_value = {"conversation_context": {"header": "", "footer": ""}}
@@ -183,7 +183,7 @@ class TestBuildConversationContext:
         assert "Message 0" not in context
         assert "Message 90" not in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_with_character_participant(self, mock_get_config):
         """Test building context with character participant type."""
         mock_get_config.return_value = {"conversation_context": {"header": "", "footer": ""}}
@@ -204,7 +204,7 @@ class TestBuildConversationContext:
         # Should use participant_name as speaker
         assert "Charlie:\nHello from character!" in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_with_situation_builder(self, mock_get_config):
         """Test building context with situation_builder participant."""
         mock_get_config.return_value = {"conversation_context": {"header": "", "footer": ""}}
@@ -225,8 +225,8 @@ class TestBuildConversationContext:
         # Should use "Situation Builder" as speaker
         assert "Situation Builder:\nScenario description" in context
 
-    @patch("orchestration.context.get_conversation_context_config")
-    @patch("orchestration.context.format_with_particles")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.format_with_particles")
     def test_build_context_with_response_instruction(self, mock_format_particles, mock_get_config):
         """Test response instruction is added when agent_name is provided."""
         mock_get_config.return_value = {
@@ -255,7 +255,7 @@ class TestBuildConversationContext:
         mock_format_particles.assert_called_once()
         assert "Respond as Alice." in context
 
-    @patch("orchestration.context.get_conversation_context_config")
+    @patch("chatroom_orchestration.context.get_conversation_context_config")
     def test_build_context_deduplicates_messages(self, mock_get_config):
         """Test that duplicate messages are filtered out."""
         mock_get_config.return_value = {"conversation_context": {"header": "", "footer": ""}}

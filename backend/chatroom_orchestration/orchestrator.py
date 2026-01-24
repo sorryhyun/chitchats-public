@@ -20,9 +20,10 @@ from core.manager import AgentManager
 from domain.contexts import OrchestrationContext
 from infrastructure.database import models
 
+from core.response_generator import ResponseGenerator
+
 from .agent_ordering import separate_interrupt_agents
 from .critic import process_critic_feedback
-from .response_generator import ResponseGenerator
 from .tape import TapeExecutor, TapeGenerator
 
 # Multi-round conversation settings

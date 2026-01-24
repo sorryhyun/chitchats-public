@@ -12,7 +12,7 @@ from domain.task_identifier import TaskIdentifier
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
-    from orchestration import ChatOrchestrator
+    from chatroom_orchestration import ChatOrchestrator
 
     from core.manager import AgentManager
 

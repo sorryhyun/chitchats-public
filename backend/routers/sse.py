@@ -12,11 +12,11 @@ from typing import Optional
 import crud
 from core import get_agent_manager, get_chat_orchestrator
 from core.auth import generate_sse_ticket, validate_sse_ticket
-from core.events import EventBroadcaster, generate_sse_events
+from core.sse import EventBroadcaster, generate_sse_events
 from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from infrastructure.database import get_db
-from orchestration import ChatOrchestrator
+from chatroom_orchestration import ChatOrchestrator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 

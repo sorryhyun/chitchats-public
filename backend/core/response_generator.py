@@ -11,16 +11,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import crud
+from chatroom_orchestration.context import build_conversation_context, detect_conversation_type
+from chatroom_orchestration.critic import save_critic_report
+from chatroom_orchestration.handlers import save_agent_message
 from config import build_system_prompt
 from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
+from domain.streaming import ContentDeltaEvent, StreamEndEvent, StreamStartEvent, ThinkingDeltaEvent
 from domain.task_identifier import TaskIdentifier
 from i18n.timezone import format_kst_timestamp
-
-from orchestration.conversation import detect_conversation_type
-
-from .context import build_conversation_context
-from .critic import save_critic_report
-from .handlers import save_agent_message
+from providers.codex.constants import SessionRecoveryError
 
 logger = logging.getLogger("ResponseGenerator")
 
@@ -149,7 +148,7 @@ class ResponseGenerator:
             provider=provider,
         )
 
-        # Handle streaming response events
+        # Handle streaming response events with session recovery support
         response_text = ""
         thinking_text = ""
         new_session_id = session_id
@@ -158,38 +157,95 @@ class ResponseGenerator:
         skipped = False
         stream_started = False
 
-        # Iterate over streaming events from agent manager
-        async for event in orch_context.agent_manager.generate_sdk_response(response_context):
-            event_type = event.get("type")
+        try:
+            # Iterate over streaming events from agent manager
+            async for event in orch_context.agent_manager.generate_sdk_response(response_context):
+                match event:
+                    case StreamStartEvent():
+                        stream_started = True
 
-            if event_type == "stream_start":
-                stream_started = True
+                    case ContentDeltaEvent(delta=delta):
+                        response_text += delta
 
-            elif event_type == "content_delta":
-                response_text += event.get("delta", "")
+                    case ThinkingDeltaEvent(delta=delta):
+                        thinking_text += delta
 
-            elif event_type == "thinking_delta":
-                thinking_text += event.get("delta", "")
+                    case StreamEndEvent() as end:
+                        # Extract final data
+                        response_text = end.response_text or response_text
+                        thinking_text = end.thinking_text or thinking_text
+                        new_session_id = end.session_id or session_id
+                        memory_entries = end.memory_entries
+                        anthropic_calls = end.anthropic_calls
+                        skipped = end.skipped
 
-            elif event_type == "stream_end":
-                # Extract final data
-                response_text = event.get("response_text") or response_text
-                thinking_text = event.get("thinking_text") or thinking_text
-                new_session_id = event.get("session_id", session_id)
-                memory_entries = event.get("memory_entries", [])
-                anthropic_calls = event.get("anthropic_calls", [])
-                skipped = event.get("skipped", False)
+        except SessionRecoveryError as e:
+            # Session is invalid - rebuild context with FULL conversation history and retry
+            logger.warning(
+                f"Session recovery for {agent.name}: old thread_id={e.old_thread_id}. "
+                "Rebuilding context with full conversation history..."
+            )
+
+            # Fetch ALL messages from room (no agent_id filter)
+            full_room_messages = await crud.get_messages_cached(
+                orch_context.db,
+                orch_context.room_id,
+            )
+
+            # Rebuild conversation context with full history
+            # Use high limit and no agent_id to include all messages
+            full_conversation_blocks = build_conversation_context(
+                full_room_messages,
+                limit=len(full_room_messages),  # Include all messages
+                agent_name=agent.name,
+                agent_count=agent_count,
+                user_name=user_name,
+                provider=provider,
+            )
+
+            logger.info(
+                f"Rebuilt context with {len(full_room_messages)} messages for {agent.name}. "
+                "Retrying with fresh session..."
+            )
+
+            # Update context with full history and no session_id (fresh session)
+            response_context.user_message = (
+                full_conversation_blocks
+                if full_conversation_blocks
+                else [{"type": "text", "text": "Continue the conversation naturally."}]
+            )
+            response_context.session_id = None  # Fresh session
+
+            # Retry with full history
+            async for event in orch_context.agent_manager.generate_sdk_response(response_context):
+                match event:
+                    case StreamStartEvent():
+                        stream_started = True
+
+                    case ContentDeltaEvent(delta=delta):
+                        response_text += delta
+
+                    case ThinkingDeltaEvent(delta=delta):
+                        thinking_text += delta
+
+                    case StreamEndEvent() as end:
+                        response_text = end.response_text or response_text
+                        thinking_text = end.thinking_text or thinking_text
+                        new_session_id = end.session_id or session_id
+                        memory_entries = end.memory_entries
+                        anthropic_calls = end.anthropic_calls
+                        skipped = end.skipped
 
         # Memory entries are now written directly by the memorize tool
         # So we can skip this section (kept for reference/debugging)
         if memory_entries:
             logger.debug(
-                f"📝 Agent {agent.name} recorded {len(memory_entries)} memories (handled by memorize tool directly)"
+                f"Agent {agent.name} recorded {len(memory_entries)} memories (handled by memorize tool directly)"
             )
 
         # Log anthropic tool calls if any
         if anthropic_calls:
-            logger.info(f"🔒 Agent {agent.name} called anthropic tool: {anthropic_calls}")
+            logger.info(f"Agent {agent.name} called anthropic tool: {anthropic_calls}")
 
         # Update this room-agent session_id if it changed
         if new_session_id and new_session_id != session_id:
@@ -209,7 +265,7 @@ class ResponseGenerator:
         # Check if room was paused while this agent was generating
         # This prevents messages from being saved after pause button is pressed
         if room and room.is_paused:
-            logger.info(f"⏸️  Room {orch_context.room_id} was paused. Discarding response from {agent.name}")
+            logger.info(f"Room {orch_context.room_id} was paused. Discarding response from {agent.name}")
             return False
 
         # For critic agents, automatically save their output to report.md
@@ -280,7 +336,7 @@ class ResponseGenerator:
             last_user_msg_time = self.last_user_message_time[room_id]
             if last_user_msg_time > response_start_time:
                 logger.info(
-                    f"⏭️  SKIPPING BROADCAST | Room: {room_id} | Agent: {agent_name} | "
+                    f"SKIPPING BROADCAST | Room: {room_id} | Agent: {agent_name} | "
                     f"Response started at {response_start_time:.3f}, but interrupted by user message at {last_user_msg_time:.3f}"
                 )
                 return True

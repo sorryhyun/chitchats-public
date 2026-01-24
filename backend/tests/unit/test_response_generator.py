@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock, Mock, mock_open, patch
 
 import pytest
 from domain.contexts import OrchestrationContext
-from orchestration.critic import save_critic_report
-from orchestration.response_generator import ResponseGenerator
+from chatroom_orchestration.critic import save_critic_report
+from core.response_generator import ResponseGenerator
 
 
 class TestSaveCriticReport:
     """Tests for save_critic_report function."""
 
-    @patch("orchestration.critic.os.makedirs")
+    @patch("chatroom_orchestration.critic.os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
     def test_save_critic_report_creates_file(self, mock_file, mock_makedirs):
         """Test that critic report is saved to file."""
@@ -34,7 +34,7 @@ class TestSaveCriticReport:
         assert "Diagnostic report content" in written_content
         assert "Thinking process" in written_content
 
-    @patch("orchestration.critic.os.makedirs", side_effect=Exception("Write error"))
+    @patch("chatroom_orchestration.critic.os.makedirs", side_effect=Exception("Write error"))
     def test_save_critic_report_handles_errors(self, mock_makedirs):
         """Test that errors are handled gracefully."""
         # Should not raise exception
@@ -88,22 +88,22 @@ class TestGenerateResponse:
         mock_agent_manager.generate_sdk_response = Mock(side_effect=lambda ctx: mock_stream_response())
 
         with (
-            patch("orchestration.response_generator.crud.get_room_cached", new=AsyncMock(return_value=mock_room)),
+            patch("core.response_generator.crud.get_room_cached", new=AsyncMock(return_value=mock_room)),
             patch(
-                "orchestration.response_generator.crud.get_messages_after_agent_response_cached",
+                "core.response_generator.crud.get_messages_after_agent_response_cached",
                 new=AsyncMock(return_value=mock_messages),
             ),
-            patch("orchestration.response_generator.crud.get_room_agent_session", return_value=None),
-            patch("orchestration.response_generator.crud.update_room_agent_session", new=AsyncMock()),
+            patch("core.response_generator.crud.get_room_agent_session", return_value=None),
+            patch("core.response_generator.crud.update_room_agent_session", new=AsyncMock()),
             patch(
-                "orchestration.response_generator.crud.create_message",
+                "core.response_generator.crud.create_message",
                 new=AsyncMock(return_value=Mock(id=1, timestamp=datetime.utcnow())),
             ),
             patch(
-                "orchestration.response_generator.build_conversation_context",
+                "core.response_generator.build_conversation_context",
                 return_value=[{"type": "text", "text": "Context"}],
             ),
-            patch("orchestration.response_generator.save_agent_message", new=AsyncMock(return_value=1)),
+            patch("core.response_generator.save_agent_message", new=AsyncMock(return_value=1)),
         ):
             responded = await generator.generate_response(
                 orch_context=orch_context, agent=mock_agent, user_message_content="Hello"
@@ -140,21 +140,21 @@ class TestGenerateResponse:
 
         with (
             patch(
-                "orchestration.response_generator.crud.get_room_cached",
+                "core.response_generator.crud.get_room_cached",
                 new=AsyncMock(return_value=Mock(created_at=datetime.utcnow(), agents=[mock_agent], is_paused=False)),
             ),
             patch(
-                "orchestration.response_generator.crud.get_messages_after_agent_response_cached",
+                "core.response_generator.crud.get_messages_after_agent_response_cached",
                 new=AsyncMock(return_value=[]),
             ),
-            patch("orchestration.response_generator.crud.get_room_agent_session", return_value=None),
-            patch("orchestration.response_generator.crud.update_room_agent_session", new=AsyncMock()),
+            patch("core.response_generator.crud.get_room_agent_session", return_value=None),
+            patch("core.response_generator.crud.update_room_agent_session", new=AsyncMock()),
             patch(
-                "orchestration.response_generator.crud.create_message",
+                "core.response_generator.crud.create_message",
                 new=AsyncMock(return_value=Mock(id=1, timestamp=datetime.utcnow())),
             ),
             patch(
-                "orchestration.response_generator.build_conversation_context",
+                "core.response_generator.build_conversation_context",
                 return_value=[{"type": "text", "text": "Context"}],
             ),
         ):
@@ -194,25 +194,25 @@ class TestGenerateResponse:
 
         with (
             patch(
-                "orchestration.response_generator.crud.get_room_cached",
+                "core.response_generator.crud.get_room_cached",
                 new=AsyncMock(return_value=Mock(created_at=datetime.utcnow(), agents=[mock_agent], is_paused=False)),
             ),
             patch(
-                "orchestration.response_generator.crud.get_messages_after_agent_response_cached",
+                "core.response_generator.crud.get_messages_after_agent_response_cached",
                 new=AsyncMock(return_value=[]),
             ),
-            patch("orchestration.response_generator.crud.get_room_agent_session", return_value=None),
-            patch("orchestration.response_generator.crud.update_room_agent_session", new=AsyncMock()),
+            patch("core.response_generator.crud.get_room_agent_session", return_value=None),
+            patch("core.response_generator.crud.update_room_agent_session", new=AsyncMock()),
             patch(
-                "orchestration.response_generator.crud.create_message",
+                "core.response_generator.crud.create_message",
                 new=AsyncMock(return_value=Mock(id=1, timestamp=datetime.utcnow())),
             ),
             patch(
-                "orchestration.response_generator.build_conversation_context",
+                "core.response_generator.build_conversation_context",
                 return_value=[{"type": "text", "text": "Context"}],
             ),
-            patch("orchestration.response_generator.save_critic_report") as mock_save_report,
-            patch("orchestration.response_generator.save_agent_message", new=AsyncMock(return_value=1)),
+            patch("core.response_generator.save_critic_report") as mock_save_report,
+            patch("core.response_generator.save_agent_message", new=AsyncMock(return_value=1)),
         ):
             responded = await generator.generate_response(
                 orch_context=orch_context, agent=mock_agent, user_message_content="Hello", is_critic=True
@@ -251,17 +251,17 @@ class TestGenerateResponse:
 
         with (
             patch(
-                "orchestration.response_generator.crud.get_room_cached",
+                "core.response_generator.crud.get_room_cached",
                 new=AsyncMock(return_value=Mock(created_at=datetime.utcnow(), agents=[mock_agent], is_paused=False)),
             ),
             patch(
-                "orchestration.response_generator.crud.get_messages_after_agent_response_cached",
+                "core.response_generator.crud.get_messages_after_agent_response_cached",
                 new=AsyncMock(return_value=[]),
             ),
-            patch("orchestration.response_generator.crud.get_room_agent_session", return_value=None),
-            patch("orchestration.response_generator.crud.update_room_agent_session", new=AsyncMock()),
+            patch("core.response_generator.crud.get_room_agent_session", return_value=None),
+            patch("core.response_generator.crud.update_room_agent_session", new=AsyncMock()),
             patch(
-                "orchestration.response_generator.build_conversation_context",
+                "core.response_generator.build_conversation_context",
                 return_value=[{"type": "text", "text": "Context"}],
             ),
         ):
@@ -302,15 +302,15 @@ class TestGenerateResponse:
         paused_room = Mock(created_at=datetime.utcnow(), agents=[mock_agent], is_paused=True)
 
         with (
-            patch("orchestration.response_generator.crud.get_room_cached", new=AsyncMock(return_value=paused_room)),
+            patch("core.response_generator.crud.get_room_cached", new=AsyncMock(return_value=paused_room)),
             patch(
-                "orchestration.response_generator.crud.get_messages_after_agent_response_cached",
+                "core.response_generator.crud.get_messages_after_agent_response_cached",
                 new=AsyncMock(return_value=[]),
             ),
-            patch("orchestration.response_generator.crud.get_room_agent_session", return_value=None),
-            patch("orchestration.response_generator.crud.update_room_agent_session", new=AsyncMock()),
+            patch("core.response_generator.crud.get_room_agent_session", return_value=None),
+            patch("core.response_generator.crud.update_room_agent_session", new=AsyncMock()),
             patch(
-                "orchestration.response_generator.build_conversation_context",
+                "core.response_generator.build_conversation_context",
                 return_value=[{"type": "text", "text": "Context"}],
             ),
         ):
@@ -335,15 +335,15 @@ class TestGenerateResponse:
 
         with (
             patch(
-                "orchestration.response_generator.crud.get_room_cached",
+                "core.response_generator.crud.get_room_cached",
                 new=AsyncMock(return_value=Mock(created_at=datetime.utcnow(), agents=[mock_agent])),
             ),
             patch(
-                "orchestration.response_generator.crud.get_messages_after_agent_response_cached",
+                "core.response_generator.crud.get_messages_after_agent_response_cached",
                 new=AsyncMock(return_value=[]),
             ),
-            patch("orchestration.response_generator.crud.get_room_agent_session", return_value=None),
-            patch("orchestration.response_generator.build_conversation_context", return_value=[]),
+            patch("core.response_generator.crud.get_room_agent_session", return_value=None),
+            patch("core.response_generator.build_conversation_context", return_value=[]),
         ):  # Empty context
             responded = await generator.generate_response(
                 orch_context=orch_context,

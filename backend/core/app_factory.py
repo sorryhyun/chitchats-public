@@ -14,10 +14,10 @@ from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from infrastructure.database import get_db, init_db
 from infrastructure.scheduler import BackgroundScheduler
-from orchestration import ChatOrchestrator
+from chatroom_orchestration import ChatOrchestrator
 
 from core import get_logger, get_settings
-from core.events import EventBroadcaster
+from core.sse import EventBroadcaster
 from core.manager import AgentManager
 
 logger = get_logger("AppFactory")

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from core import get_agent_manager, get_chat_orchestrator
 from core.manager import AgentManager
-from orchestration import ChatOrchestrator
+from chatroom_orchestration import ChatOrchestrator
 
 
 class TestDependencies:

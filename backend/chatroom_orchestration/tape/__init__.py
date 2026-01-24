@@ -5,7 +5,7 @@ This module provides a pre-computed scheduling approach for multi-agent conversa
 replacing dynamic turn decisions with a predictable "tape" of turns.
 
 Example usage:
-    from orchestration.tape import TapeGenerator, TapeExecutor, TurnTape
+    from chatroom_orchestration.tape import TapeGenerator, TapeExecutor, TurnTape
 
     # Create generator with agents
     generator = TapeGenerator(agents, interrupt_agents)

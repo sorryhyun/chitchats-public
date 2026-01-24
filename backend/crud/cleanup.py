@@ -19,7 +19,7 @@ from .rooms import delete_room
 
 if TYPE_CHECKING:
     from core import AgentManager
-    from orchestration import ChatOrchestrator
+    from chatroom_orchestration import ChatOrchestrator
 
 logger = logging.getLogger("CrudCleanup")
 
