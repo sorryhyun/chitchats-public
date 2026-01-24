@@ -95,20 +95,16 @@ class CodexStartupConfig:
     # "danger-full-access" = no sandbox restrictions
     sandbox: str = "danger-full-access"
 
-    # Feature flags (passed via --disable <name>)
-    disabled_features: List[str] = field(
-        default_factory=lambda: [
-            "shell_tool",  # Disables: shell, local_shell, container.exec, shell_command
-            "unified_exec",  # Disables: exec_command, write_stdin
-            "apply_patch_freeform",  # Disables: apply_patch
-            "collab",  # Disables: spawn_agent, send_input, wait, close_agent
-            "child_agents_md",  # Disables child agents markdown
-        ]
-    )
-
     # Config overrides (passed via -c key=value)
     config_overrides: Dict[str, Any] = field(
         default_factory=lambda: {
+            # Feature flags
+            "features.shell_tool": False,  # Disables: shell, local_shell, container.exec, shell_command
+            "features.unified_exec": False,  # Disables: exec_command, write_stdin
+            "features.apply_patch_freeform": False,  # Disables: apply_patch
+            "features.collab": False,  # Disables: spawn_agent, send_input, wait, close_agent
+            "features.child_agents_md": False,  # Disables child agents markdown
+            # Tool settings
             "tools.view_image": False,  # Agents receive images directly
             "web_search": "disabled",
             # "project_doc_max_bytes": 0,
@@ -126,13 +122,9 @@ class CodexStartupConfig:
         """Convert config to CLI arguments for subprocess.
 
         Returns:
-            List of CLI arguments (e.g., ["--disable", "shell_tool", "-c", "web_search=disabled"])
+            List of CLI arguments (e.g., ["-c", "features.shell_tool=false", "-c", "web_search=disabled"])
         """
         args: List[str] = []
-
-        # Add --disable flags for features
-        for feature in self.disabled_features:
-            args.extend(["--disable", feature])
 
         # Add -c flags for config overrides
         for key, value in self.config_overrides.items():

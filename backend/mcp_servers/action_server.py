@@ -31,11 +31,9 @@ from mcp.types import Resource, ResourceTemplate, TextContent, Tool
 from pydantic import AnyUrl
 
 from .config import (
-    MemorizeInput,
-    RecallInput,
-    SkipInput,
     get_tool_description,
     get_tool_response,
+    get_tools_by_group,
     is_tool_enabled,
 )
 
@@ -70,50 +68,45 @@ def create_action_server(
     # Use provided memory index or load from config file
     memory_index = long_term_memory_index or _load_memory_index(config_file)
 
+    # Context for tools
+    context = {
+        "agent_name": agent_name,
+        "agent_group": agent_group,
+        "agent_id": agent_id,
+        "config_file": config_file,
+        "memory_index": memory_index,
+        "provider": provider,
+    }
+
     @server.list_tools()
     async def list_tools():
-        """List available action tools."""
+        """List available action tools based on registry."""
         tools = []
 
-        # Skip tool
-        if is_tool_enabled("skip", group_name=agent_group, provider=provider):
-            description = get_tool_description("skip", agent_name=agent_name, group_name=agent_group, provider=provider)
-            tools.append(
-                Tool(
-                    name="skip",
-                    description=description or "Skip this turn",
-                    inputSchema=SkipInput.model_json_schema(),
-                )
-            )
+        for tool_id, tool_def in get_tools_by_group("action").items():
+            # Check if enabled for this provider/group
+            if not is_tool_enabled(tool_id, group_name=agent_group, provider=provider):
+                continue
 
-        # Memorize tool
-        if is_tool_enabled("memorize", group_name=agent_group, provider=provider):
-            description = get_tool_description(
-                "memorize", agent_name=agent_name, group_name=agent_group, provider=provider
-            )
-            tools.append(
-                Tool(
-                    name="memorize",
-                    description=description or "Record a memory",
-                    inputSchema=MemorizeInput.model_json_schema(),
-                )
-            )
+            # Check requirements (e.g., recall needs memory_index)
+            if "memory_index" in tool_def.requires and not memory_index:
+                continue
 
-        # Recall tool - only if we have memory index
-        if is_tool_enabled("recall", group_name=agent_group, provider=provider) and memory_index:
-            memory_subtitles = ", ".join(f"'{s}'" for s in memory_index.keys())
+            # Get description with variable substitution
+            memory_subtitles = ", ".join(f"'{s}'" for s in memory_index.keys()) if memory_index else ""
             description = get_tool_description(
-                "recall",
+                tool_id,
                 agent_name=agent_name,
                 memory_subtitles=memory_subtitles,
                 group_name=agent_group,
                 provider=provider,
             )
+
             tools.append(
                 Tool(
-                    name="recall",
-                    description=description or "Recall a memory",
-                    inputSchema=RecallInput.model_json_schema(),
+                    name=tool_id,
+                    description=description or tool_def.description,
+                    inputSchema=tool_def.input_model.model_json_schema(),
                 )
             )
 
@@ -123,13 +116,13 @@ def create_action_server(
     async def call_tool(name: str, arguments: dict):
         """Handle tool calls."""
         if name == "skip":
-            return _handle_skip(agent_group, provider)
+            return _handle_skip(context)
 
         elif name == "memorize":
-            return await _handle_memorize(arguments, config_file, agent_id, agent_group, provider)
+            return await _handle_memorize(arguments, context)
 
         elif name == "recall":
-            return _handle_recall(arguments, memory_index, agent_group, provider)
+            return _handle_recall(arguments, context)
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
@@ -193,23 +186,21 @@ def create_action_server(
 # =============================================================================
 
 
-def _handle_skip(group_name: Optional[str], provider: str) -> list[TextContent]:
+def _handle_skip(context: dict) -> list[TextContent]:
     """Handle skip tool call."""
-    response_text = get_tool_response("skip", group_name=group_name)
+    response_text = get_tool_response("skip", group_name=context["agent_group"])
     return [TextContent(type="text", text=response_text)]
 
 
-async def _handle_memorize(
-    arguments: dict,
-    config_file: Optional[str],
-    agent_id: Optional[int],
-    group_name: Optional[str],
-    provider: str,
-) -> list[TextContent]:
+async def _handle_memorize(arguments: dict, context: dict) -> list[TextContent]:
     """Handle memorize tool call."""
     memory_entry = arguments.get("memory_entry", "")
     if not memory_entry.strip():
         return [TextContent(type="text", text="Error: Memory entry cannot be empty")]
+
+    config_file = context["config_file"]
+    agent_id = context["agent_id"]
+    agent_group = context["agent_group"]
 
     if config_file:
         success = _append_to_recent_events(config_file, memory_entry)
@@ -224,7 +215,7 @@ async def _handle_memorize(
                 except Exception as e:
                     logger.warning(f"Failed to invalidate cache: {e}")
 
-            response_text = get_tool_response("memorize", group_name=group_name, memory_entry=memory_entry)
+            response_text = get_tool_response("memorize", group_name=agent_group, memory_entry=memory_entry)
         else:
             response_text = f"Failed to record memory: {memory_entry}"
     else:
@@ -233,20 +224,18 @@ async def _handle_memorize(
     return [TextContent(type="text", text=response_text)]
 
 
-def _handle_recall(
-    arguments: dict,
-    memory_index: dict[str, str],
-    group_name: Optional[str],
-    provider: str,
-) -> list[TextContent]:
+def _handle_recall(arguments: dict, context: dict) -> list[TextContent]:
     """Handle recall tool call."""
     subtitle = arguments.get("subtitle", "")
     if not subtitle.strip():
         return [TextContent(type="text", text="Error: Subtitle cannot be empty")]
 
+    memory_index = context["memory_index"]
+    agent_group = context["agent_group"]
+
     if subtitle in memory_index:
         memory_content = memory_index[subtitle]
-        response_text = get_tool_response("recall", group_name=group_name, memory_content=memory_content)
+        response_text = get_tool_response("recall", group_name=agent_group, memory_content=memory_content)
     else:
         available = ", ".join(f"'{s}'" for s in memory_index.keys())
         response_text = f"Memory subtitle '{subtitle}' not found. Available: {available}"

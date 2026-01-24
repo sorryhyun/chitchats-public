@@ -49,7 +49,7 @@ install:
 
 run-backend:
 	@echo "Starting backend server..."
-	cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8001
+	cd backend && uv run uvicorn main:app --host 0.0.0.0 --port 8001
 
 run-frontend:
 	@echo "Starting frontend server..."

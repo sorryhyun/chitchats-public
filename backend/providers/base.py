@@ -13,6 +13,8 @@ Architecture:
     ParsedStreamMessage: Parsed result from stream messages
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -129,30 +131,30 @@ class AIClientOptions:
     @classmethod
     def from_context(
         cls,
-        context: "AgentResponseContext",
-        final_system_prompt: str,
-        provider_type: ProviderType,
-    ) -> "AIClientOptions":
+        context: AgentResponseContext,
+        system_prompt: str,
+        provider_type: ProviderType = ProviderType.CLAUDE,
+    ) -> AIClientOptions:
         """Create AIClientOptions from an AgentResponseContext.
 
         Args:
-            context: The agent response context containing all parameters
-            final_system_prompt: The processed system prompt to use
-            provider_type: The provider type (used to determine model)
+            context: The agent response context containing agent/room info
+            system_prompt: The final system prompt (with timestamp if applicable)
+            provider_type: The AI provider type (determines model selection)
 
         Returns:
-            AIClientOptions configured from the context
+            Configured AIClientOptions instance
         """
         # Determine model based on provider
+        from core import get_settings
+
+        settings = get_settings()
         model = ""
-        if provider_type == ProviderType.CODEX:
-            from core import get_settings
-            settings = get_settings()
-            if settings.codex_model:
-                model = settings.codex_model
+        if provider_type == ProviderType.CODEX and settings.codex_model:
+            model = settings.codex_model
 
         return cls(
-            system_prompt=final_system_prompt,
+            system_prompt=system_prompt,
             model=model,
             session_id=context.session_id,
             agent_name=context.agent_name,
@@ -161,6 +163,13 @@ class AIClientOptions:
             group_name=context.group_name,
             has_situation_builder=context.has_situation_builder,
             long_term_memory_index=context.config.long_term_memory_index,
+            mcp_tools={
+                "agent_name": context.agent_name,
+                "agent_group": context.group_name or "default",
+                "agent_id": context.agent_id,
+                "room_id": context.room_id,
+                "config_file": context.config.config_file,
+            },
         )
 
 

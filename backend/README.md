@@ -8,7 +8,7 @@ FastAPI + SQLAlchemy (async) + PostgreSQL backend for multi-agent chat orchestra
 make install && make dev    # From project root
 
 # Backend only
-cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8001
+cd backend && uv run uvicorn main:app --host 0.0.0.0 --port 8001
 
 # Tests
 uv run pytest --cov=backend

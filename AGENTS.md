@@ -22,7 +22,7 @@ make stop          # Stop all servers
 make clean         # Clean build artifacts
 
 # Backend only
-cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8001
+cd backend && uv run uvicorn main:app --host 0.0.0.0 --port 8001
 
 # Frontend only
 cd frontend && npm run dev

@@ -95,7 +95,7 @@ line-ending = "auto"
 
 [tool.poe.tasks]
 # Backend
-backend = { shell = "cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000", help = "Run backend dev server" }
+backend = { shell = "cd backend && uvicorn main:app --host 0.0.0.0 --port 8000", help = "Run backend dev server" }
 backend-prod = { shell = "cd backend && uvicorn main:app --host 0.0.0.0 --port 8000", help = "Run backend production server" }
 
 # Frontend
