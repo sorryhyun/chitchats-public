@@ -14,21 +14,20 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from providers.base import AIClient
-from providers.configs import CodexTurnConfig
+from providers.configs import CodexStartupConfig, CodexTurnConfig
 
-from .parser import AppServerStreamAccumulator, parse_streaming_event
+from .app_server_instance import CodexAppServerInstance
 from .app_server_pool import CodexAppServerPool
 from .constants import (
     AppServerMethod,
     SessionRecoveryError,
     agent_message,
-    content_delta,
     error,
     reasoning,
-    thinking_delta,
     thread_started,
     tool_call,
 )
+from .parser import AppServerStreamAccumulator
 
 logger = logging.getLogger("CodexAppServerClient")
 
@@ -37,30 +36,28 @@ logger = logging.getLogger("CodexAppServerClient")
 class CodexAppServerOptions:
     """Options for Codex App Server client.
 
-    These are per-turn options passed to the client. Static settings like
-    approval_policy and sandbox are handled by CodexStartupConfig at
-    app-server launch time.
-
     Attributes:
+        agent_key: Unique identifier for the agent (e.g., "room_1_agent_5")
+        startup_config: Configuration for app-server startup (includes MCP servers)
         system_prompt: System prompt (passed as developer_instructions in config)
         model: Model to use (optional)
         thread_id: Thread ID for continuing a conversation
-        mcp_servers: Dict of MCP server configurations to pass to Codex
         cwd: Working directory for the session
     """
 
+    agent_key: str = ""
+    startup_config: CodexStartupConfig = field(default_factory=CodexStartupConfig)
     system_prompt: str = ""
     model: Optional[str] = None
     thread_id: Optional[str] = None
-    mcp_servers: Dict[str, Any] = field(default_factory=dict)
     cwd: Optional[str] = None
 
 
 class CodexAppServerClient(AIClient):
     """Codex App Server client implementing AIClient interface.
 
-    This client uses the CodexAppServerPool to communicate with Codex
-    via the JSON-RPC protocol, providing streaming responses.
+    This client uses the CodexAppServerPool to get a per-agent instance
+    and communicates with Codex via JSON-RPC protocol, providing streaming responses.
 
     Usage:
         client = CodexAppServerClient(options)
@@ -78,18 +75,24 @@ class CodexAppServerClient(AIClient):
         self._pending_input_items: Optional[List[Dict[str, Any]]] = None
         self._thread_id: Optional[str] = options.thread_id
         self._pool: Optional[CodexAppServerPool] = None
+        self._instance: Optional[CodexAppServerInstance] = None
         self._interrupt_requested = False
         self._current_turn_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> None:
-        """Initialize the client by getting the App Server pool.
+        """Initialize the client by getting the App Server pool and instance.
 
-        The actual server connections are managed by the singleton pool.
+        Gets or creates a dedicated app-server instance for this agent
+        with MCP configurations baked in at startup.
         """
         self._pool = await CodexAppServerPool.get_instance()
-        await self._pool.ensure_started()
+        # Get or create instance for this agent
+        self._instance = await self._pool.get_or_create_instance(
+            agent_key=self._options.agent_key,
+            startup_config=self._options.startup_config,
+        )
         self._connected = True
-        logger.debug("CodexAppServerClient connected to App Server pool")
+        logger.debug(f"CodexAppServerClient connected to instance for {self._options.agent_key}")
 
     async def disconnect(self) -> None:
         """Disconnect the client.
@@ -205,8 +208,8 @@ class CodexAppServerClient(AIClient):
         if self._pending_input_items is None:
             raise RuntimeError("No pending input items. Call query() first.")
 
-        if self._pool is None:
-            raise RuntimeError("App Server pool not initialized")
+        if self._instance is None:
+            raise RuntimeError("App Server instance not initialized")
 
         input_items = self._pending_input_items
         self._pending_input_items = None
@@ -228,10 +231,9 @@ class CodexAppServerClient(AIClient):
         )
 
         try:
-            # Create thread if needed
-            if not self._thread_id:
-                self._thread_id = await self._pool.create_thread(config)
-                yield thread_started(self._thread_id)  # thread_id is guaranteed non-None here
+            # Ensure we have a valid instance and thread (recovers/creates/resumes as needed)
+            async for event in self._ensure_valid_instance_and_thread(config):
+                yield event
 
             # Ensure we have a valid thread_id at this point
             thread_id = self._thread_id
@@ -242,9 +244,9 @@ class CodexAppServerClient(AIClient):
             accumulator = AppServerStreamAccumulator()
 
             # Stream turn events
-            async for event in self._pool.start_turn(thread_id, input_items, config):
+            async for event in self._instance.start_turn(thread_id, input_items, config):
                 if self._interrupt_requested:
-                    await self._pool.interrupt_turn(thread_id)
+                    await self._instance.interrupt_turn(thread_id)
                     break
 
                 # Check for JSON-RPC format (method field)
@@ -255,17 +257,13 @@ class CodexAppServerClient(AIClient):
                     if method == AppServerMethod.TURN_STARTED:
                         pass
                     elif method == AppServerMethod.AGENT_MESSAGE_DELTA:
-                        delta_text = params.get("delta", "")
-                        if delta_text:
-                            accumulator.add_text(delta_text)
-                            self._streamed_content = True
-                            yield content_delta(delta_text)
+                        delta = params.get("delta", "")
+                        if delta:
+                            yield agent_message(delta)  # Stream immediately
                     elif method == AppServerMethod.REASONING_DELTA:
-                        delta_text = params.get("delta", "")
-                        if delta_text:
-                            accumulator.add_reasoning(delta_text)
-                            self._streamed_reasoning = True
-                            yield thinking_delta(delta_text)
+                        delta = params.get("delta", "")
+                        if delta:
+                            yield reasoning(delta)  # Stream immediately
                     elif method == AppServerMethod.ITEM_COMPLETED:
                         item = params.get("item", {})
                         item_type = item.get("type", "")
@@ -280,30 +278,10 @@ class CodexAppServerClient(AIClient):
                             error_info = params.get("codexErrorInfo", {})
                             error_msg = error_info.get("message", "Turn failed")
                             yield error(error_msg)
-                else:
-                    # Handle streaming format (type/payload)
-                    parsed = parse_streaming_event(event)
-                    accumulator.add_event(parsed)
-
-                    # Handle tool calls from streaming format
-                    if parsed.tool_calls:
-                        for tc in parsed.tool_calls:
-                            yield tool_call(tc.get("name", ""), tc.get("input", {}))
 
                 # Check if completed
                 if accumulator.is_completed:
                     break
-
-            # Emit accumulated content only if we didn't stream it
-            # (streaming via deltas already sent the content incrementally)
-            if accumulator.accumulated_text and not getattr(self, '_streamed_content', False):
-                yield agent_message(accumulator.accumulated_text)
-            if accumulator.accumulated_reasoning and not getattr(self, '_streamed_reasoning', False):
-                yield reasoning(accumulator.accumulated_reasoning)
-
-            # Reset streaming flags for next turn
-            self._streamed_content = False
-            self._streamed_reasoning = False
 
         except SessionRecoveryError:
             # Let this propagate up to ResponseGenerator for retry with full history
@@ -314,19 +292,76 @@ class CodexAppServerClient(AIClient):
             yield error(str(e))
 
     def _build_config(self) -> CodexTurnConfig:
-        """Build the CodexTurnConfig for the turn."""
+        """Build the CodexTurnConfig for the turn.
+
+        Note: MCP servers are now configured at app-server startup via
+        startup_config, not passed per-turn.
+        """
         return CodexTurnConfig(
             developer_instructions=self._options.system_prompt,
             model=self._options.model,
-            mcp_servers=self._options.mcp_servers,
             cwd=self._options.cwd,
         )
+
+    async def _ensure_valid_instance_and_thread(self, config: CodexTurnConfig) -> AsyncIterator[Dict[str, Any]]:
+        """Ensure we have a valid instance and thread, recovering as needed.
+
+        This consolidated method handles:
+        1. Instance health check and recovery
+        2. Thread creation or resume
+
+        Yields:
+            thread_started event if a new thread was created
+
+        After this method returns:
+        - self._instance is guaranteed to be healthy
+        - self._thread_id is guaranteed to be set
+        """
+        # Step 1: Ensure healthy instance
+        if self._instance is None:
+            raise RuntimeError("App Server instance not initialized")
+
+        if not self._instance.is_healthy:
+            logger.info(
+                f"Instance for {self._options.agent_key} is no longer healthy, " "getting fresh instance from pool"
+            )
+            if self._pool is None:
+                raise RuntimeError("Pool not available for instance refresh")
+
+            self._instance = await self._pool.get_or_create_instance(
+                agent_key=self._options.agent_key,
+                startup_config=self._options.startup_config,
+            )
+            # Clear thread ownership since we have a new instance
+            # Thread will be resumed or recreated below
+
+        # Step 2: Ensure valid thread
+        if not self._thread_id:
+            # No thread - create a new one
+            self._thread_id = await self._instance.create_thread(config)
+            if self._pool:
+                self._pool.register_thread(self._thread_id, self._options.agent_key)
+            yield thread_started(self._thread_id)
+
+        elif not self._instance.owns_thread(self._thread_id):
+            # Thread exists but instance doesn't own it (e.g., after restart/recovery)
+            logger.info(f"Instance doesn't own thread {self._thread_id}, attempting resume")
+            resumed = await self._instance.resume_thread(self._thread_id, config)
+            if resumed:
+                logger.info(f"Successfully resumed thread {self._thread_id}")
+            else:
+                # Resume failed - create a new thread
+                logger.info(f"Could not resume thread {self._thread_id}, creating new thread")
+                self._thread_id = await self._instance.create_thread(config)
+                if self._pool:
+                    self._pool.register_thread(self._thread_id, self._options.agent_key)
+                yield thread_started(self._thread_id)
 
     async def interrupt(self) -> None:
         """Interrupt the current response."""
         self._interrupt_requested = True
-        if self._thread_id and self._pool:
-            await self._pool.interrupt_turn(self._thread_id)
+        if self._thread_id and self._instance:
+            await self._instance.interrupt_turn(self._thread_id)
             logger.info("Interrupted App Server response")
 
     @property

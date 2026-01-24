@@ -12,14 +12,15 @@ Unlike the MCP server, the App Server:
 """
 
 import asyncio
-import json
 import logging
-import os
 import shutil
+import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTurnConfig
+
 from .constants import AppServerMethod, map_approval_policy, map_sandbox
+from .transport import JsonRpcTransport
 from .windows_support import get_bundled_codex_path
 
 logger = logging.getLogger("CodexAppServerInstance")
@@ -29,6 +30,7 @@ class CodexAppServerInstance:
     """Single Codex App Server instance.
 
     Manages one `codex app-server` subprocess with JSON-RPC 2.0 communication.
+    Uses JsonRpcTransport for low-level message handling.
 
     Usage:
         instance = CodexAppServerInstance(instance_id=0)
@@ -43,27 +45,27 @@ class CodexAppServerInstance:
         self,
         instance_id: int,
         startup_config: Optional[CodexStartupConfig] = None,
+        agent_key: Optional[str] = None,
     ):
         """Initialize an app server instance.
 
         Args:
             instance_id: Unique identifier for this instance (0, 1, 2, ...)
             startup_config: Static configuration for app-server launch (uses default if None)
+            agent_key: Identifier for the agent this instance serves (for per-agent instances)
         """
         self._instance_id = instance_id
         self._startup_config = startup_config or DEFAULT_CODEX_CONFIG
-        self._process: Optional[asyncio.subprocess.Process] = None
-        self._started = False
-        self._healthy = True
-        self._request_lock = asyncio.Lock()
-        self._request_id = 0
-        self._pending_requests: Dict[int, asyncio.Future] = {}
+        self._agent_key = agent_key
+
+        self._transport: Optional[JsonRpcTransport] = None
         self._active_threads: Set[str] = set()
-        self._reader_task: Optional[asyncio.Task] = None
         self._current_turn_id: Optional[str] = None
-        # Notification queue for the currently active turn on this instance
-        # Only one turn can be active at a time per instance
         self._notification_queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
+
+        # Track last activity time for idle timeout
+        self._last_activity: float = time.monotonic()
+        self._created_at: float = time.monotonic()
 
     @property
     def instance_id(self) -> int:
@@ -73,12 +75,12 @@ class CodexAppServerInstance:
     @property
     def is_started(self) -> bool:
         """Check if the server is started."""
-        return self._started
+        return self._transport is not None and self._transport.is_started
 
     @property
     def is_healthy(self) -> bool:
         """Check if the server is healthy."""
-        return self._healthy and self._started
+        return self._transport is not None and self._transport.is_healthy
 
     @property
     def active_thread_count(self) -> int:
@@ -89,6 +91,40 @@ class CodexAppServerInstance:
     def active_threads(self) -> Set[str]:
         """Get the set of active thread IDs."""
         return self._active_threads.copy()
+
+    @property
+    def agent_key(self) -> Optional[str]:
+        """Get the agent key this instance serves."""
+        return self._agent_key
+
+    @property
+    def last_activity(self) -> float:
+        """Get the last activity timestamp (monotonic)."""
+        return self._last_activity
+
+    @property
+    def idle_seconds(self) -> float:
+        """Get seconds since last activity."""
+        return time.monotonic() - self._last_activity
+
+    @property
+    def process_pid(self) -> Optional[int]:
+        """Get the process PID if running."""
+        if self._transport and self._transport.process:
+            return self._transport.process.pid
+        return None
+
+    def kill(self) -> None:
+        """Forcefully kill the subprocess (sync, for emergency cleanup)."""
+        if self._transport and self._transport.process:
+            try:
+                self._transport.process.kill()
+            except ProcessLookupError:
+                pass
+
+    def touch(self) -> None:
+        """Update last activity timestamp."""
+        self._last_activity = time.monotonic()
 
     def owns_thread(self, thread_id: str) -> bool:
         """Check if this instance owns a thread."""
@@ -107,9 +143,17 @@ class CodexAppServerInstance:
             return True
         return False
 
+    async def _handle_notification(self, message: Dict[str, Any]) -> None:
+        """Handle notifications from the transport.
+
+        Routes notifications to the active turn's queue.
+        """
+        if self._notification_queue is not None:
+            await self._notification_queue.put(message)
+
     async def start(self) -> None:
         """Start the Codex App Server process and initialize connection."""
-        if self._started:
+        if self.is_started:
             return
 
         # Prefer bundled Rust binary over npm-installed version (Windows support)
@@ -119,40 +163,33 @@ class CodexAppServerInstance:
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
-        # Build CLI args from startup config
+        # Build command with CLI args from startup config
         cli_args = self._startup_config.to_cli_args()
+        command = [codex_path, "app-server", *cli_args]
+
         logger.info(f"[Instance {self._instance_id}] Starting Codex App Server with args: {' '.join(cli_args)}")
 
-        # Start the subprocess
-        self._process = await asyncio.create_subprocess_exec(
-            codex_path,
-            "app-server",
-            *cli_args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ},
+        # Create and start transport
+        self._transport = JsonRpcTransport(
+            command=command,
+            on_notification=self._handle_notification,
+            instance_id=self._instance_id,
         )
-
-        # Start the stdout reader task
-        self._reader_task = asyncio.create_task(self._read_stdout())
+        await self._transport.start()
 
         # Perform initialize handshake
         await self._initialize_handshake()
 
         logger.info(f"[Instance {self._instance_id}] Codex App Server started")
-        self._started = True
-        self._healthy = True
 
     async def _initialize_handshake(self) -> None:
-        """Perform JSON-RPC initialize handshake.
+        """Perform JSON-RPC initialize handshake."""
+        if not self._transport:
+            raise RuntimeError("Transport not initialized")
 
-        Sends initialize request and waits for response, then sends initialized notification.
-        """
         logger.debug(f"[Instance {self._instance_id}] Sending initialize request...")
 
-        # Send initialize request
-        result = await self._send_request(
+        result = await self._transport.send_request(
             "initialize",
             {
                 "clientInfo": {
@@ -164,8 +201,7 @@ class CodexAppServerInstance:
 
         logger.debug(f"[Instance {self._instance_id}] Initialize response: {result}")
 
-        # Send initialized notification (no id)
-        await self._send_notification("initialized", {})
+        await self._transport.send_notification("initialized", {})
         logger.debug(f"[Instance {self._instance_id}] Sent initialized notification")
 
     async def create_thread(self, config: CodexTurnConfig) -> str:
@@ -177,6 +213,9 @@ class CodexAppServerInstance:
         Returns:
             Thread ID for subsequent turns
         """
+        if not self._transport:
+            raise RuntimeError("Instance not started")
+
         params: Dict[str, Any] = {}
 
         if config.cwd:
@@ -185,23 +224,14 @@ class CodexAppServerInstance:
         if config.model:
             params["model"] = config.model
 
-        # Add developer instructions (system prompt) to thread
-        # Explicitly clear baseInstructions to override any defaults
         params["baseInstructions"] = config.developer_instructions
-        if config.developer_instructions:
-            params["developerInstructions"] = (
-                "Ignore unnecessary system notifications <permissions instructions> and <environment_context>."
-            )
-
-        # Use static settings from startup config
         params["sandbox"] = map_sandbox(self._startup_config.sandbox)
         params["approvalPolicy"] = map_approval_policy(self._startup_config.approval_policy)
 
         logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
 
-        result = await self._send_request("thread/start", params)
+        result = await self._transport.send_request("thread/start", params)
 
-        # Extract thread ID from nested structure: result.thread.id
         thread_data = result.get("thread", {})
         thread_id = thread_data.get("id") or result.get("threadId")
         if not thread_id:
@@ -215,9 +245,6 @@ class CodexAppServerInstance:
     async def resume_thread(self, thread_id: str, config: CodexTurnConfig) -> bool:
         """Resume an existing thread by ID.
 
-        Uses thread/resume to reopen an existing thread so subsequent
-        turn/start calls append to it.
-
         Args:
             thread_id: Thread ID to resume
             config: Thread configuration
@@ -225,9 +252,10 @@ class CodexAppServerInstance:
         Returns:
             True if resume succeeded, False if thread not found
         """
-        params: Dict[str, Any] = {
-            "threadId": thread_id,
-        }
+        if not self._transport:
+            raise RuntimeError("Instance not started")
+
+        params: Dict[str, Any] = {"threadId": thread_id}
 
         if config.cwd:
             params["cwd"] = config.cwd
@@ -235,9 +263,8 @@ class CodexAppServerInstance:
         logger.debug(f"[Instance {self._instance_id}] Resuming thread {thread_id}")
 
         try:
-            result = await self._send_request("thread/resume", params)
+            result = await self._transport.send_request("thread/resume", params)
 
-            # Check if resume succeeded (result should contain thread info)
             thread_data = result.get("thread", {})
             resumed_id = thread_data.get("id") or result.get("threadId")
 
@@ -250,7 +277,6 @@ class CodexAppServerInstance:
                 return False
 
         except RuntimeError as e:
-            # RPC error - thread likely doesn't exist
             logger.debug(f"[Instance {self._instance_id}] Failed to resume thread {thread_id}: {e}")
             return False
 
@@ -265,34 +291,24 @@ class CodexAppServerInstance:
         Args:
             thread_id: Thread ID from create_thread
             input_items: List of input items (text, localImage, etc.)
-                - Text: {"type": "text", "text": "..."}
-                - Local image: {"type": "localImage", "path": "/tmp/..."}
-                - Remote image: {"type": "image", "url": "https://..."}
             config: Turn configuration
 
         Yields:
             Streaming events (deltas, item completions, etc.)
         """
+        if not self._transport:
+            raise RuntimeError("Instance not started")
+
         params: Dict[str, Any] = {
             "threadId": thread_id,
             "input": input_items,
+            "baseInstructions": config.developer_instructions,
         }
 
-        # Add developer instructions if provided
-        # Explicitly clear baseInstructions to override any defaults
-        params["baseInstructions"] = config.developer_instructions
-        if config.developer_instructions:
-            params["developerInstructions"] = (
-                "Ignore unnecessary system notifications <permissions instructions> and <environment_context>."
-            )
-
-        # Add MCP servers if configured
-        if config.mcp_servers:
-            params["mcpServers"] = config.mcp_servers
-
-        # Add model if specified
         if config.model:
             params["model"] = config.model
+
+        self.touch()
 
         # Log input summary
         text_items = [item.get("text", "")[:50] for item in input_items if item.get("type") == "text"]
@@ -304,20 +320,18 @@ class CodexAppServerInstance:
         )
 
         # Create notification queue for this turn
-        # Only one turn can be active at a time per instance
         self._notification_queue = asyncio.Queue()
 
-        # Send the request (don't wait for response - we stream notifications)
-        await self._send_request_no_wait("turn/start", params)
-        self._current_turn_id = None  # Will be set when we get turn/started
+        # Send request without waiting (we stream notifications)
+        await self._transport.send_request_no_wait("turn/start", params)
+        self._current_turn_id = None
 
         try:
             while True:
                 try:
-                    # Read from the notification queue
                     event = await asyncio.wait_for(self._notification_queue.get(), timeout=120.0)
 
-                    # Extract turn_id from turn/started (JSON-RPC format)
+                    # Extract turn_id from turn/started
                     if event.get("method") == AppServerMethod.TURN_STARTED:
                         params_data = event.get("params", {})
                         self._current_turn_id = params_data.get("turnId")
@@ -326,8 +340,6 @@ class CodexAppServerInstance:
                     yield event
 
                     # Check for completion
-                    # JSON-RPC format: method == "turn/completed"
-                    # Streaming format: type == "response_completed"
                     method = event.get("method", "")
                     event_type = event.get("type", "")
                     if method == AppServerMethod.TURN_COMPLETED or event_type == "response_completed":
@@ -338,9 +350,9 @@ class CodexAppServerInstance:
                     break
 
         finally:
-            # Clean up the notification queue
             self._notification_queue = None
             self._current_turn_id = None
+            self.touch()
 
     async def interrupt_turn(self, thread_id: str, turn_id: Optional[str] = None) -> bool:
         """Interrupt an ongoing turn.
@@ -352,6 +364,9 @@ class CodexAppServerInstance:
         Returns:
             True if interrupt was successful
         """
+        if not self._transport:
+            return False
+
         turn_id = turn_id or self._current_turn_id
         if not turn_id:
             logger.warning(f"[Instance {self._instance_id}] No turn to interrupt")
@@ -360,212 +375,30 @@ class CodexAppServerInstance:
         logger.info(f"[Instance {self._instance_id}] Interrupting turn {turn_id}")
 
         try:
-            await self._send_request(
+            await self._transport.send_request(
                 "turn/interrupt",
-                {
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                },
+                {"threadId": thread_id, "turnId": turn_id},
             )
             return True
         except Exception as e:
             logger.error(f"[Instance {self._instance_id}] Interrupt failed: {e}")
             return False
 
-    async def _send_request(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Send a JSON-RPC request and wait for response.
-
-        Args:
-            method: RPC method name
-            params: Request parameters
-
-        Returns:
-            Response result
-        """
-        async with self._request_lock:
-            self._request_id += 1
-            request_id = self._request_id
-
-            message = {
-                "method": method,
-                "id": request_id,
-                "params": params,
-            }
-
-            # Create future for response
-            future: asyncio.Future[Dict[str, Any]] = asyncio.Future()
-            self._pending_requests[request_id] = future
-
-            # Send message
-            await self._write_message(message)
-
-            try:
-                result = await asyncio.wait_for(future, timeout=30.0)
-                return result
-            except asyncio.TimeoutError:
-                self._pending_requests.pop(request_id, None)
-                raise TimeoutError(f"Request {method} timed out")
-            finally:
-                self._pending_requests.pop(request_id, None)
-
-    async def _send_request_no_wait(self, method: str, params: Dict[str, Any]) -> int:
-        """Send a JSON-RPC request without waiting for response.
-
-        Used for turn/start where we stream notifications instead.
-
-        Args:
-            method: RPC method name
-            params: Request parameters
-
-        Returns:
-            Request ID
-        """
-        self._request_id += 1
-        request_id = self._request_id
-
-        message = {
-            "method": method,
-            "id": request_id,
-            "params": params,
-        }
-
-        await self._write_message(message)
-        return request_id
-
-    async def _send_notification(self, method: str, params: Dict[str, Any]) -> None:
-        """Send a JSON-RPC notification (no id, no response expected).
-
-        Args:
-            method: RPC method name
-            params: Notification parameters
-        """
-        message = {
-            "method": method,
-            "params": params,
-        }
-        await self._write_message(message)
-
-    async def _write_message(self, message: Dict[str, Any]) -> None:
-        """Write a JSON-RPC message to stdin."""
-        if not self._process or not self._process.stdin:
-            raise RuntimeError("Process not started or stdin not available")
-
-        line = json.dumps(message) + "\n"
-        self._process.stdin.write(line.encode())
-        await self._process.stdin.drain()
-        logger.debug(f"[Instance {self._instance_id}] Sent: {line.strip()}")
-
-    async def _read_stdout(self) -> None:
-        """Read and process messages from stdout.
-
-        Uses manual buffering to handle large messages (e.g., base64 images)
-        that exceed the default readline() buffer limit of 64KB.
-        """
-        if not self._process or not self._process.stdout:
-            return
-
-        buffer = b""
-        chunk_size = 1024 * 1024  # 1MB chunks
-
-        try:
-            while True:
-                # Read a chunk
-                chunk = await self._process.stdout.read(chunk_size)
-                if not chunk:
-                    logger.warning(f"[Instance {self._instance_id}] stdout closed")
-                    self._healthy = False
-                    break
-
-                buffer += chunk
-
-                # Process complete lines
-                while b"\n" in buffer:
-                    line, buffer = buffer.split(b"\n", 1)
-                    line_str = line.decode().strip()
-                    if not line_str:
-                        continue
-
-                    try:
-                        message = json.loads(line_str)
-                        await self._handle_message(message)
-                    except json.JSONDecodeError as e:
-                        logger.warning(f"[Instance {self._instance_id}] Invalid JSON: {e}")
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"[Instance {self._instance_id}] Reader error: {e}")
-            self._healthy = False
-
-    async def _handle_message(self, message: Dict[str, Any]) -> None:
-        """Handle a received JSON-RPC message.
-
-        Args:
-            message: Parsed JSON message
-        """
-        # Check if this is a response (has 'id' and 'result' or 'error')
-        if "id" in message and ("result" in message or "error" in message):
-            request_id = message["id"]
-            future = self._pending_requests.get(request_id)
-            if future and not future.done():
-                if "error" in message:
-                    error = message["error"]
-                    future.set_exception(RuntimeError(f"RPC error: {error}"))
-                else:
-                    future.set_result(message.get("result", {}))
-            return
-
-        # This is a notification - can be JSON-RPC format or streaming format
-        # JSON-RPC format: {"method": "...", "params": {...}}
-        # Streaming format: {"timestamp": "...", "type": "...", "payload": {...}}
-        if "method" in message or "type" in message:
-            # Route notification to the active turn's queue
-            if self._notification_queue is not None:
-                await self._notification_queue.put(message)
-
     async def restart(self) -> None:
         """Restart the app server after a failure."""
         logger.info(f"[Instance {self._instance_id}] Restarting Codex App Server...")
-        await self._cleanup()
-        self._started = False
-        self._healthy = False
+        await self.shutdown()
         await self.start()
-
-    async def _cleanup(self) -> None:
-        """Clean up server resources."""
-        if self._reader_task and not self._reader_task.done():
-            self._reader_task.cancel()
-            try:
-                await self._reader_task
-            except asyncio.CancelledError:
-                pass
-            self._reader_task = None
-
-        if self._process:
-            try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                self._process.kill()
-                await self._process.wait()
-            except Exception as e:
-                logger.warning(f"[Instance {self._instance_id}] Error terminating process: {e}")
-            self._process = None
-
-        # Clear pending requests
-        for future in self._pending_requests.values():
-            if not future.done():
-                future.cancel()
-        self._pending_requests.clear()
-
-        # Clear notification queue
-        self._notification_queue = None
 
     async def shutdown(self) -> None:
         """Gracefully shutdown the app server."""
         logger.info(f"[Instance {self._instance_id}] Shutting down...")
-        await self._cleanup()
-        self._started = False
-        self._healthy = False
+
+        if self._transport:
+            await self._transport.shutdown()
+            self._transport = None
+
+        self._notification_queue = None
         self._active_threads.clear()
+
         logger.info(f"[Instance {self._instance_id}] Shutdown complete")

@@ -1,56 +1,58 @@
 """
 Codex App Server pool manager.
 
-This module provides the CodexAppServerPool class that manages multiple
-`codex app-server` processes for parallel request processing with
-thread ID affinity routing.
+This module provides the CodexAppServerPool class that manages per-agent
+`codex app-server` processes with idle timeout and instance limits.
 
 Architecture:
-    - Pool of N server instances (configurable via CODEX_POOL_SIZE)
-    - Thread ID affinity: follow-up messages route to the same instance
-    - Different agents (different thread_ids) can run in parallel on different instances
-    - Selection strategies: round_robin (default), least_busy
-    - Automatic recovery from instance failures
+    - Per-agent instances: each agent gets a dedicated app-server with MCP configs
+    - Lazy creation: instances are spawned on first interaction
+    - Idle timeout: instances are terminated after CODEX_IDLE_TIMEOUT seconds
+    - Max instances: limited by CODEX_MAX_INSTANCES, oldest idle evicted when exceeded
+    - Thread resume: threads can be resumed even after instance restart
 """
 
 import asyncio
 import logging
 import os
-from enum import Enum
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from .app_server_instance import AppServerConfig, CodexAppServerInstance
+from providers.configs import CodexStartupConfig, CodexTurnConfig
+
+from .app_server_instance import CodexAppServerInstance
+from .thread_manager import ThreadSessionManager
 
 logger = logging.getLogger("CodexAppServerPool")
 
-
-class SelectionStrategy(Enum):
-    """Strategy for selecting a server instance for new conversations."""
-
-    ROUND_ROBIN = "round_robin"
-    LEAST_BUSY = "least_busy"
+# Default configuration
+DEFAULT_MAX_INSTANCES = 10
+DEFAULT_IDLE_TIMEOUT = 600  # seconds (10 minutes - suitable for interactive chat)
+DEFAULT_CLEANUP_INTERVAL = 60  # seconds
 
 
 class CodexAppServerPool:
-    """Pool manager for multiple Codex App Server instances.
+    """Pool manager for per-agent Codex App Server instances.
 
-    Manages a pool of server instances with thread ID affinity routing.
-    Each agent gets its own thread_id, and follow-up messages are routed
-    to the same instance that started the conversation.
+    Each agent gets a dedicated app-server instance with agent-specific
+    MCP configurations baked in at startup via -c flags.
 
-    This enables parallelism: different agents (with different thread_ids)
-    can be processed simultaneously on different server instances.
+    Features:
+        - Lazy instance creation on first agent interaction
+        - Idle timeout: instances terminated after inactivity
+        - Max instances limit with LRU eviction
+        - Thread resume support across instance restarts
 
     Usage:
         pool = await CodexAppServerPool.get_instance()
-        await pool.ensure_started()
-        # New conversation - gets assigned to an instance
-        thread_id = await pool.create_thread(config)
-        # Stream turn events
-        async for event in pool.start_turn(thread_id, "Hello!", config):
+
+        # Get or create instance for agent
+        instance = await pool.get_or_create_instance(agent_key, startup_config)
+
+        # Create thread and start turns
+        thread_id = await instance.create_thread(turn_config)
+        async for event in instance.start_turn(thread_id, items, turn_config):
             # Handle events
-        # When agent session ends
-        pool.release_thread(thread_id)
+
         # At shutdown
         await pool.shutdown()
     """
@@ -61,22 +63,23 @@ class CodexAppServerPool:
     def __init__(self):
         """Initialize the pool (use get_instance() instead)."""
         # Configuration from environment
-        self._pool_size = int(os.environ.get("CODEX_POOL_SIZE", "3"))
-        strategy_name = os.environ.get("CODEX_SELECTION_STRATEGY", "round_robin")
-        self._selection_strategy = SelectionStrategy(strategy_name)
+        self._max_instances = int(os.environ.get("CODEX_MAX_INSTANCES", str(DEFAULT_MAX_INSTANCES)))
+        self._idle_timeout = float(os.environ.get("CODEX_IDLE_TIMEOUT", str(DEFAULT_IDLE_TIMEOUT)))
+        self._cleanup_interval = float(os.environ.get("CODEX_CLEANUP_INTERVAL", str(DEFAULT_CLEANUP_INTERVAL)))
 
-        # Server instances
-        self._instances: List[CodexAppServerInstance] = []
+        # Per-agent instances: agent_key -> instance
+        self._instances: Dict[str, CodexAppServerInstance] = {}
+        self._instances_lock = asyncio.Lock()
 
-        # Thread affinity mapping: thread_id -> instance_index
-        self._thread_affinity: Dict[str, int] = {}
-        self._affinity_lock = asyncio.Lock()
+        # Thread session management (centralized)
+        self._thread_manager = ThreadSessionManager()
 
-        # Round-robin counter
-        self._round_robin_counter = 0
-        self._counter_lock = asyncio.Lock()
+        # Instance counter for unique IDs
+        self._instance_counter = 0
 
-        self._started = False
+        # Cleanup task
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._shutdown_event = asyncio.Event()
 
     @classmethod
     async def get_instance(cls) -> "CodexAppServerPool":
@@ -88,6 +91,7 @@ class CodexAppServerPool:
         async with cls._lock:
             if cls._instance is None:
                 cls._instance = CodexAppServerPool()
+                cls._instance._start_cleanup_task()
             return cls._instance
 
     @classmethod
@@ -98,102 +102,126 @@ class CodexAppServerPool:
                 await cls._instance.shutdown()
                 cls._instance = None
 
-    async def ensure_started(self) -> None:
-        """Ensure the pool is started with all instances.
+    def _start_cleanup_task(self) -> None:
+        """Start the background cleanup task."""
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            logger.debug("Started cleanup task")
 
-        This method is idempotent - calling it multiple times
-        will only start the pool once.
+    async def _cleanup_loop(self) -> None:
+        """Background loop that cleans up idle instances."""
+        while not self._shutdown_event.is_set():
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._cleanup_interval)
+                # Shutdown event was set
+                break
+            except asyncio.TimeoutError:
+                # Normal timeout - run cleanup
+                try:
+                    await self._cleanup_idle_instances()
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.debug(f"Cleanup error (ignoring): {e}")
+            except asyncio.CancelledError:
+                break
+
+    async def _cleanup_idle_instances(self) -> None:
+        """Terminate instances that have been idle too long."""
+        if self._shutdown_event.is_set():
+            return  # Don't cleanup during shutdown
+
+        async with self._instances_lock:
+            idle_keys = []
+
+            for agent_key, instance in self._instances.items():
+                if instance.idle_seconds > self._idle_timeout:
+                    idle_keys.append(agent_key)
+
+            for agent_key in idle_keys:
+                instance = self._instances.pop(agent_key)
+                logger.info(
+                    f"Terminating idle instance for {agent_key} "
+                    f"(idle {instance.idle_seconds:.1f}s > {self._idle_timeout}s)"
+                )
+                try:
+                    await instance.shutdown()
+                except Exception as e:
+                    logger.debug(f"Error shutting down instance {agent_key}: {e}")
+
+            if idle_keys:
+                logger.info(f"Cleaned up {len(idle_keys)} idle instances")
+
+    async def _evict_if_needed(self) -> None:
+        """Evict oldest idle instance if at max capacity.
+
+        Must be called with _instances_lock held.
         """
-        if self._started:
+        if len(self._instances) < self._max_instances:
             return
 
-        async with self._lock:
-            if self._started:
-                return
+        # Find the instance with oldest last_activity (most idle)
+        oldest_key = None
+        oldest_time = float("inf")
 
-            await self._start_pool()
+        for agent_key, instance in self._instances.items():
+            if instance.last_activity < oldest_time:
+                oldest_time = instance.last_activity
+                oldest_key = agent_key
 
-    async def _start_pool(self) -> None:
-        """Start all server instances in the pool."""
-        logger.info(f"Starting Codex App Server pool ({self._pool_size} instances)...")
+        if oldest_key:
+            instance = self._instances.pop(oldest_key)
+            logger.info(f"Evicting instance for {oldest_key} to make room " f"(idle {instance.idle_seconds:.1f}s)")
+            await instance.shutdown()
 
-        # Create instances
-        self._instances = [
-            CodexAppServerInstance(instance_id=i)
-            for i in range(self._pool_size)
-        ]
+    async def get_or_create_instance(
+        self,
+        agent_key: str,
+        startup_config: CodexStartupConfig,
+    ) -> CodexAppServerInstance:
+        """Get existing instance or create new one for agent.
 
-        # Start all instances concurrently
-        start_tasks = [instance.start() for instance in self._instances]
-        results = await asyncio.gather(*start_tasks, return_exceptions=True)
-
-        # Check for partial failures
-        healthy_count = 0
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Failed to start instance {i}: {result}")
-            else:
-                healthy_count += 1
-
-        if healthy_count == 0:
-            raise RuntimeError("All Codex App Server instances failed to start")
-
-        if healthy_count < self._pool_size:
-            logger.warning(
-                f"Codex App Server pool started with reduced capacity: "
-                f"{healthy_count}/{self._pool_size} instances"
-            )
-        else:
-            logger.info(f"Codex App Server pool started ({self._pool_size} instances)")
-
-        self._started = True
-
-    async def _select_instance_for_new_conversation(self) -> CodexAppServerInstance:
-        """Select an instance for a new conversation.
+        Args:
+            agent_key: Unique identifier for the agent (e.g., "room_1_agent_5")
+            startup_config: Configuration with MCP servers for this agent
 
         Returns:
-            Selected healthy instance
-
-        Raises:
-            RuntimeError: If no healthy instances available
+            Running CodexAppServerInstance for the agent
         """
-        healthy_instances = [i for i in self._instances if i.is_healthy]
-        if not healthy_instances:
-            # Try to restart unhealthy instances
-            await self._recover_unhealthy_instances()
-            healthy_instances = [i for i in self._instances if i.is_healthy]
-            if not healthy_instances:
-                raise RuntimeError("No healthy Codex App Server instances available")
+        async with self._instances_lock:
+            # Return existing instance if available and healthy
+            if agent_key in self._instances:
+                instance = self._instances[agent_key]
+                if instance.is_healthy:
+                    instance.touch()
+                    return instance
+                else:
+                    # Unhealthy - remove and recreate
+                    logger.warning(f"Instance for {agent_key} is unhealthy, recreating")
+                    await instance.shutdown()
+                    del self._instances[agent_key]
 
-        if self._selection_strategy == SelectionStrategy.LEAST_BUSY:
-            # Select instance with fewest active threads
-            selected = min(healthy_instances, key=lambda i: i.active_thread_count)
-        else:
-            # Round-robin selection
-            async with self._counter_lock:
-                selected_idx = self._round_robin_counter % len(healthy_instances)
-                self._round_robin_counter += 1
-            selected = healthy_instances[selected_idx]
+            # Evict if at capacity
+            await self._evict_if_needed()
 
-        return selected
+            # Create new instance
+            self._instance_counter += 1
+            instance = CodexAppServerInstance(
+                instance_id=self._instance_counter,
+                startup_config=startup_config,
+                agent_key=agent_key,
+            )
 
-    async def _recover_unhealthy_instances(self) -> None:
-        """Attempt to restart unhealthy instances."""
-        unhealthy = [i for i in self._instances if not i.is_healthy]
-        if not unhealthy:
-            return
+            logger.info(f"Creating new instance {self._instance_counter} for {agent_key}")
+            await instance.start()
 
-        logger.info(f"Attempting to recover {len(unhealthy)} unhealthy instances...")
-        restart_tasks = [instance.restart() for instance in unhealthy]
-        results = await asyncio.gather(*restart_tasks, return_exceptions=True)
+            self._instances[agent_key] = instance
+            return instance
 
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Failed to recover instance {unhealthy[i].instance_id}: {result}")
-            else:
-                logger.info(f"Recovered instance {unhealthy[i].instance_id}")
-
-    async def _get_instance_for_thread(self, thread_id: str) -> Optional[CodexAppServerInstance]:
+    async def get_instance_for_thread(
+        self,
+        thread_id: str,
+    ) -> Optional[CodexAppServerInstance]:
         """Get the instance that owns a thread.
 
         Args:
@@ -202,105 +230,67 @@ class CodexAppServerPool:
         Returns:
             The owning instance, or None if not found
         """
-        async with self._affinity_lock:
-            instance_idx = self._thread_affinity.get(thread_id)
-            if instance_idx is not None and instance_idx < len(self._instances):
-                return self._instances[instance_idx]
-        return None
+        agent_key = self._thread_manager.get_agent_for_thread(thread_id)
 
-    async def _register_thread_affinity(
+        if agent_key is None:
+            return None
+
+        async with self._instances_lock:
+            return self._instances.get(agent_key)
+
+    def register_thread(
         self,
         thread_id: str,
-        instance: CodexAppServerInstance,
+        agent_key: str,
+        instance_id: Optional[int] = None,
     ) -> None:
-        """Register thread ID to instance mapping.
+        """Register a thread to agent mapping.
 
         Args:
             thread_id: The thread ID
-            instance: The instance that owns this thread
+            agent_key: The agent key that owns this thread
+            instance_id: Optional instance ID that created the thread
         """
-        async with self._affinity_lock:
-            self._thread_affinity[thread_id] = instance.instance_id
-        instance.register_thread(thread_id)
-        logger.debug(f"Registered thread {thread_id} -> instance {instance.instance_id}")
+        self._thread_manager.register_thread(thread_id, agent_key, instance_id)
 
-    async def create_thread(self, config: AppServerConfig) -> str:
-        """Create a new thread via the pool.
-
-        Selects an instance and creates a thread on it.
-
-        Args:
-            config: Thread configuration
-
-        Returns:
-            Thread ID for subsequent turns
-        """
-        await self.ensure_started()
-
-        instance = await self._select_instance_for_new_conversation()
-        thread_id = await instance.create_thread(config)
-
-        await self._register_thread_affinity(thread_id, instance)
-
-        return thread_id
-
-    async def start_turn(
+    async def try_resume_thread(
         self,
         thread_id: str,
-        input_items: List[Dict[str, Any]],
-        config: AppServerConfig,
-    ) -> AsyncIterator[Dict[str, Any]]:
-        """Start a turn on an existing thread.
+        agent_key: str,
+        startup_config: CodexStartupConfig,
+        turn_config: CodexTurnConfig,
+    ) -> Optional[CodexAppServerInstance]:
+        """Try to resume a thread on an instance.
 
-        Routes to the instance that owns the thread.
-
-        Args:
-            thread_id: Thread ID from create_thread
-            input_items: List of input items (text, localImage, image)
-            config: Turn configuration
-
-        Yields:
-            Streaming events
-        """
-        await self.ensure_started()
-
-        # Find the owning instance
-        instance = await self._get_instance_for_thread(thread_id)
-        if instance is None:
-            raise RuntimeError(f"Thread {thread_id} not found in pool")
-
-        if not instance.is_healthy:
-            logger.warning(
-                f"Instance {instance.instance_id} for thread {thread_id} is unhealthy. "
-                "Attempting restart..."
-            )
-            await instance.restart()
-
-        logger.debug(f"Routing turn to instance {instance.instance_id} (thread={thread_id})")
-
-        async for event in instance.start_turn(thread_id, input_items, config):
-            yield event
-
-    async def interrupt_turn(self, thread_id: str) -> bool:
-        """Interrupt an ongoing turn.
+        This is called when a thread_id from the database needs to be resumed
+        (e.g., after instance restart). Creates a new instance if needed and
+        attempts thread/resume.
 
         Args:
-            thread_id: Thread ID
+            thread_id: The thread ID to resume
+            agent_key: The agent key
+            startup_config: Startup config for new instance if needed
+            turn_config: Turn configuration for resume
 
         Returns:
-            True if interrupt was successful
+            The instance that successfully resumed the thread, or None
         """
-        instance = await self._get_instance_for_thread(thread_id)
-        if instance is None:
-            logger.warning(f"Cannot interrupt: thread {thread_id} not found")
-            return False
+        # Get or create instance for the agent
+        instance = await self.get_or_create_instance(agent_key, startup_config)
 
-        return await instance.interrupt_turn(thread_id)
+        try:
+            success = await instance.resume_thread(thread_id, turn_config)
+            if success:
+                self.register_thread(thread_id, agent_key)
+                logger.info(f"Successfully resumed thread {thread_id} on instance {instance.instance_id}")
+                return instance
+        except Exception as e:
+            logger.warning(f"Failed to resume thread {thread_id}: {e}")
+
+        return None
 
     def release_thread(self, thread_id: str) -> bool:
-        """Release a thread from the pool.
-
-        Call this when an agent session ends to clean up thread affinity.
+        """Release a thread from tracking.
 
         Args:
             thread_id: The thread ID to release
@@ -308,63 +298,101 @@ class CodexAppServerPool:
         Returns:
             True if the thread was found and released
         """
-        # Remove from affinity mapping
-        instance_idx = self._thread_affinity.pop(thread_id, None)
-        if instance_idx is not None and instance_idx < len(self._instances):
-            instance = self._instances[instance_idx]
-            instance.release_thread(thread_id)
-            logger.debug(f"Released thread {thread_id} from instance {instance_idx}")
-            return True
-        return False
+        return self._thread_manager.release_thread(thread_id)
 
     async def shutdown(self) -> None:
         """Gracefully shutdown all server instances."""
         logger.info("Shutting down Codex App Server pool...")
 
-        # Shutdown all instances concurrently
-        shutdown_tasks = [instance.shutdown() for instance in self._instances]
-        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+        try:
+            # Stop cleanup task
+            self._shutdown_event.set()
+            if self._cleanup_task and not self._cleanup_task.done():
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
 
-        self._instances.clear()
-        self._thread_affinity.clear()
-        self._started = False
-        self._round_robin_counter = 0
+            # Shutdown all instances concurrently with timeout
+            try:
+                async with asyncio.timeout(10.0):  # 10 second timeout for all shutdowns
+                    async with self._instances_lock:
+                        shutdown_tasks = [instance.shutdown() for instance in self._instances.values()]
+                        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+                        self._instances.clear()
+            except asyncio.TimeoutError:
+                logger.warning("Shutdown timed out, forcing cleanup")
+                # Force kill any remaining processes
+                for instance in self._instances.values():
+                    if instance.is_healthy:
+                        try:
+                            instance.kill()
+                        except Exception:
+                            pass
+                self._instances.clear()
 
-        logger.info("Codex App Server pool shutdown complete")
+            self._thread_manager.clear_all()
+
+            self._instance_counter = 0
+            self._shutdown_event.clear()
+
+            logger.info("Codex App Server pool shutdown complete")
+
+        except asyncio.CancelledError:
+            # Shutdown was interrupted - force cleanup
+            logger.warning("Shutdown interrupted, forcing cleanup")
+            for instance in list(self._instances.values()):
+                if instance.is_healthy:
+                    try:
+                        instance.kill()
+                    except Exception:
+                        pass
+            self._instances.clear()
+            self._thread_manager.clear_all()
+            raise  # Re-raise to let the caller know
 
     def get_stats(self) -> Dict[str, Any]:
         """Get pool statistics.
 
         Returns:
-            Dict with pool stats including instance health and thread counts
+            Dict with pool stats including instance health and counts
         """
         return {
-            "pool_size": self._pool_size,
-            "selection_strategy": self._selection_strategy.value,
-            "started": self._started,
+            "max_instances": self._max_instances,
+            "idle_timeout": self._idle_timeout,
+            "active_instances": len(self._instances),
+            "total_threads": self._thread_manager.thread_count,
             "instances": [
                 {
                     "id": instance.instance_id,
+                    "agent_key": instance.agent_key,
                     "healthy": instance.is_healthy,
                     "started": instance.is_started,
+                    "idle_seconds": round(instance.idle_seconds, 1),
                     "active_threads": instance.active_thread_count,
                 }
-                for instance in self._instances
+                for instance in self._instances.values()
             ],
-            "total_threads": len(self._thread_affinity),
+            "thread_stats": self._thread_manager.get_stats(),
         }
 
     @property
-    def pool_size(self) -> int:
-        """Get the configured pool size."""
-        return self._pool_size
+    def max_instances(self) -> int:
+        """Get the configured max instances."""
+        return self._max_instances
 
     @property
-    def is_started(self) -> bool:
-        """Check if the pool is started."""
-        return self._started
+    def idle_timeout(self) -> float:
+        """Get the configured idle timeout."""
+        return self._idle_timeout
+
+    @property
+    def active_instance_count(self) -> int:
+        """Get the number of active instances."""
+        return len(self._instances)
 
     @property
     def healthy_instance_count(self) -> int:
         """Get the number of healthy instances."""
-        return sum(1 for i in self._instances if i.is_healthy)
+        return sum(1 for i in self._instances.values() if i.is_healthy)

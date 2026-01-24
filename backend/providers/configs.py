@@ -8,7 +8,6 @@ separating static/startup settings from dynamic per-session settings.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # =============================================================================
 # Claude Provider Configs
 # =============================================================================
@@ -112,12 +111,16 @@ class CodexStartupConfig:
         default_factory=lambda: {
             "tools.view_image": False,  # Agents receive images directly
             "web_search": "disabled",
-            "project_doc_max_bytes": 0,
+            # "project_doc_max_bytes": 0,
             "show_raw_agent_reasoning": True,
             "model_verbosity": "medium",
             "model_reasoning_summary": "detailed",
         }
     )
+
+    # MCP server configurations (passed via -c mcp_servers.*)
+    # Format: {"server_name": {"command": "...", "args": [...], "env": {...}, "cwd": "..."}}
+    mcp_servers: Dict[str, Any] = field(default_factory=dict)
 
     def to_cli_args(self) -> List[str]:
         """Convert config to CLI arguments for subprocess.
@@ -133,19 +136,57 @@ class CodexStartupConfig:
 
         # Add -c flags for config overrides
         for key, value in self.config_overrides.items():
-            # Format value as TOML
-            if isinstance(value, bool):
-                toml_value = "true" if value else "false"
-            elif isinstance(value, str):
-                toml_value = f'"{value}"'
-            elif isinstance(value, int):
-                toml_value = str(value)
-            else:
-                toml_value = str(value)
+            args.extend(["-c", f"{key}={_to_toml_value(value)}"])
 
-            args.extend(["-c", f"{key}={toml_value}"])
+        # Add -c flags for MCP servers
+        for server_name, server_config in self.mcp_servers.items():
+            prefix = f"mcp_servers.{server_name}"
+            args.extend(_flatten_mcp_config(prefix, server_config))
 
         return args
+
+
+def _to_toml_value(value: Any) -> str:
+    """Convert a Python value to TOML format string."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    elif isinstance(value, str):
+        # Escape backslashes and quotes for TOML
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    elif isinstance(value, int):
+        return str(value)
+    elif isinstance(value, list):
+        # Format as TOML array
+        items = [_to_toml_value(item) for item in value]
+        return f"[{', '.join(items)}]"
+    else:
+        return str(value)
+
+
+def _flatten_mcp_config(prefix: str, config: Dict[str, Any]) -> List[str]:
+    """Flatten MCP server config to -c flags.
+
+    Args:
+        prefix: Key prefix (e.g., "mcp_servers.action")
+        config: Server config dict with command, args, env, cwd
+
+    Returns:
+        List of ["-c", "key=value", ...] arguments
+    """
+    args: List[str] = []
+
+    for key, value in config.items():
+        full_key = f"{prefix}.{key}"
+
+        if key == "env" and isinstance(value, dict):
+            # Flatten env vars: mcp_servers.action.env.AGENT_NAME="value"
+            for env_key, env_value in value.items():
+                args.extend(["-c", f"{full_key}.{env_key}={_to_toml_value(env_value)}"])
+        else:
+            args.extend(["-c", f"{full_key}={_to_toml_value(value)}"])
+
+    return args
 
 
 @dataclass
@@ -154,6 +195,9 @@ class CodexTurnConfig:
 
     These settings can vary per agent/turn and are sent
     in the turn/start JSON-RPC request.
+
+    Note: MCP servers are now configured at app-server startup via
+    CodexStartupConfig, not passed per-turn.
     """
 
     # System prompt for the agent
@@ -161,9 +205,6 @@ class CodexTurnConfig:
 
     # Model to use (e.g., "o3", "gpt-4.1")
     model: Optional[str] = None
-
-    # MCP server configurations
-    mcp_servers: Dict[str, Any] = field(default_factory=dict)
 
     # Working directory for the session
     cwd: Optional[str] = None
