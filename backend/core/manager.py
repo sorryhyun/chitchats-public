@@ -19,6 +19,7 @@ from domain.contexts import AgentResponseContext
 from domain.streaming import (
     ResponseAccumulator,
     StreamEndEvent,
+    StreamEvent,
     StreamStartEvent,
 )
 from domain.task_identifier import TaskIdentifier
@@ -312,7 +313,7 @@ class AgentManager:
         error_str = str(error).lower()
         return "interrupt" in error_str or "cancelled" in error_str
 
-    async def generate_sdk_response(self, context: AgentResponseContext) -> AsyncIterator[dict]:
+    async def generate_sdk_response(self, context: AgentResponseContext) -> AsyncIterator[StreamEvent]:
         """
         Generate a response from an agent using the AI provider with session persistence.
         This is an async generator that yields streaming events as the response is generated.
@@ -358,13 +359,13 @@ class AgentManager:
 
         try:
             # Yield stream_start event
-            start_event = StreamStartEvent(temp_id=temp_id).to_dict()
+            start_event = StreamStartEvent(temp_id=temp_id)
             yield start_event
 
             # Broadcast stream_start via SSE
             if self.event_broadcaster:
                 sse_start = {
-                    **start_event,
+                    **start_event.to_dict(),
                     "agent_id": context.agent_id,
                     "agent_name": context.agent_name,
                     "agent_profile_pic": context.config.profile_pic,
@@ -377,16 +378,8 @@ class AgentManager:
             # Initialize response accumulator (replaces 6 separate variables)
             accumulator = ResponseAccumulator(session_id=context.session_id)
 
-            # Determine model based on provider
-            from core import get_settings
-
-            settings = get_settings()
-            model = ""
-            if provider_type == ProviderType.CODEX and settings.codex_model:
-                model = settings.codex_model
-
-            # Build provider-agnostic options from context
-            base_options = AIClientOptions.from_context(context, final_system_prompt, model)
+            # Build provider-agnostic options from context (model is determined by provider_type)
+            base_options = AIClientOptions.from_context(context, final_system_prompt, provider_type)
 
             # Build provider-specific options with tool capture hooks
             options = provider.build_options(base_options, accumulator.anthropic_calls, accumulator.skip_tool_capture)
@@ -528,13 +521,9 @@ class AgentManager:
             )
 
             # Yield stream_end event with final data
-            end_event_dict = end_event.to_dict()
-            yield end_event_dict
-
-            # Broadcast stream_end via SSE
-            if self.event_broadcaster:
-                sse_end = {**end_event_dict, "agent_id": context.agent_id}
-                await self.event_broadcaster.broadcast(context.room_id, sse_end)
+            # NOTE: SSE broadcast is now handled by ResponseGenerator AFTER save decision
+            # to prevent race condition where frontend polls before message is saved
+            yield end_event
 
         except asyncio.CancelledError:
             # Task was cancelled due to interruption - this is expected
@@ -551,12 +540,11 @@ class AgentManager:
                 anthropic_calls=[],
                 skipped=True,
             )
-            end_event_dict = end_event.to_dict()
-            yield end_event_dict
+            yield end_event
 
-            # Broadcast stream_end via SSE
+            # Broadcast stream_end via SSE (exception handlers still broadcast since response_generator won't reach its broadcast)
             if self.event_broadcaster:
-                sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                sse_end = {**end_event.to_dict(), "agent_id": context.agent_id}
                 await self.event_broadcaster.broadcast(context.room_id, sse_end)
 
         except SessionRecoveryError:
@@ -580,12 +568,11 @@ class AgentManager:
                     anthropic_calls=[],
                     skipped=True,
                 )
-                end_event_dict = end_event.to_dict()
-                yield end_event_dict
+                yield end_event
 
-                # Broadcast stream_end via SSE
+                # Broadcast stream_end via SSE (exception handlers still broadcast since response_generator won't reach its broadcast)
                 if self.event_broadcaster:
-                    sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                    sse_end = {**end_event.to_dict(), "agent_id": context.agent_id}
                     await self.event_broadcaster.broadcast(context.room_id, sse_end)
                 return
 
@@ -604,10 +591,9 @@ class AgentManager:
                 anthropic_calls=[],
                 skipped=False,
             )
-            end_event_dict = end_event.to_dict()
-            yield end_event_dict
+            yield end_event
 
-            # Broadcast stream_end via SSE
+            # Broadcast stream_end via SSE (exception handlers still broadcast since response_generator won't reach its broadcast)
             if self.event_broadcaster:
-                sse_end = {**end_event_dict, "agent_id": context.agent_id}
+                sse_end = {**end_event.to_dict(), "agent_id": context.agent_id}
                 await self.event_broadcaster.broadcast(context.room_id, sse_end)

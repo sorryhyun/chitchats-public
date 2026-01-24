@@ -156,6 +156,7 @@ class ResponseGenerator:
         anthropic_calls = []
         skipped = False
         stream_started = False
+        end_event = None  # Store the end event for later SSE broadcast
 
         try:
             # Iterate over streaming events from agent manager
@@ -172,6 +173,7 @@ class ResponseGenerator:
 
                     case StreamEndEvent() as end:
                         # Extract final data
+                        end_event = end  # Store for SSE broadcast after save decision
                         response_text = end.response_text or response_text
                         thinking_text = end.thinking_text or thinking_text
                         new_session_id = end.session_id or session_id
@@ -229,6 +231,7 @@ class ResponseGenerator:
                         thinking_text += delta
 
                     case StreamEndEvent() as end:
+                        end_event = end  # Store for SSE broadcast after save decision
                         response_text = end.response_text or response_text
                         thinking_text = end.thinking_text or thinking_text
                         new_session_id = end.session_id or session_id
@@ -253,19 +256,56 @@ class ResponseGenerator:
                 orch_context.db, orch_context.room_id, agent.id, new_session_id, provider
             )
 
+        # Helper to broadcast stream_end via SSE
+        async def broadcast_stream_end(is_skipped: bool):
+            if not end_event:
+                logger.warning(f"Cannot broadcast stream_end: end_event is None | Agent: {agent.name}")
+                return
+            if not orch_context.agent_manager.event_broadcaster:
+                logger.warning(f"Cannot broadcast stream_end: event_broadcaster is None | Agent: {agent.name}")
+                return
+
+            # Create appropriate end event based on whether message was saved or discarded
+            if is_skipped:
+                # Message was discarded - broadcast with skipped=True and no content
+                sse_end = {
+                    "type": "stream_end",
+                    "temp_id": end_event.temp_id,
+                    "response_text": None,
+                    "thinking_text": "",
+                    "session_id": end_event.session_id,
+                    "memory_entries": [],
+                    "anthropic_calls": [],
+                    "skipped": True,
+                    "agent_id": agent.id,
+                }
+            else:
+                # Message was saved - broadcast the full end event
+                sse_end = {**end_event.to_dict(), "agent_id": agent.id}
+
+            logger.debug(f"Broadcasting stream_end | Agent: {agent.name} | Skipped: {is_skipped}")
+            await orch_context.agent_manager.event_broadcaster.broadcast(
+                orch_context.room_id, sse_end
+            )
+
         # Skip if agent chose not to respond - don't persist anything
         if skipped or not response_text:
+            logger.info(f"⏭️ Agent {agent.name} skipped | skipped={skipped} | response_text_len={len(response_text) if response_text else 0}")
+            await broadcast_stream_end(is_skipped=True)
             return False
 
         # Check if this response was interrupted by a new user message
         # If a user message arrived after this response started, skip broadcasting it
         if self._was_interrupted(orch_context.room_id, response_start_time, agent.name):
+            logger.info(f"⏭️ Agent {agent.name} interrupted by new user message")
+            await broadcast_stream_end(is_skipped=True)
             return False
 
         # Check if room was paused while this agent was generating
         # This prevents messages from being saved after pause button is pressed
         if room and room.is_paused:
-            logger.info(f"Room {orch_context.room_id} was paused. Discarding response from {agent.name}")
+            logger.info(f"⏭️ Agent {agent.name} discarded because room {orch_context.room_id} was paused")
+            await broadcast_stream_end(is_skipped=True)
             return False
 
         # For critic agents, automatically save their output to report.md
@@ -279,6 +319,10 @@ class ResponseGenerator:
             anthropic_calls=anthropic_calls if anthropic_calls else None,
         )
         await save_agent_message(msg_context, message_data)
+
+        # Broadcast stream_end AFTER message is saved - this prevents race condition
+        # where frontend polls for message before it exists in database
+        await broadcast_stream_end(is_skipped=False)
 
         return True
 

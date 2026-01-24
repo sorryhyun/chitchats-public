@@ -131,18 +131,26 @@ class AIClientOptions:
         cls,
         context: "AgentResponseContext",
         final_system_prompt: str,
-        model: str = "",
+        provider_type: ProviderType,
     ) -> "AIClientOptions":
         """Create AIClientOptions from an AgentResponseContext.
 
         Args:
             context: The agent response context containing all parameters
             final_system_prompt: The processed system prompt to use
-            model: Optional model identifier (provider-specific)
+            provider_type: The provider type (used to determine model)
 
         Returns:
             AIClientOptions configured from the context
         """
+        # Determine model based on provider
+        model = ""
+        if provider_type == ProviderType.CODEX:
+            from core import get_settings
+            settings = get_settings()
+            if settings.codex_model:
+                model = settings.codex_model
+
         return cls(
             system_prompt=final_system_prompt,
             model=model,
