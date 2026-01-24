@@ -18,8 +18,9 @@ from core import get_settings
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
 from providers.mcp_config import MCPConfigBuilder, MCPServerEnv
 
+from providers.configs import DEFAULT_CLAUDE_CONFIG
+
 from .client import ClaudeClient
-from .configs import DEFAULT_STATIC_CONFIG
 from .parser import ClaudeStreamParser
 from .pool import ClaudeClientPool
 
@@ -135,7 +136,7 @@ class ClaudeProvider(AIProvider):
             model = "claude-opus-4-5-20251101" if not _settings.use_haiku else "claude-haiku-4-5-20251001"
 
         # Use static config for unchanging settings
-        static = DEFAULT_STATIC_CONFIG
+        static = DEFAULT_CLAUDE_CONFIG
 
         # Build options
         options = ClaudeAgentOptions(

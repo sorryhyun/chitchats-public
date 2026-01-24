@@ -18,7 +18,7 @@ import os
 import shutil
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
-from .configs import DEFAULT_STARTUP_CONFIG, CodexStartupConfig, CodexTurnConfig
+from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTurnConfig
 from .constants import AppServerMethod, map_approval_policy, map_sandbox
 from .windows_support import get_bundled_codex_path
 
@@ -51,7 +51,7 @@ class CodexAppServerInstance:
             startup_config: Static configuration for app-server launch (uses default if None)
         """
         self._instance_id = instance_id
-        self._startup_config = startup_config or DEFAULT_STARTUP_CONFIG
+        self._startup_config = startup_config or DEFAULT_CODEX_CONFIG
         self._process: Optional[asyncio.subprocess.Process] = None
         self._started = False
         self._healthy = True

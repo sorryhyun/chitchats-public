@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from providers.base import AIClient
+from providers.configs import CodexTurnConfig
 
-from .configs import CodexTurnConfig
 from .parser import AppServerStreamAccumulator, parse_streaming_event
 from .app_server_pool import CodexAppServerPool
 from .constants import (
@@ -29,7 +29,6 @@ from .constants import (
     thread_started,
     tool_call,
 )
-from .images import CodexImageManager
 
 logger = logging.getLogger("CodexAppServerClient")
 
@@ -81,7 +80,6 @@ class CodexAppServerClient(AIClient):
         self._pool: Optional[CodexAppServerPool] = None
         self._interrupt_requested = False
         self._current_turn_task: Optional[asyncio.Task] = None
-        self._image_manager: Optional[CodexImageManager] = None
 
     async def connect(self) -> None:
         """Initialize the client by getting the App Server pool.
@@ -106,7 +104,7 @@ class CodexAppServerClient(AIClient):
         """Send a message to Codex.
 
         This stores the message to be sent when receive_response() is called.
-        Supports multimodal content with images (saved to temp files).
+        Supports multimodal content with images.
 
         Args:
             message: The message content - can be:
@@ -120,23 +118,18 @@ class CodexAppServerClient(AIClient):
         if not self._connected:
             raise RuntimeError("Client not connected. Call connect() first.")
 
-        # Create new image manager for this turn (will be cleaned up after turn)
-        self._image_manager = CodexImageManager()
-
         # Handle different message formats
         if isinstance(message, str):
             # Simple text message
             self._pending_input_items = [{"type": "text", "text": message}]
 
         elif isinstance(message, list):
-            # List of content blocks - process with image manager
-            self._pending_input_items = self._image_manager.process_content_blocks(message)
-            if self._image_manager.temp_file_count > 0:
-                logger.info(f"Created {self._image_manager.temp_file_count} temp image files for Codex")
+            # List of content blocks - convert to Codex format
+            self._pending_input_items = self._convert_content_blocks(message)
 
         elif hasattr(message, "__aiter__"):
             # Async iterator - collect blocks then process
-            content_blocks = []
+            content_blocks: List[Dict[str, Any]] = []
             async for block in message:
                 if isinstance(block, dict):
                     # Handle various formats from different providers
@@ -153,12 +146,44 @@ class CodexAppServerClient(AIClient):
                         # Direct content block
                         content_blocks.append(block)
 
-            self._pending_input_items = self._image_manager.process_content_blocks(content_blocks)
-            if self._image_manager.temp_file_count > 0:
-                logger.info(f"Created {self._image_manager.temp_file_count} temp image files for Codex")
+            self._pending_input_items = self._convert_content_blocks(content_blocks)
 
         else:
             raise ValueError(f"Unsupported message type: {type(message)}")
+
+    @staticmethod
+    def _convert_content_blocks(content_blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert Claude-style content blocks to Codex input items.
+
+        Args:
+            content_blocks: List of content blocks
+                [{"type": "text", "text": "..."},
+                 {"type": "image", "source": {"type": "base64", "data": "...", "media_type": "..."}}]
+
+        Returns:
+            List of Codex input items
+        """
+        input_items: List[Dict[str, Any]] = []
+
+        for block in content_blocks:
+            block_type = block.get("type")
+
+            if block_type == "text":
+                text = block.get("text", "")
+                if text:
+                    input_items.append({"type": "text", "text": text})
+
+            elif block_type == "image":
+                source = block.get("source", {})
+                if source.get("type") == "base64":
+                    data = source.get("data", "")
+                    media_type = source.get("media_type", "image/png")
+                    # Use data URL (Codex docs: {"type": "image", "url": "..."})
+                    data_url = f"data:{media_type};base64,{data}"
+                    input_items.append({"type": "image", "url": data_url})
+                    logger.debug(f"Added image: {media_type}, {len(data)} chars base64")
+
+        return input_items
 
     def receive_response(self) -> AsyncIterator[Dict[str, Any]]:
         """Receive response from Codex.
@@ -287,14 +312,6 @@ class CodexAppServerClient(AIClient):
         except Exception as e:
             logger.error(f"Error in App Server turn: {e}")
             yield error(str(e))
-
-        finally:
-            # Clean up temporary image files
-            if self._image_manager:
-                removed = self._image_manager.cleanup()
-                if removed > 0:
-                    logger.debug(f"Cleaned up {removed} temp image files")
-                self._image_manager = None
 
     def _build_config(self) -> CodexTurnConfig:
         """Build the CodexTurnConfig for the turn."""
