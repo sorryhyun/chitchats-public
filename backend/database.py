@@ -145,6 +145,16 @@ async def init_db():
     await run_migrations(engine)
 
 
+async def shutdown_db():
+    """Dispose database engine and close all connections."""
+    global _engine, _session_maker
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None
+        _session_maker = None
+        logger.info("🗄️ Database engine disposed")
+
+
 def is_sqlite() -> bool:
     """Check if we're using SQLite."""
     return "sqlite" in _get_database_url()

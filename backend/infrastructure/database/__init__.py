@@ -16,6 +16,7 @@ from database import (
     retry_on_db_lock,
     serialized_commit,
     serialized_write,
+    shutdown_db,
 )
 
 from . import models
@@ -46,6 +47,7 @@ __all__ = [
     "async_session_maker",
     "get_db",
     "init_db",
+    "shutdown_db",
     "is_sqlite",
     "get_engine",
     "get_session_maker",

@@ -73,7 +73,8 @@ class BackgroundScheduler:
     def stop(self):
         """Stop the background scheduler."""
         if self.is_running:
-            self.scheduler.shutdown()
+            # wait=False to avoid blocking on running jobs during shutdown
+            self.scheduler.shutdown(wait=False)
             self.is_running = False
             logger.info("🛑 Background scheduler stopped")
 

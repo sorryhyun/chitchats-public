@@ -12,7 +12,7 @@ from pathlib import Path
 import crud
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
-from infrastructure.database import get_db, init_db
+from infrastructure.database import get_db, init_db, shutdown_db
 from infrastructure.scheduler import BackgroundScheduler
 from chatroom_orchestration import ChatOrchestrator
 
@@ -109,27 +109,43 @@ def create_app() -> FastAPI:
 
         yield
 
-        # Shutdown
+        # Shutdown with timeout to prevent hanging on Ctrl+C
+        import asyncio
+
+        SHUTDOWN_TIMEOUT = 5.0  # seconds
+
+        async def _shutdown_tasks():
+            """Run all shutdown tasks."""
+            # Shutdown SSE connections first (allows clients to disconnect gracefully)
+            await event_broadcaster.shutdown()
+
+            # Shutdown Codex App Server pool if it was created
+            try:
+                from providers.codex import CodexAppServerPool
+
+                pool = await CodexAppServerPool.get_instance()
+                if pool.is_started:
+                    logger.info("🔧 Shutting down Codex App Server pool...")
+                    await pool.shutdown()
+                    logger.info("✅ Codex App Server pool shutdown complete")
+            except Exception as e:
+                logger.warning(f"⚠️ Error shutting down Codex App Server pool: {e}")
+
+            # Stop background scheduler (uses wait=False for fast shutdown)
+            background_scheduler.stop()
+
+            # Shutdown agent manager
+            await agent_manager.shutdown()
+
+            # Dispose database connections
+            await shutdown_db()
+
         logger.info("🛑 Application shutdown...")
-
-        # Shutdown SSE connections first (allows clients to disconnect gracefully)
-        await event_broadcaster.shutdown()
-
-        # Shutdown Codex App Server pool if it was created
         try:
-            from providers.codex import CodexAppServerPool
-
-            pool = await CodexAppServerPool.get_instance()
-            if pool.is_started:
-                logger.info("🔧 Shutting down Codex App Server pool...")
-                await pool.shutdown()
-                logger.info("✅ Codex App Server pool shutdown complete")
-        except Exception as e:
-            logger.warning(f"⚠️ Error shutting down Codex App Server pool: {e}")
-
-        background_scheduler.stop()
-        await agent_manager.shutdown()
-        logger.info("✅ Application shutdown complete")
+            await asyncio.wait_for(_shutdown_tasks(), timeout=SHUTDOWN_TIMEOUT)
+            logger.info("✅ Application shutdown complete")
+        except asyncio.TimeoutError:
+            logger.warning(f"⚠️ Shutdown timed out after {SHUTDOWN_TIMEOUT}s, forcing exit")
 
     # Initialize rate limiter
     limiter = Limiter(key_func=get_remote_address)
