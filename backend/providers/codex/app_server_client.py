@@ -15,7 +15,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from providers.base import AIClient
 
-from .app_server_instance import AppServerConfig
+from .configs import CodexTurnConfig
 from .parser import AppServerStreamAccumulator, parse_streaming_event
 from .app_server_pool import CodexAppServerPool
 from .constants import (
@@ -38,14 +38,15 @@ logger = logging.getLogger("CodexAppServerClient")
 class CodexAppServerOptions:
     """Options for Codex App Server client.
 
+    These are per-turn options passed to the client. Static settings like
+    approval_policy and sandbox are handled by CodexStartupConfig at
+    app-server launch time.
+
     Attributes:
         system_prompt: System prompt (passed as developer_instructions in config)
         model: Model to use (optional)
         thread_id: Thread ID for continuing a conversation
         mcp_servers: Dict of MCP server configurations to pass to Codex
-        approval_policy: Approval policy - "never", "on-request", "on-failure", "untrusted"
-        sandbox: Sandbox mode - "danger-full-access", "workspace-write", "read-only"
-        extra_config: Additional config options
         cwd: Working directory for the session
     """
 
@@ -53,9 +54,6 @@ class CodexAppServerOptions:
     model: Optional[str] = None
     thread_id: Optional[str] = None
     mcp_servers: Dict[str, Any] = field(default_factory=dict)
-    approval_policy: str = "never"
-    sandbox: str = "danger-full-access"
-    extra_config: Dict[str, Any] = field(default_factory=dict)
     cwd: Optional[str] = None
 
 
@@ -298,16 +296,13 @@ class CodexAppServerClient(AIClient):
                     logger.debug(f"Cleaned up {removed} temp image files")
                 self._image_manager = None
 
-    def _build_config(self) -> AppServerConfig:
-        """Build the AppServerConfig for the turn."""
-        return AppServerConfig(
+    def _build_config(self) -> CodexTurnConfig:
+        """Build the CodexTurnConfig for the turn."""
+        return CodexTurnConfig(
             developer_instructions=self._options.system_prompt,
             model=self._options.model,
             mcp_servers=self._options.mcp_servers,
-            approval_policy=self._options.approval_policy,
-            sandbox=self._options.sandbox,
             cwd=self._options.cwd,
-            extra_config=self._options.extra_config,
         )
 
     async def interrupt(self) -> None:

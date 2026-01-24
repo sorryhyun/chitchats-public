@@ -7,26 +7,19 @@ for the Codex backend using `codex app-server` connection.
 
 import asyncio
 import logging
-import os
-import platform
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core import get_settings
-
 from providers.base import AIClient, AIClientOptions, AIProvider, AIStreamParser, ProviderType
+from providers.mcp_config import MCPConfigBuilder, MCPServerEnv
 
 from .app_server_client import CodexAppServerClient, CodexAppServerOptions
 from .parser import CodexStreamParser
 from .pool import CodexClientPool
 
 logger = logging.getLogger("CodexProvider")
-
-# Get settings singleton
-_settings = get_settings()
 
 
 def _get_codex_working_dir() -> str:
@@ -100,32 +93,29 @@ class CodexProvider(AIProvider):
         _ = anthropic_calls_capture
         _ = skip_tool_capture
 
-        # Build MCP servers dict for the config parameter
+        # Build MCP servers using centralized builder
         mcp_servers: Dict[str, Any] = {}
         if base_options.mcp_tools:
-            mcp_servers = self._build_mcp_server_dict(base_options.mcp_tools)
+            env_config = MCPServerEnv(
+                agent_name=base_options.mcp_tools.get("agent_name", "Agent"),
+                provider="codex",
+                group_name=base_options.mcp_tools.get("agent_group"),
+                agent_id=base_options.mcp_tools.get("agent_id"),
+                config_file=base_options.mcp_tools.get("config_file"),
+                room_id=base_options.mcp_tools.get("room_id"),
+            )
+            mcp_servers = MCPConfigBuilder.build_all_servers(
+                env_config,
+                include_etc=False,  # Codex doesn't use etc server
+                prefer_venv=True,  # Codex prefers virtualenv Python
+            )
 
-        # Build extra config for Codex behavior (nested JSON structure)
-        # Note: base_instructions and cwd are passed as top-level parameters, not in config
-        extra_config: Dict[str, Any] = {
-            "features": {
-                "shell_tool": False,
-                "child_agents_md": False,
-            },
-            "project_doc_max_bytes": 0,
-            "show_raw_agent_reasoning": True,
-            "model_verbosity": "medium",
-            "model_reasoning_summary": "detailed",
-        }
-
+        # Return turn config (startup config is handled by app_server_instance)
         return CodexAppServerOptions(
             system_prompt=base_options.system_prompt,
             model=base_options.model if base_options.model else None,
             thread_id=base_options.session_id,  # Codex uses thread_id
             mcp_servers=mcp_servers,
-            approval_policy="never",  # Minimal prompt - non-interactive mode
-            sandbox="danger-full-access",  # Minimal prompt - no sandbox restrictions
-            extra_config=extra_config,
             cwd=base_options.working_dir or _get_codex_working_dir(),
         )
 
@@ -173,96 +163,6 @@ class CodexProvider(AIProvider):
         except Exception as e:
             logger.warning(f"Codex availability check failed: {e}")
             return False
-
-    def _build_mcp_server_dict(self, mcp_tools: dict) -> Dict[str, Any]:
-        """Build MCP servers config dict.
-
-        Converts mcp_tools into the format expected by the App Server's
-        config parameter.
-
-        Args:
-            mcp_tools: Dict containing agent_name, agent_group, agent_id
-
-        Returns:
-            Dict of MCP server configurations
-        """
-        if not mcp_tools:
-            return {}
-
-        agent_name = mcp_tools.get("agent_name", "Agent")
-        agent_group = mcp_tools.get("agent_group", "default")
-        agent_id = mcp_tools.get("agent_id")
-        room_id = mcp_tools.get("room_id")
-        config_file = mcp_tools.get("config_file")
-
-        # Get backend path from settings
-        backend_path = str(_settings.backend_dir)
-
-        # Determine command and args based on execution mode
-        is_frozen = getattr(sys, "frozen", False)
-
-        if is_frozen:
-            # Running as PyInstaller bundle - use self-spawn mode
-            # The bundled exe handles --mcp-server argument
-            exe_path = sys.executable
-            action_cmd = exe_path
-            action_args = ["--mcp-server", "action"]
-            guidelines_cmd = exe_path
-            guidelines_args = ["--mcp-server", "guidelines"]
-            # In bundled mode, cwd is the exe's directory
-            cwd = str(Path(exe_path).parent)
-        else:
-            # Development mode - use Python interpreter
-            python_path = os.environ.get("VIRTUAL_ENV")
-            if python_path:
-                # Use platform-specific path for Python executable
-                if platform.system() == "Windows":
-                    python_exe = str(Path(python_path) / "Scripts" / "python.exe")
-                else:
-                    python_exe = str(Path(python_path) / "bin" / "python")
-            else:
-                python_exe = "python"
-
-            action_cmd = python_exe
-            action_args = ["-m", "mcp_servers.action_server"]
-            guidelines_cmd = python_exe
-            guidelines_args = ["-m", "mcp_servers.guidelines_server"]
-            cwd = backend_path
-
-        # Build environment variables
-        action_env: Dict[str, str] = {
-            "AGENT_NAME": agent_name,
-            "AGENT_GROUP": agent_group,
-            "PYTHONPATH": backend_path,
-            "PROVIDER": "codex",
-        }
-        if room_id is not None:
-            action_env["ROOM_ID"] = str(room_id)
-        if agent_id is not None:
-            action_env["AGENT_ID"] = str(agent_id)
-        if config_file is not None:
-            action_env["CONFIG_FILE"] = config_file
-
-        guidelines_env: Dict[str, str] = {
-            "AGENT_NAME": agent_name,
-            "PYTHONPATH": backend_path,
-            "PROVIDER": "codex",
-        }
-
-        return {
-            "action": {
-                "command": action_cmd,
-                "args": action_args,
-                "cwd": cwd,
-                "env": action_env,
-            },
-            "guidelines": {
-                "command": guidelines_cmd,
-                "args": guidelines_args,
-                "cwd": cwd,
-                "env": guidelines_env,
-            },
-        }
 
     def get_session_key_field(self) -> str:
         """Get the database field name for Codex's session ID.

@@ -19,7 +19,8 @@
       "Bash(npm run build:*)",
       "Bash(dir /b \"C:\\\\Users\\\\stand\\\\Desktop\\\\etc\\\\claude_code_RP\\\\*.md\")",
       "Bash(comm:*)",
-      "Bash(npm run typecheck:*)"
+      "Bash(npm run typecheck:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

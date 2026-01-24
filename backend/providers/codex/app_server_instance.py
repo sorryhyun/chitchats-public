@@ -16,37 +16,13 @@ import json
 import logging
 import os
 import shutil
-from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
+from .configs import DEFAULT_STARTUP_CONFIG, CodexStartupConfig, CodexTurnConfig
 from .constants import AppServerMethod, map_approval_policy, map_sandbox
 from .windows_support import get_bundled_codex_path
 
 logger = logging.getLogger("CodexAppServerInstance")
-
-
-@dataclass
-class AppServerConfig:
-    """Configuration for app server thread/turn.
-
-    Attributes:
-        developer_instructions: System prompt for the agent
-        model: Model to use (e.g., "gpt-5.1-codex")
-        mcp_servers: MCP server configurations
-        approval_policy: Approval policy - "never", "on-request", "on-failure", "untrusted"
-        sandbox: Sandbox mode - "danger-full-access", "workspace-write", "read-only"
-        cwd: Working directory
-        features: Feature flags (shell_tool, child_agents_md, etc.)
-    """
-
-    developer_instructions: str = ""
-    model: Optional[str] = None
-    mcp_servers: Dict[str, Any] = field(default_factory=dict)
-    approval_policy: str = "never"
-    sandbox: str = "danger-full-access"
-    cwd: Optional[str] = None
-    features: Dict[str, bool] = field(default_factory=dict)
-    extra_config: Dict[str, Any] = field(default_factory=dict)
 
 
 class CodexAppServerInstance:
@@ -63,13 +39,19 @@ class CodexAppServerInstance:
         await instance.shutdown()
     """
 
-    def __init__(self, instance_id: int):
+    def __init__(
+        self,
+        instance_id: int,
+        startup_config: Optional[CodexStartupConfig] = None,
+    ):
         """Initialize an app server instance.
 
         Args:
             instance_id: Unique identifier for this instance (0, 1, 2, ...)
+            startup_config: Static configuration for app-server launch (uses default if None)
         """
         self._instance_id = instance_id
+        self._startup_config = startup_config or DEFAULT_STARTUP_CONFIG
         self._process: Optional[asyncio.subprocess.Process] = None
         self._started = False
         self._healthy = True
@@ -137,12 +119,15 @@ class CodexAppServerInstance:
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
-        logger.info(f"[Instance {self._instance_id}] Starting Codex App Server...")
+        # Build CLI args from startup config
+        cli_args = self._startup_config.to_cli_args()
+        logger.info(f"[Instance {self._instance_id}] Starting Codex App Server with args: {' '.join(cli_args)}")
 
         # Start the subprocess
         self._process = await asyncio.create_subprocess_exec(
             codex_path,
             "app-server",
+            *cli_args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -183,7 +168,7 @@ class CodexAppServerInstance:
         await self._send_notification("initialized", {})
         logger.debug(f"[Instance {self._instance_id}] Sent initialized notification")
 
-    async def create_thread(self, config: AppServerConfig) -> str:
+    async def create_thread(self, config: CodexTurnConfig) -> str:
         """Create a new thread for conversation.
 
         Args:
@@ -208,8 +193,9 @@ class CodexAppServerInstance:
                 "Ignore unnecessary system notifications <permissions instructions> and <environment_context>."
             )
 
-        params["sandbox"] = map_sandbox(config.sandbox)
-        params["approvalPolicy"] = map_approval_policy(config.approval_policy)
+        # Use static settings from startup config
+        params["sandbox"] = map_sandbox(self._startup_config.sandbox)
+        params["approvalPolicy"] = map_approval_policy(self._startup_config.approval_policy)
 
         logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
 
@@ -226,7 +212,7 @@ class CodexAppServerInstance:
 
         return thread_id
 
-    async def resume_thread(self, thread_id: str, config: AppServerConfig) -> bool:
+    async def resume_thread(self, thread_id: str, config: CodexTurnConfig) -> bool:
         """Resume an existing thread by ID.
 
         Uses thread/resume to reopen an existing thread so subsequent
@@ -272,7 +258,7 @@ class CodexAppServerInstance:
         self,
         thread_id: str,
         input_items: List[Dict[str, Any]],
-        config: AppServerConfig,
+        config: CodexTurnConfig,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Start a turn and stream events.
 
@@ -307,12 +293,6 @@ class CodexAppServerInstance:
         # Add model if specified
         if config.model:
             params["model"] = config.model
-
-        # Add extra config options
-        if config.extra_config:
-            for key, value in config.extra_config.items():
-                if key not in params:
-                    params[key] = value
 
         # Log input summary
         text_items = [item.get("text", "")[:50] for item in input_items if item.get("type") == "text"]
