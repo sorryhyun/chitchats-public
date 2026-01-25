@@ -153,31 +153,36 @@ export const MessageRow = memo(({
               )}
 
               <div className="flex flex-col gap-2 min-w-0">
-                {/* Thinking block */}
-                {message.role === 'assistant' && message.thinking && !message.is_typing && !message.is_chatting && (
-                  <button
-                    onClick={() => onToggleThinking(message.id)}
-                    className="flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors ml-1 mb-1"
-                  >
-                    <svg
-                      className={`w-4 h-4 transition-transform ${expandedThinking.has(message.id) ? 'rotate-90' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                {/* Thinking block - unified for both streaming and completed messages */}
+                {message.role === 'assistant' && message.thinking && (
+                  <>
+                    <button
+                      onClick={() => onToggleThinking(message.id)}
+                      className="flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors ml-1 mb-1"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span>Thinking Process</span>
-                  </button>
-                )}
+                      <svg
+                        className={`w-4 h-4 transition-transform ${expandedThinking.has(message.id) ? 'rotate-90' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span>Thinking Process</span>
+                      {(message.is_typing || message.is_chatting) && !message.content && (
+                        <span className="text-slate-400 italic">thinking...</span>
+                      )}
+                    </button>
 
-                {/* Expanded thinking content */}
-                {message.role === 'assistant' && message.thinking && expandedThinking.has(message.id) && (
-                  <div className="pl-3 py-1 my-2 border-l-2 border-slate-300 text-slate-500 text-sm bg-slate-50/50 rounded-r-lg">
-                    <div className="whitespace-pre-wrap break-words leading-relaxed italic font-mono text-xs">
-                      {message.thinking}
-                    </div>
-                  </div>
+                    {/* Expanded thinking content */}
+                    {expandedThinking.has(message.id) && (
+                      <div className="pl-3 py-1 my-2 border-l-2 border-slate-300 text-slate-500 text-sm bg-slate-50/50 rounded-r-lg">
+                        <div className="whitespace-pre-wrap break-words leading-relaxed italic font-mono text-xs">
+                          {message.thinking}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Image attachment - supports both new images array and legacy single image */}
@@ -202,27 +207,62 @@ export const MessageRow = memo(({
                 >
                   {message.is_typing || message.is_chatting ? (
                     <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                        <span className="text-sm text-slate-600 ml-1">{message.thinking ? 'thinking...' : 'chatting...'}</span>
-                      </div>
-                      {/* Show streaming thinking content */}
-                      {message.thinking && (
-                        <div className="pl-3 py-1 border-l-2 border-slate-300 text-slate-500 bg-slate-50/50 rounded-r-lg max-h-32 overflow-y-auto">
-                          <div className="whitespace-pre-wrap break-words leading-relaxed italic font-mono text-xs">
-                            {message.thinking}
-                          </div>
-                        </div>
-                      )}
-                      {/* Show streaming response content */}
-                      {message.content && (
-                        <div className="text-slate-700 text-sm">
-                          {message.content}
+                      {/* Show streaming response content with same styling as finished messages */}
+                      {message.content ? (
+                        <div className="prose prose-sm max-w-none break-words leading-relaxed select-text prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:rounded-xl pr-1">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkBreaks]}
+                            components={{
+                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                              em: ({ children }) => <em className="italic">{children}</em>,
+                              ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                              ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                              li: ({ children }) => <li className="mb-1">{children}</li>,
+                              code: ({ inline, className, children, ...props }: any) => {
+                                const match = /language-(\w+)/.exec(className || '');
+                                const codeString = String(children).replace(/\n$/, '');
+                                const isInline = inline ?? (!className && !codeString.includes('\n'));
+
+                                return isInline ? (
+                                  <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                                    {children}
+                                  </code>
+                                ) : (
+                                  <SyntaxHighlighter
+                                    style={oneDark}
+                                    language={match ? match[1] : 'text'}
+                                    PreTag="div"
+                                    customStyle={{
+                                      margin: 0,
+                                      borderRadius: '0.75rem',
+                                      fontSize: '0.875rem',
+                                    }}
+                                    {...props}
+                                  >
+                                    {codeString}
+                                  </SyntaxHighlighter>
+                                );
+                              },
+                              pre: ({ children }) => (
+                                <div className="mb-2 overflow-hidden rounded-xl">
+                                  {children}
+                                </div>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
                           <span className="inline-block w-2 h-4 bg-slate-600 ml-0.5 animate-pulse"></span>
                         </div>
-                      )}
+                      ) : !message.thinking ? (
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                          <span className="text-sm text-slate-600 ml-1">chatting...</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : message.is_skipped ? (
                     <div className="text-sm italic opacity-75">

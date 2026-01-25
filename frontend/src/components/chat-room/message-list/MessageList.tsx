@@ -11,6 +11,7 @@ interface MessageListProps {
 
 export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
   const [expandedThinking, setExpandedThinking] = useState<Set<number | string>>(new Set());
+  const seenMessagesRef = useRef<Set<number | string>>(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState<number | string | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -24,8 +25,33 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
     if (messages.length === 0) {
       setIsAtBottom(true);
       lastMessageCountRef.current = 0;
+      seenMessagesRef.current = new Set();
+      setExpandedThinking(new Set());
     }
   }, [messages.length]);
+
+  // Auto-expand thinking for new messages
+  useEffect(() => {
+    const messagesToExpand: (number | string)[] = [];
+
+    messages.forEach((msg) => {
+      if (!seenMessagesRef.current.has(msg.id)) {
+        seenMessagesRef.current.add(msg.id);
+        // Auto-expand new messages with thinking
+        if (msg.role === 'assistant' && msg.thinking) {
+          messagesToExpand.push(msg.id);
+        }
+      }
+    });
+
+    if (messagesToExpand.length > 0) {
+      setExpandedThinking(prev => {
+        const newSet = new Set(prev);
+        messagesToExpand.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    }
+  }, [messages]);
 
   // Auto-scroll to bottom on new messages if user is at bottom
   useEffect(() => {

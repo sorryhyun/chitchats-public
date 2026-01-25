@@ -101,9 +101,10 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
             if (uniqueNewMessages.length === 0) return prev;
 
             // Separate chatting indicators from real messages
-            // Insert new messages BEFORE chatting indicators to maintain correct order
+            // Also remove any "ended" indicators for agents whose real messages just arrived
+            const newAgentIds = new Set(uniqueNewMessages.map((m: Message) => m.agent_id).filter(Boolean));
             const realMessages = prev.filter(m => !m.is_chatting);
-            const chattingIndicators = prev.filter(m => m.is_chatting);
+            const chattingIndicators = prev.filter(m => m.is_chatting && !newAgentIds.has(m.agent_id));
 
             return [...realMessages, ...uniqueNewMessages, ...chattingIndicators];
           });
@@ -199,16 +200,14 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
 
     setMessages((prev) => {
       const prevChatting = prev.filter(m => m.is_chatting);
+      const withoutChatting = prev.filter(m => !m.is_chatting);
 
-      // If nothing is streaming now and nothing was chatting before, avoid rewriting state
+      // If nothing is streaming and nothing was chatting before, avoid rewriting state
       if (streamingAgents.size === 0 && prevChatting.length === 0) {
         return prev;
       }
 
-      // Remove old chatting indicators
-      const withoutChatting = prev.filter(m => !m.is_chatting);
-
-      // Build a map of previous profile pics for fallback (from polling data)
+      // Build a map of previous profile pics for fallback
       const prevProfilePics = new Map<number, string | null | undefined>();
       prevChatting.forEach(m => {
         if (m.agent_id !== undefined && m.agent_id !== null) {
@@ -216,10 +215,9 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
         }
       });
 
-      // Add new chatting indicators from SSE streaming agents
+      // Build chatting indicators from currently streaming agents
       const chattingMessages: Message[] = [];
       streamingAgents.forEach((state, agentId) => {
-        // Use SSE profile_pic if available, otherwise fall back to previous (from polling)
         const profilePic = state.agent_profile_pic ?? prevProfilePics.get(agentId);
         chattingMessages.push({
           id: `chatting_${agentId}` as any,
@@ -234,7 +232,19 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
         });
       });
 
-      // If the chatting state hasn't changed (same agents with same thinking/content), avoid state churn
+      // Keep existing chatting indicators for agents that FINISHED streaming
+      // (not currently in streamingAgents) until the real message arrives via poll.
+      // This prevents flickering between stream_end and poll completing.
+      prevChatting.forEach(msg => {
+        if (msg.agent_id !== undefined && msg.agent_id !== null) {
+          // Only keep if agent is NOT currently streaming (would be replaced by fresh indicator above)
+          if (!streamingAgents.has(msg.agent_id)) {
+            chattingMessages.push(msg);
+          }
+        }
+      });
+
+      // If the chatting state hasn't changed, avoid state churn
       const hasSameChattingState =
         chattingMessages.length === prevChatting.length &&
         chattingMessages.every((msg) =>
