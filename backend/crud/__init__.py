@@ -71,6 +71,15 @@ from .rooms import (
     update_room,
 )
 
+# Voice audio operations
+from .voice_audio import (
+    create_voice_audio,
+    delete_voice_audio,
+    get_message_by_id,
+    get_voice_audio_by_message_id,
+    voice_audio_exists,
+)
+
 # Export all functions
 __all__ = [
     # Room operations
@@ -122,4 +131,10 @@ __all__ = [
     "remove_agent_from_room_with_cleanup",
     "delete_room_with_cleanup",
     "clear_room_messages_with_cleanup",
+    # Voice audio operations
+    "get_voice_audio_by_message_id",
+    "create_voice_audio",
+    "delete_voice_audio",
+    "get_message_by_id",
+    "voice_audio_exists",
 ]

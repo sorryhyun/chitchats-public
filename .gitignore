@@ -65,3 +65,7 @@ chitchats.db
 
 # Bundled binaries
 bundled/*.exe
+
+# Voice TTS audio cache
+sounds/
+voice_server/output/

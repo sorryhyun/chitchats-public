@@ -366,7 +366,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
           )}
 
           {/* Messages */}
-          <MessageList messages={messages} />
+          <MessageList messages={messages} roomId={roomId!} />
 
           {/* Input Area */}
           <MessageInput

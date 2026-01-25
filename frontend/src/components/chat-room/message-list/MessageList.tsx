@@ -6,9 +6,10 @@ import { MessageRow } from './MessageRow';
 
 interface MessageListProps {
   messages: Message[];
+  roomId: number;
 }
 
-export const MessageList = memo(({ messages }: MessageListProps) => {
+export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
   const [expandedThinking, setExpandedThinking] = useState<Set<number | string>>(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState<number | string | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -80,6 +81,7 @@ export const MessageList = memo(({ messages }: MessageListProps) => {
   const itemContent = useCallback((index: number) => (
     <MessageRow
       message={messages[index]}
+      roomId={roomId}
       style={{}} // Virtuoso handles positioning, no need for style prop
       index={index}
       expandedThinking={expandedThinking}
@@ -88,7 +90,7 @@ export const MessageList = memo(({ messages }: MessageListProps) => {
       onToggleThinking={toggleThinking}
       onCopyToClipboard={copyToClipboard}
     />
-  ), [messages, expandedThinking, copiedMessageId, whiteboardInfo, toggleThinking, copyToClipboard]);
+  ), [messages, roomId, expandedThinking, copiedMessageId, whiteboardInfo, toggleThinking, copyToClipboard]);
 
   if (messages.length === 0) {
     return (

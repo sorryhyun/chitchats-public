@@ -3,6 +3,7 @@ import { useFocusTrap } from './hooks/useFocusTrap';
 import { useAuth } from './contexts/AuthContext';
 import { RoomProvider, useRoomContext } from './contexts/RoomContext';
 import { AgentProvider, useAgentContext } from './contexts/AgentContext';
+import { VoiceProvider } from './contexts/VoiceContext';
 import { MainSidebar } from './components/sidebar/MainSidebar';
 import { ChatRoom } from './components/chat-room/ChatRoom';
 import { AgentProfileModal } from './components/AgentProfileModal';
@@ -250,9 +251,11 @@ function App() {
   }
 
   return (
-    <RoomProvider>
-      <AgentProviderWrapper />
-    </RoomProvider>
+    <VoiceProvider>
+      <RoomProvider>
+        <AgentProviderWrapper />
+      </RoomProvider>
+    </VoiceProvider>
   );
 }
 

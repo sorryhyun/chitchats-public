@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-tunnel-backend run-tunnel-frontend dev dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri build-tauri-archived test-e2e-archived test-e2e-ui-archived test-e2e-debug-archived
+.PHONY: help install run-backend run-frontend run-voice run-tunnel-backend run-tunnel-frontend dev dev-voice dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri build-tauri-archived test-e2e-archived test-e2e-ui-archived test-e2e-debug-archived
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -8,11 +8,13 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev               - Run backend + frontend (PostgreSQL)"
+	@echo "  make dev-voice         - Run backend + frontend + voice server"
 	@echo "  make dev-win           - Run backend + frontend (Windows, clean Ctrl+C)"
 	@echo "  make dev-sqlite        - Run backend + frontend (SQLite)"
 	@echo "  make install           - Install all dependencies (backend + frontend)"
 	@echo "  make run-backend       - Run backend server only"
 	@echo "  make run-frontend      - Run frontend server only"
+	@echo "  make run-voice         - Run voice TTS server only (port 8002)"
 	@echo ""
 	@echo "Build:"
 	@echo "  make build-exe         - Build standalone Windows exe (recommended)"
@@ -55,6 +57,10 @@ run-frontend:
 	@echo "Starting frontend server..."
 	cd frontend && npm run dev
 
+run-voice:
+	@echo "Starting voice TTS server on port 8002..."
+	cd voice_server && uv run uvicorn main:app --host 0.0.0.0 --port 8002
+
 run-tunnel-backend:
 	@echo "Starting Cloudflare tunnel for backend..."
 	cloudflared tunnel --url http://localhost:8001
@@ -65,12 +71,20 @@ run-tunnel-frontend:
 
 dev:
 	@echo "Starting backend and frontend..."
-	@echo "Backend will run on http://localhost:8000"
+	@echo "Backend will run on http://localhost:8001"
 	@echo "Frontend will run on http://localhost:5173"
 	@echo "For remote access, run 'make run-tunnel-backend' and 'make run-tunnel-frontend' in separate terminals"
 	@echo "Press Ctrl+C to stop all servers"
 # 	@$(MAKE) -j3 run-backend run-frontend run-tunnel-backend
-	@$(MAKE) -j3 run-backend run-frontend
+	@$(MAKE) -j2 run-backend run-frontend
+
+dev-voice:
+	@echo "Starting backend, frontend, and voice server..."
+	@echo "Backend will run on http://localhost:8001"
+	@echo "Frontend will run on http://localhost:5173"
+	@echo "Voice server will run on http://localhost:8002"
+	@echo "Press Ctrl+C to stop all servers"
+	@$(MAKE) -j3 run-backend run-frontend run-voice
 
 dev-win:
 	@echo "Starting backend and frontend (Windows)..."

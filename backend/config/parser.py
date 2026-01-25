@@ -204,6 +204,49 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
 
         return None
 
+    def find_voice_file() -> tuple[Optional[str], Optional[str]]:
+        """Find voice sample file and its transcript in the agent folder.
+
+        Returns:
+            Tuple of (voice_file_path, voice_text) or (None, None) if not found
+        """
+        voice_extensions = [".wav", ".mp3", ".flac", ".ogg"]
+        voice_names = ["voice", "sample", "tts"]
+
+        voice_path = None
+        # First, try common voice file names
+        for name in voice_names:
+            for ext in voice_extensions:
+                candidate = folder_path / f"{name}{ext}"
+                if candidate.exists():
+                    voice_path = str(candidate)
+                    break
+            if voice_path:
+                break
+
+        # If no common name found, look for any audio file
+        if not voice_path:
+            for ext in voice_extensions:
+                for file in folder_path.glob(f"*{ext}"):
+                    voice_path = str(file)
+                    break
+                if voice_path:
+                    break
+
+        if not voice_path:
+            return None, None
+
+        # Look for transcript file
+        voice_text = None
+        text_file = folder_path / "voice_text.txt"
+        if text_file.exists():
+            try:
+                voice_text = text_file.read_text(encoding="utf-8").strip()
+            except Exception as e:
+                logger.warning(f"Failed to read voice_text.txt: {e}")
+
+        return voice_path, voice_text
+
     # Parse long-term memory file for recall tool
     long_term_memory_file = folder_path / "consolidated_memory.md"
     long_term_memory_index = None
@@ -215,6 +258,9 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
             # Create a comma-separated list of subtitles for context injection
             long_term_memory_subtitles = ", ".join(f"'{s}'" for s in long_term_memory_index.keys())
 
+    # Find voice files
+    voice_file, voice_text = find_voice_file()
+
     return AgentConfigData(
         in_a_nutshell=read_section("in_a_nutshell.md"),
         characteristics=read_section("characteristics.md"),
@@ -222,6 +268,8 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
         profile_pic=find_profile_pic(),
         long_term_memory_index=long_term_memory_index,
         long_term_memory_subtitles=long_term_memory_subtitles,
+        voice_file=voice_file,
+        voice_text=voice_text,
     )
 
 

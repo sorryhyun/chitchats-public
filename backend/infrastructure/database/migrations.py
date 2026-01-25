@@ -43,6 +43,7 @@ async def run_migrations(engine: AsyncEngine):
         await _migrate_rooms_table(conn)
         await _migrate_room_agents_table(conn)
         await _migrate_room_agent_sessions_table(conn)  # v9: Provider-specific sessions
+        await _create_voice_audio_table(conn)  # v10: Voice audio caching
         await _add_indexes(conn)
 
         # Data migrations - sync data from filesystem
@@ -255,6 +256,67 @@ async def _migrate_room_agent_sessions_table(conn):
         logger.info("  Adding codex_thread_id column to room_agent_sessions table...")
         await conn.execute(text("ALTER TABLE room_agent_sessions ADD COLUMN codex_thread_id VARCHAR"))
         logger.info("  ✓ Added codex_thread_id column")
+
+
+async def _table_exists(conn, table: str) -> bool:
+    """Check if a table exists (PostgreSQL and SQLite)."""
+    if _is_sqlite(conn):
+        result = await conn.execute(
+            text("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name = :table"),
+            {"table": table},
+        )
+        return result.first().count > 0
+    else:
+        result = await conn.execute(
+            text("""
+                SELECT COUNT(*) as count
+                FROM information_schema.tables
+                WHERE table_name = :table
+            """),
+            {"table": table},
+        )
+        return result.first().count > 0
+
+
+async def _create_voice_audio_table(conn):
+    """Create voice_audio table for caching TTS audio files (v10: Voice mode)."""
+    if await _table_exists(conn, "voice_audio"):
+        return
+
+    logger.info("  Creating voice_audio table...")
+
+    if _is_sqlite(conn):
+        await conn.execute(
+            text("""
+                CREATE TABLE voice_audio (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message_id INTEGER NOT NULL UNIQUE,
+                    agent_id INTEGER,
+                    file_path VARCHAR NOT NULL,
+                    duration_ms INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+                    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL
+                )
+            """)
+        )
+    else:
+        await conn.execute(
+            text("""
+                CREATE TABLE voice_audio (
+                    id SERIAL PRIMARY KEY,
+                    message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+                    agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+                    file_path VARCHAR NOT NULL,
+                    duration_ms INTEGER,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+        )
+
+    # Add index for faster lookups
+    await conn.execute(text("CREATE INDEX idx_voice_audio_message_id ON voice_audio(message_id)"))
+    logger.info("  ✓ Created voice_audio table")
 
 
 async def _add_indexes(conn):

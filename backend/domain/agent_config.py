@@ -24,6 +24,8 @@ class AgentConfigData:
         profile_pic: Optional profile picture filename
         long_term_memory_index: Dict mapping memory subtitles to their full content
         long_term_memory_subtitles: List of available memory subtitles (for context injection)
+        voice_file: Optional path to voice sample WAV file for TTS cloning
+        voice_text: Optional transcript of the voice sample
     """
 
     config_file: Optional[str] = None
@@ -33,6 +35,8 @@ class AgentConfigData:
     profile_pic: Optional[str] = None
     long_term_memory_index: Optional[Dict[str, str]] = None
     long_term_memory_subtitles: Optional[str] = None
+    voice_file: Optional[str] = None
+    voice_text: Optional[str] = None
 
     def has_content(self) -> bool:
         """
@@ -62,4 +66,6 @@ class AgentConfigData:
             profile_pic=data.get("profile_pic"),
             long_term_memory_index=data.get("long_term_memory_index"),
             long_term_memory_subtitles=data.get("long_term_memory_subtitles"),
+            voice_file=data.get("voice_file"),
+            voice_text=data.get("voice_text"),
         )

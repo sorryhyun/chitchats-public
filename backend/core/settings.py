@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     # Codex provider configuration
     codex_model: str = "gpt-5.2"  # Default model for Codex provider
 
+    # Voice server configuration
+    voice_server_url: str = "http://localhost:8002"  # URL to voice TTS server
+
     @field_validator("enable_guest_login", mode="before")
     @classmethod
     def validate_enable_guest_login(cls, v: Optional[str]) -> bool:

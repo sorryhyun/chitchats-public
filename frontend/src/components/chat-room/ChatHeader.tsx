@@ -6,6 +6,7 @@ import { ConnectionStatus } from './header/ConnectionStatus';
 import { RoomBadges } from './header/RoomBadges';
 import { AgentPanelToggle } from './header/AgentPanelToggle';
 import { RoomControls } from './header/RoomControls';
+import { VoiceStatusIndicator } from './header/VoiceStatusIndicator';
 
 interface ChatHeaderProps {
   roomName: string;
@@ -63,6 +64,7 @@ export const ChatHeader = ({
           <div className="hidden sm:flex items-center gap-mobile mt-1 flex-wrap">
             <ConnectionStatus isConnected={isConnected} />
             <RoomBadges roomName={roomName} isPaused={roomData?.is_paused || false} />
+            <VoiceStatusIndicator />
             <ConversationCopyButton roomName={roomName} messages={messages} />
           </div>
         </div>

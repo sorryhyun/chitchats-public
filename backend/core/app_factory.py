@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
         rooms,
         serve_mcp,
         sse,
+        voice,
     )
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
@@ -186,6 +187,7 @@ def create_app() -> FastAPI:
     app.include_router(debug.router, prefix="/debug", tags=["Debug"])
     app.include_router(providers.router, tags=["Providers"])
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])
+    app.include_router(voice.router, prefix="/voice", tags=["Voice"])
     app.include_router(serve_mcp.router, tags=["MCP Tools"])
 
     # Mount MCP server - exposes simplified tools for easy LLM integration

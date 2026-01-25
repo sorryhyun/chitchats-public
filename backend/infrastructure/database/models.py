@@ -195,3 +195,21 @@ class RoomAgentSession(Base):
             self.codex_thread_id = session_id
         else:
             self.claude_session_id = session_id
+
+
+class VoiceAudio(Base):
+    """Cached voice audio for messages."""
+
+    __tablename__ = "voice_audio"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"), unique=True, nullable=False)
+    agent_id = Column(Integer, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    file_path = Column(String, nullable=False)  # Path relative to sounds/ directory
+    duration_ms = Column(Integer, nullable=True)  # Duration in milliseconds
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (Index("idx_voice_audio_message_id", "message_id"),)
+
+    message = relationship("Message")
+    agent = relationship("Agent")
