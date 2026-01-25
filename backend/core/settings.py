@@ -327,13 +327,33 @@ class Settings(BaseSettings):
         if self.vercel_url:
             origins.append(f"https://{self.vercel_url}")
 
-        # Add local network IPs for development
+        # Add local network IPs for development (including WSL2)
         import socket
 
         try:
+            # Get all IPs from all network interfaces
+            local_ips = set()
             hostname = socket.gethostname()
-            local_ip = socket.gethostbyname(hostname)
-            origins.extend([f"http://{local_ip}:5173", f"http://{local_ip}:5174"])
+            # Try hostname-based lookup
+            try:
+                local_ips.add(socket.gethostbyname(hostname))
+            except Exception:
+                pass
+            # Try getting all addresses for the hostname
+            try:
+                for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+                    local_ips.add(info[4][0])
+            except Exception:
+                pass
+            # Try connecting to external to find default route IP (works in WSL2)
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    local_ips.add(s.getsockname()[0])
+            except Exception:
+                pass
+            for local_ip in local_ips:
+                origins.extend([f"http://{local_ip}:5173", f"http://{local_ip}:5174"])
         except Exception:
             pass
 

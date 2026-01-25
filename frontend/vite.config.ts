@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   server: {
-    host: '127.0.0.1', // Localhost only - not exposed to network
+    host: '0.0.0.0', // Exposed to network (needed for WSL2 -> Windows access)
     port: 5173,
     strictPort: true, // Fail if port is in use (needed for Tauri)
   },

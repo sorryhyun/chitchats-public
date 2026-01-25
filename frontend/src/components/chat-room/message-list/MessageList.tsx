@@ -84,7 +84,20 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
 
   const copyToClipboard = useCallback(async (messageId: number | string, content: string) => {
     try {
-      await navigator.clipboard.writeText(content);
+      // Use modern clipboard API if available
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(content);
+      } else {
+        // Fallback for non-secure contexts or older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = content;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setCopiedMessageId(messageId);
       setTimeout(() => setCopiedMessageId(null), 2000);
     } catch (err) {
