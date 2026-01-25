@@ -23,6 +23,9 @@ import time
 import webbrowser
 from pathlib import Path
 
+# Global flag to prevent duplicate browser opens
+_browser_opened = False
+
 
 def get_base_path() -> Path:
     """Get the base path for resources (handles both dev and bundled modes)."""
@@ -214,9 +217,21 @@ def is_tauri_sidecar() -> bool:
 
 
 def open_browser_delayed(url: str, delay: float = 1.5):
-    """Open browser after a delay to allow server to start."""
+    """Open browser after a delay to allow server to start.
+
+    Uses a global flag to prevent duplicate browser opens which can happen
+    when Claude SDK or Codex subprocess triggers browser behavior on Windows.
+    """
+    global _browser_opened
+
+    if _browser_opened:
+        return
+
+    _browser_opened = True
+
     def _open():
         time.sleep(delay)
+        # Double-check flag in case of race condition
         webbrowser.open(url)
 
     thread = threading.Thread(target=_open, daemon=True)
@@ -230,7 +245,7 @@ def run_mcp_server(server_type: str) -> None:
     allowing Codex to spawn this exe as an MCP server subprocess.
 
     Args:
-        server_type: Either "action" or "guidelines"
+        server_type: Either "action", "guidelines", or "etc"
     """
     import asyncio
 
@@ -241,9 +256,11 @@ def run_mcp_server(server_type: str) -> None:
         from mcp_servers.action_server import main as server_main
     elif server_type == "guidelines":
         from mcp_servers.guidelines_server import main as server_main
+    elif server_type == "etc":
+        from mcp_servers.etc_server import main as server_main
     else:
         print(f"Unknown MCP server type: {server_type}", file=sys.stderr)
-        print("Valid types: action, guidelines", file=sys.stderr)
+        print("Valid types: action, guidelines, etc", file=sys.stderr)
         sys.exit(1)
 
     # Run the MCP server (async main)

@@ -82,16 +82,30 @@ class MCPConfigBuilder:
         # Build guidelines server config
         guidelines_env = MCPConfigBuilder._build_guidelines_env(base_env, env_config)
 
+        # When running as PyInstaller bundle, use --mcp-server flag instead of -m
+        is_frozen = getattr(sys, "frozen", False)
+
+        if is_frozen:
+            # PyInstaller bundle: use --mcp-server flag that launcher.py understands
+            action_args = ["--mcp-server", "action"]
+            guidelines_args = ["--mcp-server", "guidelines"]
+            etc_args = ["--mcp-server", "etc"]
+        else:
+            # Development: use Python module invocation
+            action_args = ["-m", "mcp_servers.action_server"]
+            guidelines_args = ["-m", "mcp_servers.guidelines_server"]
+            etc_args = ["-m", "mcp_servers.etc_server"]
+
         servers: Dict[str, MCPServerConfig] = {
             "action": {
                 "command": python_exe,
-                "args": ["-m", "mcp_servers.action_server"],
+                "args": action_args,
                 "env": action_env,
                 "cwd": backend_dir,
             },
             "guidelines": {
                 "command": python_exe,
-                "args": ["-m", "mcp_servers.guidelines_server"],
+                "args": guidelines_args,
                 "env": guidelines_env,
                 "cwd": backend_dir,
             },
@@ -101,7 +115,7 @@ class MCPConfigBuilder:
         if include_etc:
             servers["etc"] = {
                 "command": python_exe,
-                "args": ["-m", "mcp_servers.etc_server"],
+                "args": etc_args,
                 "env": base_env.copy(),
                 "cwd": backend_dir,
             }

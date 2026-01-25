@@ -98,12 +98,15 @@ class JsonRpcTransport:
 
         logger.info(f"[Transport {self._instance_id}] Starting: {' '.join(self._command)}")
 
+        # Build environment with BROWSER="" to prevent subprocess from opening browser
+        subprocess_env = {**os.environ, "BROWSER": ""}
+
         self._process = await asyncio.create_subprocess_exec(
             *self._command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ},
+            env=subprocess_env,
         )
 
         self._reader_task = asyncio.create_task(self._read_stdout())
