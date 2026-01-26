@@ -108,8 +108,8 @@ export const MainSidebar = ({
       {/* Rooms Tab Content */}
       {activeTab === 'rooms' && (
         <>
-          {/* New Room Input and Buttons (Desktop only) */}
-          <div className="hidden lg:block p-3 border-b border-slate-300 bg-white space-y-2">
+          {/* New Room Input and Buttons */}
+          <div className="p-3 border-b border-slate-300 bg-white space-y-2">
             <input
               type="text"
               value={newRoomName}
@@ -157,8 +157,8 @@ export const MainSidebar = ({
       {/* Agents Tab Content */}
       {activeTab === 'agents' && (
         <>
-          {/* New Agent Button (Desktop only) */}
-          <div className="hidden lg:block p-3 border-b border-slate-300 bg-white">
+          {/* New Agent Button */}
+          <div className="p-3 border-b border-slate-300 bg-white">
             <button
               onClick={handleShowAgentForm}
               className="w-full px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm touch-manipulation min-h-[44px]"
