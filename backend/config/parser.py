@@ -10,12 +10,24 @@ Also includes memory parsing utilities for long-term memory files.
 import logging
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from domain.agent_config import AgentConfigData
 
 logger = logging.getLogger("ConfigParser")
+
+# Regex pattern for "지금 드는 생각" (current thoughts) section
+THOUGHTS_PATTERN = r'\*\*지금 드는 생각:\*\*\s*"([^"]*)"'
+
+
+@dataclass
+class MemoryEntry:
+    """A parsed memory entry with content and optional thoughts."""
+
+    content: str
+    thoughts: Optional[str] = None
 
 
 def _get_agents_dir() -> Path:
@@ -138,6 +150,42 @@ def get_memory_by_subtitle(file_path: Path, subtitle: str) -> Optional[str]:
     """
     memories = parse_long_term_memory(file_path)
     return memories.get(subtitle)
+
+
+def parse_long_term_memory_with_thoughts(file_path: Path) -> Dict[str, MemoryEntry]:
+    """
+    Parse a long-term memory file, separating content from thoughts.
+
+    This extracts "지금 드는 생각" (current thoughts) from each memory entry.
+    The thoughts can be shown as previews in tool descriptions while the
+    actual recalled content excludes them.
+
+    Format:
+        ## [subtitle]
+        Content for this memory...
+
+        **지금 드는 생각:** "Some thought about this memory"
+
+    Args:
+        file_path: Path to the memory file
+
+    Returns:
+        Dictionary mapping subtitles to MemoryEntry objects with content and thoughts
+    """
+    raw_memories = parse_long_term_memory(file_path)
+    result: Dict[str, MemoryEntry] = {}
+
+    for subtitle, full_content in raw_memories.items():
+        # Extract thoughts using the pattern
+        match = re.search(THOUGHTS_PATTERN, full_content)
+        thoughts = match.group(1) if match else None
+
+        # Strip thoughts from content
+        content = re.sub(r'\n?\*\*지금 드는 생각:\*\*\s*"[^"]*"', "", full_content).strip()
+
+        result[subtitle] = MemoryEntry(content=content, thoughts=thoughts)
+
+    return result
 
 
 # =============================================================================
@@ -267,12 +315,26 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
     long_term_memory_file = folder_path / "consolidated_memory.md"
     long_term_memory_index = None
     long_term_memory_subtitles = None
+    long_term_memory_entries = None
 
     if long_term_memory_file.exists():
-        long_term_memory_index = parse_long_term_memory(long_term_memory_file)
-        if long_term_memory_index:
-            # Create a comma-separated list of subtitles for context injection
-            long_term_memory_subtitles = ", ".join(f"'{s}'" for s in long_term_memory_index.keys())
+        # Import settings to check if memory preview with thoughts is enabled
+        from core.settings import get_settings
+
+        settings = get_settings()
+
+        if settings.memory_preview_with_thoughts:
+            # Parse with thoughts extraction
+            long_term_memory_entries = parse_long_term_memory_with_thoughts(long_term_memory_file)
+            if long_term_memory_entries:
+                # Create index from entries (for backward compatibility)
+                long_term_memory_index = {k: v.content for k, v in long_term_memory_entries.items()}
+                long_term_memory_subtitles = ", ".join(f"'{s}'" for s in long_term_memory_entries.keys())
+        else:
+            # Legacy parsing without thoughts
+            long_term_memory_index = parse_long_term_memory(long_term_memory_file)
+            if long_term_memory_index:
+                long_term_memory_subtitles = ", ".join(f"'{s}'" for s in long_term_memory_index.keys())
 
     # Find voice files
     voice_file, voice_text = find_voice_file()
@@ -284,6 +346,7 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
         profile_pic=find_profile_pic(),
         long_term_memory_index=long_term_memory_index,
         long_term_memory_subtitles=long_term_memory_subtitles,
+        long_term_memory_entries=long_term_memory_entries,
         voice_file=voice_file,
         voice_text=voice_text,
     )

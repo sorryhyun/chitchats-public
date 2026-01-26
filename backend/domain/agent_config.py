@@ -4,8 +4,13 @@ Agent configuration data structure.
 Groups agent configuration fields for clean parameter passing.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
+
+if TYPE_CHECKING:
+    from config.parser import MemoryEntry
 
 
 @dataclass
@@ -24,6 +29,7 @@ class AgentConfigData:
         profile_pic: Optional profile picture filename
         long_term_memory_index: Dict mapping memory subtitles to their full content
         long_term_memory_subtitles: List of available memory subtitles (for context injection)
+        long_term_memory_entries: Dict mapping subtitles to MemoryEntry objects (with thoughts)
         voice_file: Optional path to voice sample WAV file for TTS cloning
         voice_text: Optional transcript of the voice sample
     """
@@ -35,6 +41,7 @@ class AgentConfigData:
     profile_pic: Optional[str] = None
     long_term_memory_index: Optional[Dict[str, str]] = None
     long_term_memory_subtitles: Optional[str] = None
+    long_term_memory_entries: Optional[Dict[str, "MemoryEntry"]] = None
     voice_file: Optional[str] = None
     voice_text: Optional[str] = None
 
@@ -66,6 +73,7 @@ class AgentConfigData:
             profile_pic=data.get("profile_pic"),
             long_term_memory_index=data.get("long_term_memory_index"),
             long_term_memory_subtitles=data.get("long_term_memory_subtitles"),
+            long_term_memory_entries=data.get("long_term_memory_entries"),
             voice_file=data.get("voice_file"),
             voice_text=data.get("voice_text"),
         )

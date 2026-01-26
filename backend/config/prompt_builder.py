@@ -37,8 +37,8 @@ def config_to_markdown(config_data: AgentConfigData, agent_name: str) -> str:
     if config_data.recent_events:
         sections.append(f"## Recent events\n\n{config_data.recent_events}")
 
-    if config_data.long_term_memory_subtitles:
-        sections.append(f"## {agent_name}이 가진 기억 index\n\n{config_data.long_term_memory_subtitles}")
+    # Note: Memory subtitles are no longer added to system prompt.
+    # They are shown in the recall tool description with thoughts previews.
 
     if sections:
         return "\n\n" + "\n\n".join(sections)

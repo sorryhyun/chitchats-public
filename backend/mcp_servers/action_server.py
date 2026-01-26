@@ -47,6 +47,7 @@ def create_action_server(
     agent_id: Optional[int] = None,
     config_file: Optional[str] = None,
     long_term_memory_index: Optional[dict[str, str]] = None,
+    long_term_memory_entries: Optional[dict] = None,
     provider: str = "claude",
 ) -> Server:
     """
@@ -58,6 +59,7 @@ def create_action_server(
         agent_id: Optional agent ID for cache invalidation
         config_file: Path to agent config folder (for memorize tool)
         long_term_memory_index: Optional dict mapping memory subtitles to content
+        long_term_memory_entries: Optional dict mapping subtitles to MemoryEntry objects (with thoughts)
         provider: AI provider ("claude" or "codex")
 
     Returns:
@@ -65,8 +67,17 @@ def create_action_server(
     """
     server = Server("action")
 
-    # Use provided memory index or load from config file
-    memory_index = long_term_memory_index or _load_memory_index(config_file)
+    # Use provided memory entries/index or load from config file
+    memory_entries = long_term_memory_entries
+    memory_index = long_term_memory_index
+
+    if memory_entries is None and memory_index is None:
+        memory_index, memory_entries = _load_memory_index_and_entries(config_file)
+    elif memory_entries is not None and memory_index is None:
+        # Build index from entries
+        memory_index = {k: v.content for k, v in memory_entries.items()}
+    elif memory_index is None:
+        memory_index = {}
 
     # Context for tools
     context = {
@@ -75,6 +86,7 @@ def create_action_server(
         "agent_id": agent_id,
         "config_file": config_file,
         "memory_index": memory_index,
+        "memory_entries": memory_entries,
         "provider": provider,
     }
 
@@ -93,7 +105,21 @@ def create_action_server(
                 continue
 
             # Get description with variable substitution
-            memory_subtitles = ", ".join(f"'{s}'" for s in memory_index.keys()) if memory_index else ""
+            # Generate memory subtitles with thoughts preview if available
+            if memory_entries:
+                # Use thoughts as previews: [subtitle]: "thought"
+                preview_parts = []
+                for subtitle, entry in memory_entries.items():
+                    if entry.thoughts:
+                        preview_parts.append(f"[{subtitle}]: \"{entry.thoughts}\"")
+                    else:
+                        preview_parts.append(f"'{subtitle}'")
+                memory_subtitles = ", ".join(preview_parts)
+            elif memory_index:
+                memory_subtitles = ", ".join(f"'{s}'" for s in memory_index.keys())
+            else:
+                memory_subtitles = ""
+
             description = get_tool_description(
                 tool_id,
                 agent_name=agent_name,
@@ -248,26 +274,45 @@ def _handle_recall(arguments: dict, context: dict) -> list[TextContent]:
 # =============================================================================
 
 
-def _load_memory_index(config_file: Optional[str]) -> dict[str, str]:
-    """Load memory index from agent's config folder."""
+def _load_memory_index_and_entries(config_file: Optional[str]) -> tuple[dict[str, str], Optional[dict]]:
+    """Load memory index and entries from agent's config folder.
+
+    Args:
+        config_file: Path to agent config folder
+
+    Returns:
+        Tuple of (memory_index, memory_entries)
+        - memory_index: Dict mapping subtitles to content (thoughts stripped)
+        - memory_entries: Dict mapping subtitles to MemoryEntry objects (or None if feature disabled)
+    """
     if not config_file:
-        return {}
+        return {}, None
 
     try:
-        from config.parser import parse_long_term_memory
+        from config.parser import parse_long_term_memory, parse_long_term_memory_with_thoughts
         from core import AgentConfigService
+        from core.settings import get_settings
 
         project_root = AgentConfigService.get_project_root()
         config_path = project_root / config_file
+        settings = get_settings()
 
         for filename in ["consolidated_memory.md", "long_term_memory.md"]:
             memory_file = config_path / filename
             if memory_file.exists():
-                return parse_long_term_memory(memory_file)
+                if settings.memory_preview_with_thoughts:
+                    # Parse with thoughts extraction
+                    memory_entries = parse_long_term_memory_with_thoughts(memory_file)
+                    memory_index = {k: v.content for k, v in memory_entries.items()}
+                    return memory_index, memory_entries
+                else:
+                    # Legacy parsing without thoughts
+                    memory_index = parse_long_term_memory(memory_file)
+                    return memory_index, None
     except Exception as e:
         logger.warning(f"Failed to load memory index: {e}")
 
-    return {}
+    return {}, None
 
 
 def _append_to_recent_events(config_file: str, memory_entry: str) -> bool:

@@ -126,6 +126,19 @@ class Settings(BaseSettings):
     # Voice server configuration
     voice_server_url: str = "http://localhost:8002"  # URL to voice TTS server
 
+    # Memory preview configuration
+    memory_preview_with_thoughts: bool = True  # Show thoughts in recall tool preview
+
+    @field_validator("memory_preview_with_thoughts", mode="before")
+    @classmethod
+    def validate_memory_preview_with_thoughts(cls, v: Optional[str]) -> bool:
+        """Parse memory_preview_with_thoughts from string to bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return True  # Default to True
+
     @field_validator("enable_guest_login", mode="before")
     @classmethod
     def validate_enable_guest_login(cls, v: Optional[str]) -> bool:

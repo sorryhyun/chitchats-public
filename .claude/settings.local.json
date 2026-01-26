@@ -21,7 +21,9 @@
       "Bash(comm:*)",
       "Bash(npm run typecheck:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(xargs:*)",
+      "Bash(git grep:*)"
     ],
     "deny": [],
     "ask": []
