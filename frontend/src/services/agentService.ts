@@ -4,10 +4,21 @@ import { API_BASE_URL, getFetchOptions } from './apiClient';
 /**
  * Generate the URL for an agent's profile picture.
  * Returns the URL to the profile pic endpoint if the agent has a profile picture.
+ *
+ * @param agent - Agent object with name and optional profile_pic
+ * @param size - Optional target size in pixels. If provided, returns a resized image.
+ *               For best quality on Retina displays, pass 2x the display size.
  */
-export function getAgentProfilePicUrl(agent: { name: string; profile_pic?: string | null }): string | null {
+export function getAgentProfilePicUrl(
+  agent: { name: string; profile_pic?: string | null },
+  size?: number
+): string | null {
   if (!agent.profile_pic) return null;
-  return `${API_BASE_URL}/agents/${encodeURIComponent(agent.name)}/profile-pic`;
+  const baseUrl = `${API_BASE_URL}/agents/${encodeURIComponent(agent.name)}/profile-pic`;
+  if (size) {
+    return `${baseUrl}?size=${size}`;
+  }
+  return baseUrl;
 }
 
 export const agentService = {

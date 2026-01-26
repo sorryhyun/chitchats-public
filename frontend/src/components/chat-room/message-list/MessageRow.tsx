@@ -209,7 +209,7 @@ export const MessageRow = memo(({
                     <div className="flex flex-col gap-2">
                       {/* Show streaming response content with same styling as finished messages */}
                       {message.content ? (
-                        <div className="prose prose-sm max-w-none break-words leading-relaxed select-text prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:rounded-xl pr-1">
+                        <div className={`prose prose-sm max-w-none break-words leading-relaxed select-text prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:rounded-xl pr-1 ${message.role === 'user' ? 'prose-invert' : ''}`}>
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm, remarkBreaks]}
                             components={{
@@ -270,7 +270,7 @@ export const MessageRow = memo(({
                     </div>
                   ) : (
                     <>
-                      <div className="prose prose-sm max-w-none break-words leading-relaxed select-text prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:rounded-xl pr-1">
+                      <div className={`prose prose-sm max-w-none break-words leading-relaxed select-text prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:rounded-xl pr-1 ${message.role === 'user' ? 'prose-invert' : ''}`}>
                         {isWhiteboardContent(getDisplayContent(message)) ? (
                           <pre className="whitespace-pre font-mono text-sm leading-relaxed overflow-x-auto bg-slate-50 p-3 rounded-lg border border-slate-200">
                             {getDisplayContent(message)}

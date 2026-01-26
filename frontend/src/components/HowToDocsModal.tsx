@@ -55,10 +55,10 @@ export const HowToDocsModal = ({ onClose }: HowToDocsModalProps) => {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div ref={modalRef} className="bg-white rounded-lg sm:rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="modal-overlay">
+      <div ref={modalRef} className="modal-container max-w-4xl">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-slate-700 to-slate-600 p-4 sm:p-6 z-10">
+        <div className="modal-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -109,10 +109,10 @@ export const HowToDocsModal = ({ onClose }: HowToDocsModalProps) => {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-slate-50 p-4 sm:p-6 border-t border-slate-200 flex justify-end">
+        <div className="modal-footer flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 font-medium transition-colors text-sm sm:text-base min-h-[44px] touch-manipulation"
+            className="btn-primary px-4 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base min-h-[44px] touch-manipulation"
           >
             {t('gotIt')}
           </button>

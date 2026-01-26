@@ -1,0 +1,133 @@
+/*
+ * Responsive utilities using 3-tier breakpoint system:
+ * - Mobile: 0-479px (default styles)
+ * - Tablet: 480px+ (sm: prefix)
+ * - Desktop: 1024px+ (lg: prefix)
+ */
+
+@layer utilities {
+  /* Mobile-responsive icon button */
+  .btn-icon-mobile {
+    @apply p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center;
+  }
+  @media (min-width: 480px) {
+    .btn-icon-mobile {
+      @apply p-2 min-w-[36px] min-h-[36px];
+    }
+  }
+
+  /* Icon size for mobile buttons */
+  .icon-mobile {
+    @apply w-4 h-4;
+  }
+  @media (min-width: 480px) {
+    .icon-mobile {
+      @apply w-5 h-5;
+    }
+  }
+
+  /* Header padding for mobile */
+  .header-padding-mobile {
+    @apply pl-14 pr-2 py-2;
+  }
+  @media (min-width: 480px) {
+    .header-padding-mobile {
+      @apply pl-16 pr-4 py-3;
+    }
+  }
+  @media (min-width: 1024px) {
+    .header-padding-mobile {
+      @apply pl-4 pr-6 py-4;
+    }
+  }
+
+  /* Responsive gap utility */
+  .gap-mobile {
+    @apply gap-2;
+  }
+  @media (min-width: 480px) {
+    .gap-mobile {
+      @apply gap-3;
+    }
+  }
+
+  /* Input area padding for mobile */
+  .input-padding-mobile {
+    @apply p-2;
+  }
+  @media (min-width: 480px) {
+    .input-padding-mobile {
+      @apply p-4;
+    }
+  }
+
+  /* Responsive text size */
+  .text-mobile-base {
+    @apply text-base;
+  }
+  @media (min-width: 480px) {
+    .text-mobile-base {
+      @apply text-lg;
+    }
+  }
+  @media (min-width: 1024px) {
+    .text-mobile-base {
+      @apply text-xl;
+    }
+  }
+
+  .text-mobile-sm {
+    @apply text-xs;
+  }
+  @media (min-width: 480px) {
+    .text-mobile-sm {
+      @apply text-sm;
+    }
+  }
+
+  /* Avatar size for mobile */
+  .avatar-mobile {
+    @apply w-9 h-9;
+  }
+  @media (min-width: 480px) {
+    .avatar-mobile {
+      @apply w-12 h-12;
+    }
+  }
+
+  /* Avatar image styling for better visibility at small sizes */
+  .avatar-img {
+    @apply ring-1 ring-slate-200 shadow-sm;
+    image-rendering: auto;
+  }
+
+  /* Message container padding */
+  .message-padding-mobile {
+    @apply p-2.5 space-y-3;
+  }
+  @media (min-width: 480px) {
+    .message-padding-mobile {
+      @apply p-4 space-y-4;
+    }
+  }
+  @media (min-width: 1024px) {
+    .message-padding-mobile {
+      @apply p-6;
+    }
+  }
+
+  /* Message bubble padding */
+  .message-bubble-padding {
+    @apply px-3 py-2;
+  }
+  @media (min-width: 480px) {
+    .message-bubble-padding {
+      @apply px-4 py-3;
+    }
+  }
+  @media (min-width: 1024px) {
+    .message-bubble-padding {
+      @apply px-5 py-3.5;
+    }
+  }
+}

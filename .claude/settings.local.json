@@ -20,7 +20,8 @@
       "Bash(dir /b \"C:\\\\Users\\\\stand\\\\Desktop\\\\etc\\\\claude_code_RP\\\\*.md\")",
       "Bash(comm:*)",
       "Bash(npm run typecheck:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(git show:*)"
     ],
     "deny": [],
     "ask": []

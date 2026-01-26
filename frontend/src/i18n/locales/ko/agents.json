@@ -5,6 +5,7 @@
   "availableAgents": "사용 가능한 에이전트",
   "allAgentsInRoom": "모든 에이전트가 이미 이 방에 있습니다",
   "noAgentsInRoom": "이 방에 에이전트가 없습니다",
+  "noMatchingAgents": "일치하는 에이전트가 없습니다",
   "addOneToStart": "시작하려면 에이전트를 추가하세요",
   "removeFromRoom": "방에서 제거",
   "removeConfirm": "{{name}}을(를) 이 방에서 제거하시겠습니까?",

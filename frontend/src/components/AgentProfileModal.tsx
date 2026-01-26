@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { Agent, AgentUpdate } from '../types';
 import { api } from '../services';
+import { getAgentProfilePicUrl } from '../services/agentService';
 
 interface AgentProfileModalProps {
   agent: Agent;
@@ -16,6 +17,17 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
 
   // Focus trap for modal
   const modalRef = useFocusTrap<HTMLDivElement>(true);
+
+  // Compute the profile pic URL - use base64 for new uploads, API URL for existing
+  const profilePicSrc = useMemo(() => {
+    if (!editedAgent.profile_pic) return null;
+    // If it's a base64 data URL (new upload), use it directly
+    if (editedAgent.profile_pic.startsWith('data:')) {
+      return editedAgent.profile_pic;
+    }
+    // Otherwise, use the API endpoint to get the image
+    return getAgentProfilePicUrl(agent, 128);
+  }, [editedAgent.profile_pic, agent]);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -85,8 +97,8 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div ref={modalRef} className="bg-white rounded-lg sm:rounded-xl shadow-2xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+    <div className="modal-overlay">
+      <div ref={modalRef} className="modal-container max-w-3xl">
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-cyan-600 p-4 sm:p-6 rounded-t-lg sm:rounded-t-xl z-10">
           <div className="flex items-center justify-between gap-3">
@@ -104,9 +116,9 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
                   className="cursor-pointer block w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-white/30 hover:border-white/60 active:border-white transition-all touch-manipulation"
                   title="Click to change profile picture"
                 >
-                  {editedAgent.profile_pic ? (
+                  {profilePicSrc ? (
                     <img
-                      src={editedAgent.profile_pic}
+                      src={profilePicSrc}
                       alt={agent.name}
                       className="w-full h-full object-cover"
                     />

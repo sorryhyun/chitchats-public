@@ -108,14 +108,14 @@ export const ExportModal = ({ isOpen, onClose }: ExportModalProps) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div
         ref={modalRef}
-        className="bg-white rounded-lg sm:rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
+        className="modal-container max-w-3xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-slate-700 to-slate-600 p-4 sm:p-6 z-10">
+        <div className="modal-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -218,13 +218,13 @@ export const ExportModal = ({ isOpen, onClose }: ExportModalProps) => {
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-slate-50 p-4 sm:p-6 border-t border-slate-200 flex items-center justify-between gap-4">
+        <div className="modal-footer flex items-center justify-between gap-4">
           <p className="text-xs text-slate-500 flex-1">
             {t('exportDescription')}
           </p>
           <button
             onClick={onClose}
-            className="px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 font-medium transition-colors text-sm sm:text-base min-h-[44px] touch-manipulation flex-shrink-0"
+            className="btn-primary px-4 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base min-h-[44px] touch-manipulation flex-shrink-0"
           >
             {t('close', 'Close')}
           </button>

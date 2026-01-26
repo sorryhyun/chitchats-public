@@ -102,3 +102,56 @@ def get_target_format_for_provider(provider: str) -> TargetFormat:
         return "png"
     # Default to webp for better compression
     return "webp"
+
+
+def resize_image(image_bytes: bytes, target_size: int) -> bytes:
+    """
+    Resize an image to a target size while maintaining aspect ratio.
+
+    The image is scaled down to fit within a target_size x target_size box.
+    If the image is smaller than target_size, it is returned unchanged.
+
+    Args:
+        image_bytes: Raw image bytes
+        target_size: Target size in pixels (width or height, whichever is larger)
+
+    Returns:
+        Resized image bytes in the same format
+    """
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        original_format = image.format or "PNG"
+
+        # Get current dimensions
+        width, height = image.size
+
+        # Calculate new dimensions maintaining aspect ratio
+        max_dim = max(width, height)
+        if max_dim <= target_size:
+            # Image is already smaller than target
+            return image_bytes
+
+        # Scale factor to fit in target_size box
+        scale = target_size / max_dim
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+
+        # Resize with high-quality resampling
+        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # Save to bytes
+        output_buffer = io.BytesIO()
+        save_kwargs = {}
+        if original_format.upper() in ("JPEG", "JPG"):
+            save_kwargs["quality"] = 95
+        elif original_format.upper() == "PNG":
+            save_kwargs["optimize"] = True
+        elif original_format.upper() == "WEBP":
+            save_kwargs["quality"] = WEBP_QUALITY
+
+        resized.save(output_buffer, format=original_format, **save_kwargs)
+        return output_buffer.getvalue()
+
+    except Exception as e:
+        print(f"Image resize failed: {e}")
+        return image_bytes

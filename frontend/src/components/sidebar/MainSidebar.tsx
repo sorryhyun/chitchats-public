@@ -8,6 +8,7 @@ import { RoomListPanel } from './RoomListPanel';
 import { CreateAgentForm } from './CreateAgentForm';
 import { AgentListPanel } from './AgentListPanel';
 import { ExportModal } from './ExportModal';
+import { SettingsModal } from './SettingsModal';
 import { koreanSearch } from '../../utils/koreanSearch';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import type { ProviderType } from '../../types';
@@ -36,6 +37,7 @@ export const MainSidebar = ({
   const [agentSearchQuery, setAgentSearchQuery] = useState('');
   const [newRoomName, setNewRoomName] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const { configs: availableConfigs, fetchConfigs } = useFetchAgentConfigs();
 
   // Create a new room with the specified provider
@@ -140,44 +142,14 @@ export const MainSidebar = ({
             </div>
           </div>
 
-          {/* Rooms List with FAB Container */}
-          <div className="relative flex-1 min-h-0">
+          {/* Rooms List */}
+          <div className="flex-1 min-h-0 relative">
             <RoomListPanel
               rooms={roomContext.rooms}
               selectedRoomId={roomContext.selectedRoomId}
               onSelectRoom={onSelectRoom}
               onDeleteRoom={roomContext.deleteRoom}
             />
-
-            {/* Floating Action Buttons (Mobile only) */}
-            <div className="lg:hidden fixed bottom-6 right-6 flex flex-col items-end gap-3 z-30">
-              {/* Mobile Input */}
-              <input
-                type="text"
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
-                placeholder={tRooms('enterRoomName')}
-                className="w-48 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-slate-400"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleCreateRoom('codex')}
-                  disabled={!newRoomName.trim()}
-                  className="w-14 h-14 bg-[#10A37F] text-white rounded-full shadow-lg flex items-center justify-center hover:bg-[#0d8a6a] active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Codex"
-                >
-                  <span className="text-xs font-bold">CDX</span>
-                </button>
-                <button
-                  onClick={() => handleCreateRoom('claude')}
-                  disabled={!newRoomName.trim()}
-                  className="w-14 h-14 bg-[#D97757] text-white rounded-full shadow-lg flex items-center justify-center hover:bg-[#c96747] active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Claude"
-                >
-                  <span className="text-xs font-bold">CLD</span>
-                </button>
-              </div>
-            </div>
           </div>
         </>
       )}
@@ -242,8 +214,8 @@ export const MainSidebar = ({
             </div>
           </div>
 
-          {/* Agents List with FAB Container */}
-          <div className="relative flex-1 min-h-0">
+          {/* Agents List */}
+          <div className="flex-1 min-h-0 relative">
             <AgentListPanel
               agents={filteredAndSortedAgents}
               selectedAgentId={agentContext.selectedAgentId}
@@ -251,23 +223,6 @@ export const MainSidebar = ({
               onDeleteAgent={agentContext.deleteAgent}
               onViewProfile={agentContext.viewProfile}
             />
-
-            {/* Floating Action Button (Mobile only) */}
-            <button
-              onClick={handleShowAgentForm}
-              className="lg:hidden fixed bottom-6 right-6 w-14 h-14 bg-slate-700 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-slate-600 active:scale-95 transition-transform z-30"
-              title={showAgentForm ? tCommon('cancel') : t('newAgent')}
-            >
-              {showAgentForm ? (
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              )}
-            </button>
           </div>
         </>
       )}
@@ -277,49 +232,71 @@ export const MainSidebar = ({
         {/* Language Switcher */}
         <LanguageSwitcher />
 
-        {/* Export Button */}
-        <button
-          onClick={() => setShowExportModal(true)}
-          className="w-full px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          {t('exportConversations')}
-        </button>
-
-        {/* Help Button */}
-        {onOpenDocs && (
+        {/* Export and Settings buttons in 2x2 grid */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Export Button */}
           <button
-            onClick={onOpenDocs}
-            className="w-full px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+            onClick={() => setShowExportModal(true)}
+            className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            {t('howToUse')}
+            <span className="hidden sm:inline">{t('exportConversations')}</span>
           </button>
-        )}
-        {/* Logout Button */}
-        <button
-          onClick={() => {
-            if (confirm(tCommon('logoutConfirm'))) {
-              logout();
-            }
-          }}
-          className="w-full px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          {tCommon('logout')}
-        </button>
+
+          {/* Settings Button */}
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="hidden sm:inline">{t('settings', 'Settings')}</span>
+          </button>
+
+          {/* Help Button */}
+          {onOpenDocs && (
+            <button
+              onClick={onOpenDocs}
+              className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span className="hidden sm:inline">{t('howToUse')}</span>
+            </button>
+          )}
+
+          {/* Logout Button */}
+          <button
+            onClick={() => {
+              if (confirm(tCommon('logoutConfirm'))) {
+                logout();
+              }
+            }}
+            className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span className="hidden sm:inline">{tCommon('logout')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Export Modal */}
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
       />
     </div>
   );

@@ -18,6 +18,7 @@ class RoomCreate(RoomBase):
 
 
 class RoomUpdate(BaseModel):
+    name: Optional[str] = None
     max_interactions: Optional[int] = None
     is_paused: Optional[bool] = None
     is_finished: Optional[bool] = None

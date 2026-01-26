@@ -5,6 +5,7 @@
   "availableAgents": "Available Agents",
   "allAgentsInRoom": "All agents are already in this room",
   "noAgentsInRoom": "No agents in this room",
+  "noMatchingAgents": "No matching agents in room",
   "addOneToStart": "Add one to get started",
   "removeFromRoom": "Remove from room",
   "removeConfirm": "Remove {{name}} from this room?",

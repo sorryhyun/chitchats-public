@@ -65,6 +65,23 @@ export function getApiKey(): string | null {
 }
 
 /**
+ * Get authentication headers for API requests.
+ * This is useful when you need just the headers (e.g., for fetch with streaming).
+ */
+export function getAuthHeaders(): HeadersInit {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+  };
+
+  if (globalApiKey) {
+    headers['X-API-Key'] = globalApiKey;
+  }
+
+  return headers;
+}
+
+/**
  * Helper to create fetch options with API key and common headers.
  */
 export function getFetchOptions(options: RequestInit = {}): RequestInit {
@@ -84,4 +101,23 @@ export function getFetchOptions(options: RequestInit = {}): RequestInit {
     ...options,
     headers,
   };
+}
+
+/**
+ * Generic API request helper that handles common patterns.
+ * Use this for simple fetch operations that don't need streaming.
+ */
+export async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const response = await fetch(url, getFetchOptions(options));
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+    throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
+  }
+
+  return response.json();
 }

@@ -1,18 +1,24 @@
 """Agent management routes for updates, configuration, and profile pictures."""
 
+import hashlib
 import re
 from pathlib import Path
+from typing import Optional
 
 import crud
 import schemas
 from config import list_available_configs
 from core import require_admin
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from infrastructure.database import get_db
+from infrastructure.images import resize_image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
+
+# In-memory cache for resized images: (path, size) -> (bytes, etag)
+_resize_cache: dict[tuple[str, int], tuple[bytes, str]] = {}
 
 # Pattern for valid agent names: alphanumeric, underscores, hyphens, and common unicode chars
 VALID_AGENT_NAME_PATTERN = re.compile(r"^[\w\-\.\s\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]+$")
@@ -46,9 +52,16 @@ async def list_agent_configs():
 
 
 @router.get("/{agent_name}/profile-pic")
-async def get_agent_profile_pic(agent_name: str):
+async def get_agent_profile_pic(
+    agent_name: str,
+    size: Optional[int] = Query(None, ge=16, le=1024, description="Target size in pixels"),
+):
     """
     Serve the profile picture for an agent from the filesystem.
+
+    Args:
+        agent_name: Name of the agent
+        size: Optional target size in pixels (16-1024). Image will be resized to fit.
 
     Looks for profile pictures in the agent's config folder:
     - agents/{agent_name}/profile.{png,jpg,jpeg,gif,webp,svg}
@@ -106,11 +119,67 @@ async def get_agent_profile_pic(agent_name: str):
         "Cache-Control": "public, max-age=3600, must-revalidate",
     }
 
+    def serve_image(pic_path: Path):
+        """Helper to serve an image, optionally resized."""
+        if size is None:
+            return FileResponse(pic_path, headers=cache_headers)
+
+        # Check in-memory cache first
+        cache_key = (str(pic_path), size)
+        if cache_key in _resize_cache:
+            cached_bytes, etag = _resize_cache[cache_key]
+            # Determine media type from extension
+            suffix = pic_path.suffix.lower()
+            media_types = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".svg": "image/svg+xml",
+            }
+            media_type = media_types.get(suffix, "application/octet-stream")
+            return Response(
+                content=cached_bytes,
+                media_type=media_type,
+                headers={**cache_headers, "ETag": etag},
+            )
+
+        # Read and resize the image
+        image_bytes = pic_path.read_bytes()
+        resized_bytes = resize_image(image_bytes, size)
+
+        # Generate ETag from content hash
+        etag = hashlib.md5(resized_bytes).hexdigest()
+
+        # Cache the resized image (limit cache size by clearing if too large)
+        if len(_resize_cache) > 1000:
+            _resize_cache.clear()
+        _resize_cache[cache_key] = (resized_bytes, etag)
+
+        # Determine media type from extension
+        suffix = pic_path.suffix.lower()
+        media_types = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".svg": "image/svg+xml",
+        }
+        media_type = media_types.get(suffix, "application/octet-stream")
+
+        return Response(
+            content=resized_bytes,
+            media_type=media_type,
+            headers={**cache_headers, "ETag": etag},
+        )
+
     # First, try direct agent folder
     agent_folder = agents_dir / agent_name
     pic_path = find_profile_pic_in_folder(agent_folder)
     if pic_path:
-        return FileResponse(pic_path, headers=cache_headers)
+        return serve_image(pic_path)
 
     # Try group folders (group_*/)
     for group_folder in agents_dir.glob("group_*"):
@@ -118,13 +187,13 @@ async def get_agent_profile_pic(agent_name: str):
             agent_in_group = group_folder / agent_name
             pic_path = find_profile_pic_in_folder(agent_in_group)
             if pic_path:
-                return FileResponse(pic_path, headers=cache_headers)
+                return serve_image(pic_path)
 
     # Try legacy format (agent_name.{ext} in agents/ directory)
     for ext in image_extensions:
         pic_path = agents_dir / f"{agent_name}{ext}"
         if pic_path.exists():
-            return FileResponse(pic_path, headers=cache_headers)
+            return serve_image(pic_path)
 
     # In bundled mode, also check the bundled agents directory as fallback
     if bundled_agents_dir and bundled_agents_dir.exists():
@@ -132,7 +201,7 @@ async def get_agent_profile_pic(agent_name: str):
         agent_folder = bundled_agents_dir / agent_name
         pic_path = find_profile_pic_in_folder(agent_folder)
         if pic_path:
-            return FileResponse(pic_path, headers=cache_headers)
+            return serve_image(pic_path)
 
         # Try group folders in bundled location
         for group_folder in bundled_agents_dir.glob("group_*"):
@@ -140,7 +209,7 @@ async def get_agent_profile_pic(agent_name: str):
                 agent_in_group = group_folder / agent_name
                 pic_path = find_profile_pic_in_folder(agent_in_group)
                 if pic_path:
-                    return FileResponse(pic_path, headers=cache_headers)
+                    return serve_image(pic_path)
 
     # No profile picture found
     raise HTTPException(status_code=404, detail="Profile picture not found")

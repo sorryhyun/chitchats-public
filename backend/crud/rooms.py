@@ -126,6 +126,15 @@ async def update_room(db: AsyncSession, room_id: int, room_update: schemas.RoomU
     is_guest = room.owner_id and room.owner_id.startswith("guest-")
 
     # Update fields if provided
+    if room_update.name is not None:
+        # Validate name is not empty
+        name = room_update.name.strip()
+        if not name:
+            raise ValueError("Room name cannot be empty")
+        # Preserve guest prefix if applicable
+        if is_guest and not name.startswith("guest: "):
+            name = f"guest: {name}"
+        room.name = name
     if room_update.max_interactions is not None:
         # Validate max_interactions is non-negative
         if room_update.max_interactions < 0:

@@ -1,0 +1,31 @@
+/*
+ * Reusable component utility classes
+ * Extracted from high-frequency patterns across the codebase
+ */
+
+@layer utilities {
+  /* Modal overlay - dark backdrop with centering */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4;
+  }
+
+  /* Modal container - white card with responsive sizing */
+  .modal-container {
+    @apply bg-white rounded-lg sm:rounded-xl shadow-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col;
+  }
+
+  /* Modal header - sticky gradient header */
+  .modal-header {
+    @apply sticky top-0 bg-gradient-to-r from-slate-700 to-slate-600 p-4 sm:p-6 z-10;
+  }
+
+  /* Modal footer - sticky bottom with border */
+  .modal-footer {
+    @apply sticky bottom-0 bg-slate-50 p-4 sm:p-6 border-t border-slate-200;
+  }
+
+  /* Primary button - slate with hover/active states */
+  .btn-primary {
+    @apply bg-slate-700 text-white rounded-lg hover:bg-slate-600 active:bg-slate-500 font-medium transition-colors;
+  }
+}
