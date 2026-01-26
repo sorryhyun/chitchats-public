@@ -31,6 +31,23 @@ def _get_agents_dir() -> Path:
 
 
 # =============================================================================
+# Utility Functions
+# =============================================================================
+
+
+def _read_file_with_fallback(file_path: Path) -> str:
+    """Read file with encoding fallback (UTF-8 -> cp949 -> latin-1)."""
+    encodings = ["utf-8", "cp949", "latin-1"]
+    for encoding in encodings:
+        try:
+            return file_path.read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    # If all fail, read as binary and decode with errors='replace'
+    return file_path.read_bytes().decode("utf-8", errors="replace")
+
+
+# =============================================================================
 # Memory Parsing Functions
 # =============================================================================
 
@@ -57,7 +74,7 @@ def parse_long_term_memory(file_path: Path) -> Dict[str, str]:
         return {}
 
     try:
-        content = file_path.read_text(encoding="utf-8")
+        content = _read_file_with_fallback(file_path)
 
         # Split by subtitle headers: ## [subtitle]
         # Pattern matches: ## [text]
@@ -179,8 +196,7 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
     def read_section(filename: str) -> str:
         file_path = folder_path / filename
         if file_path.exists():
-            with open(file_path, "r", encoding="utf-8") as f:
-                return f.read().strip()
+            return _read_file_with_fallback(file_path).strip()
         return ""
 
     def find_profile_pic() -> Optional[str]:
@@ -241,7 +257,7 @@ def _parse_folder_config(folder_path: Path) -> AgentConfigData:
         text_file = folder_path / "voice_text.txt"
         if text_file.exists():
             try:
-                voice_text = text_file.read_text(encoding="utf-8").strip()
+                voice_text = _read_file_with_fallback(text_file).strip()
             except Exception as e:
                 logger.warning(f"Failed to read voice_text.txt: {e}")
 

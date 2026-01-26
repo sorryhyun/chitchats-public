@@ -1,6 +1,6 @@
 @font-face {
   font-family: 'NanumSquareNeo';
-  src: url('../../assets/NanumSquareNeoOTF-Lt.otf') format('opentype');
+  src: url('/fonts/NanumSquareNeoOTF-Lt.otf') format('opentype');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
@@ -8,7 +8,7 @@
 
 @font-face {
   font-family: 'NanumSquareNeo';
-  src: url('../../assets/NanumSquareNeoOTF-Rg.otf') format('opentype');
+  src: url('/fonts/NanumSquareNeoOTF-Rg.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -16,7 +16,7 @@
 
 @font-face {
   font-family: 'NanumSquareNeo';
-  src: url('../../assets/NanumSquareNeoOTF-Bd.otf') format('opentype');
+  src: url('/fonts/NanumSquareNeoOTF-Bd.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -24,7 +24,7 @@
 
 @font-face {
   font-family: 'NanumSquareNeo';
-  src: url('../../assets/NanumSquareNeoOTF-Eb.otf') format('opentype');
+  src: url('/fonts/NanumSquareNeoOTF-Eb.otf') format('opentype');
   font-weight: 800;
   font-style: normal;
   font-display: swap;
