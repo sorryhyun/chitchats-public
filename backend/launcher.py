@@ -17,6 +17,7 @@ import getpass
 import os
 import secrets
 import signal
+import socket
 import sys
 import threading
 import time
@@ -25,6 +26,35 @@ from pathlib import Path
 
 # Global flag to prevent duplicate browser opens
 _browser_opened = False
+
+# Default and fallback ports
+DEFAULT_PORT = 8000
+FALLBACK_PORTS = [8001, 8080, 8888, 9000]
+
+
+def find_available_port(preferred_port: int = DEFAULT_PORT) -> int:
+    """Find an available port, starting with the preferred port.
+
+    Args:
+        preferred_port: The port to try first.
+
+    Returns:
+        An available port number.
+    """
+    ports_to_try = [preferred_port] + [p for p in FALLBACK_PORTS if p != preferred_port]
+
+    for port in ports_to_try:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", port))
+                return port
+        except (OSError, PermissionError):
+            continue
+
+    # Last resort: let OS assign a port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def get_base_path() -> Path:
@@ -303,16 +333,21 @@ def main():
     # Import uvicorn and app after setting up paths
     import uvicorn
 
+    # Find an available port
+    port = find_available_port(DEFAULT_PORT)
+
     print("=" * 60)
     print("ChitChats")
     print("=" * 60)
     print()
-    print("서버 시작 중: http://localhost:8000")
+    if port != DEFAULT_PORT:
+        print(f"포트 {DEFAULT_PORT}을(를) 사용할 수 없어 포트 {port}을(를) 사용합니다.")
+    print(f"서버 시작 중: http://localhost:{port}")
     if not sidecar_mode:
         print("서버를 중지하려면 Ctrl+C를 누르세요")
         print()
         # Open browser automatically (standalone mode only)
-        open_browser_delayed("http://localhost:8000")
+        open_browser_delayed(f"http://localhost:{port}")
         print("브라우저를 자동으로 엽니다...")
     print()
 
@@ -321,10 +356,11 @@ def main():
     from main import app
 
     # Run the server with the app object directly
+    # Use 127.0.0.1 instead of 0.0.0.0 to avoid Windows permission issues
     uvicorn.run(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host="127.0.0.1",
+        port=port,
         log_level="info",
     )
 

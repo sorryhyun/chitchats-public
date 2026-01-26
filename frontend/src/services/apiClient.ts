@@ -25,10 +25,12 @@ function getApiUrl(): string {
     return 'http://localhost:8000';
   }
 
-  // Check if running in bundled mode (frontend served from backend on port 8000)
-  // In this case, use the same origin for API calls
+  // Check if running in bundled mode (frontend served from backend)
+  // Dev server runs on 5173/5174, so anything else is bundled mode
   const currentPort = window.location.port;
-  if (currentPort === '8000') {
+  const isDevServer = currentPort === '5173' || currentPort === '5174';
+
+  if (!isDevServer) {
     // Bundled mode: frontend and backend on same origin
     return window.location.origin;
   }
