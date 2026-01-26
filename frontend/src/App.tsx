@@ -8,6 +8,8 @@ import { MainSidebar } from './components/sidebar/MainSidebar';
 import { ChatRoom } from './components/chat-room/ChatRoom';
 import { AgentProfileModal } from './components/AgentProfileModal';
 import { HowToDocsModal } from './components/HowToDocsModal';
+import { SettingsModal } from './components/sidebar/SettingsModal';
+import { ExportModal } from './components/sidebar/ExportModal';
 import { Login } from './components/Login';
 import { SetupWizard } from './components/SetupWizard';
 import { BREAKPOINTS } from './config/breakpoints';
@@ -54,6 +56,8 @@ function AppContent() {
   });
   const [isMobile, setIsMobile] = useState(window.innerWidth < BREAKPOINTS.lg);
   const [showDocsModal, setShowDocsModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Track window size for responsive behavior
   useEffect(() => {
@@ -192,6 +196,8 @@ function AppContent() {
           onSelectRoom={handleSelectRoom}
           onSelectAgent={handleSelectAgent}
           onOpenDocs={() => setShowDocsModal(true)}
+          onOpenSettings={() => setShowSettingsModal(true)}
+          onOpenExport={() => setShowExportModal(true)}
         />
       </div>
 
@@ -217,6 +223,22 @@ function AppContent() {
       {/* How To Docs Modal */}
       {showDocsModal && (
         <HowToDocsModal onClose={() => setShowDocsModal(false)} />
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+        />
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+        />
       )}
     </div>
   );

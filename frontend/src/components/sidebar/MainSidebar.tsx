@@ -7,8 +7,6 @@ import { useFetchAgentConfigs } from '../../hooks/useFetchAgentConfigs';
 import { RoomListPanel } from './RoomListPanel';
 import { CreateAgentForm } from './CreateAgentForm';
 import { AgentListPanel } from './AgentListPanel';
-import { ExportModal } from './ExportModal';
-import { SettingsModal } from './SettingsModal';
 import { koreanSearch } from '../../utils/koreanSearch';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 import type { ProviderType } from '../../types';
@@ -19,12 +17,16 @@ interface MainSidebarProps {
   onSelectRoom: (roomId: number) => void;
   onSelectAgent: (agentId: number, provider: Provider) => Promise<void>;
   onOpenDocs?: () => void;
+  onOpenSettings?: () => void;
+  onOpenExport?: () => void;
 }
 
 export const MainSidebar = ({
   onSelectRoom,
   onSelectAgent,
   onOpenDocs,
+  onOpenSettings,
+  onOpenExport,
 }: MainSidebarProps) => {
   const { t } = useTranslation('sidebar');
   const { t: tCommon } = useTranslation('common');
@@ -36,8 +38,6 @@ export const MainSidebar = ({
   const [showAgentForm, setShowAgentForm] = useState(false);
   const [agentSearchQuery, setAgentSearchQuery] = useState('');
   const [newRoomName, setNewRoomName] = useState('');
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const { configs: availableConfigs, fetchConfigs } = useFetchAgentConfigs();
 
   // Create a new room with the specified provider
@@ -236,7 +236,7 @@ export const MainSidebar = ({
         <div className="grid grid-cols-2 gap-2">
           {/* Export Button */}
           <button
-            onClick={() => setShowExportModal(true)}
+            onClick={onOpenExport}
             className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -247,7 +247,7 @@ export const MainSidebar = ({
 
           {/* Settings Button */}
           <button
-            onClick={() => setShowSettingsModal(true)}
+            onClick={onOpenSettings}
             className="px-3 py-2.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 text-white rounded-lg font-medium transition-colors text-sm touch-manipulation min-h-[44px] flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,18 +286,6 @@ export const MainSidebar = ({
           </button>
         </div>
       </div>
-
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-      />
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-      />
     </div>
   );
 };
