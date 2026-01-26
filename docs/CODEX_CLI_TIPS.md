@@ -1,557 +1,404 @@
-# Codex CLI Usage Tips for Community
+# Codex CLI: Architectural Decisions
 
-This guide shares practical tips and lessons learned from integrating Codex CLI into a production multi-agent chat application. These insights can help you build better applications with Codex.
+This document explains **why** we chose our current approach to integrating Codex CLI into ChitChats, based on analysis of the Codex source code.
 
 ---
 
 ## Table of Contents
 
-1. [Getting Started](#getting-started)
-2. [Architecture Patterns](#architecture-patterns)
-3. [App Server Mode](#app-server-mode)
-4. [Session Management](#session-management)
-5. [MCP Server Integration](#mcp-server-integration)
-6. [Configuration Tips](#configuration-tips)
-7. [Error Handling & Recovery](#error-handling--recovery)
-8. [Performance Optimization](#performance-optimization)
-9. [Platform-Specific Notes](#platform-specific-notes)
-10. [Troubleshooting](#troubleshooting)
+1. [Quick Start](#quick-start)
+2. [The Core Problem](#the-core-problem)
+3. [Why App Server Mode (Not MCP Server)](#why-app-server-mode-not-mcp-server)
+4. [Why Per-Agent Instances](#why-per-agent-instances)
+5. [Why Instructions at Session Init](#why-instructions-at-session-init)
+6. [Why We Disable Certain Features](#why-we-disable-certain-features)
+7. [Implementation Reference](#implementation-reference)
+8. [Appendix: Codex Internals](#appendix-codex-internals)
 
 ---
 
-## Getting Started
+## Quick Start
 
-### Installation & Authentication
+### Installation
 
 ```bash
-# Install globally via npm
 npm install -g @openai/codex
-
-# Authenticate (one-time, opens browser)
-codex login
-
-# Verify authentication
-codex login status
+codex login              # Authenticate (opens browser)
+codex login status       # Verify authentication
 ```
 
-### Programmatic Authentication Check
+### Running App Server
 
-```python
-import asyncio
-import shutil
+```bash
+# Basic
+codex app-server
 
-async def check_codex_available() -> bool:
-    """Check if Codex CLI is installed and authenticated."""
-    codex_path = shutil.which("codex")
-    if not codex_path:
-        return False
+# With custom instructions
+codex app-server -c "base_instructions=You are a helpful assistant"
 
-    process = await asyncio.create_subprocess_exec(
-        "codex", "login", "status",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await process.wait()
-    return process.returncode == 0
+# Disable shell/web for chat use cases
+codex app-server \
+  -c "features.shell_tool=false" \
+  -c "web_search=disabled"
+```
+
+### JSON-RPC Protocol (over stdio)
+
+**Create a thread:**
+
+```json
+{"method": "thread/start", "params": {"baseInstructions": "You are Alice..."}, "id": 1}
+```
+
+Response: `{"result": {"threadId": "thread_abc123"}, "id": 1}`
+
+**Send a message:**
+
+```json
+{"method": "turn/start", "params": {"threadId": "thread_abc123", "input": [{"type": "text", "text": "Hello!"}]}, "id": 2}
+```
+
+Streaming notifications follow (no `id` field):
+
+```json
+{"method": "item/agentMessage/delta", "params": {"delta": "Hi there"}}
+{"method": "item/agentMessage/delta", "params": {"delta": "! How can I help?"}}
+{"method": "turn/completed", "params": {"status": "completed"}}
+```
+
+**Resume a thread (after restart):**
+
+```json
+{"method": "thread/resume", "params": {"threadId": "thread_abc123"}, "id": 3}
+```
+
+### Key Events
+
+| Event | Purpose |
+|-------|---------|
+| `turn/started` | Turn began processing |
+| `turn/completed` | Turn finished |
+| `item/agentMessage/delta` | Streaming text chunk |
+| `item/reasoning/textDelta` | Streaming thinking |
+| `item/mcpToolCall/completed` | MCP tool was called |
+
+---
+
+## The Core Problem
+
+ChitChats needs to run multiple AI agents with distinct personalities in real-time chat rooms. Each agent requires:
+
+- **Unique system prompts** (personality, backstory, behavior)
+- **Session continuity** (remember conversation context)
+- **Custom tools** (agent-specific MCP servers)
+- **Isolation** (agents shouldn't leak into each other's context)
+
+Codex CLI offers three integration modes. We evaluated each against these requirements.
+
+---
+
+## Why App Server Mode (Not MCP Server)
+
+### The Three Options
+
+| Mode | How it Works | Session State |
+|------|--------------|---------------|
+| `codex` CLI | Spawn process per query | None (stateless) |
+| `codex-mcp-server` | Connect via MCP protocol | Per-call only |
+| `codex app-server` | Long-running JSON-RPC server | Thread-based persistence |
+
+### Why Not `codex` Per Query?
+
+Spawning a new process for each message has severe overhead:
+
+```
+User sends message
+  → Spawn codex process (~2-3 seconds)
+  → Load config, authenticate
+  → Process single message
+  → Exit and lose all context
+```
+
+For a chat application with real-time expectations, this latency is unacceptable. More critically, **there's no way to maintain conversation context** across messages.
+
+### Why Not MCP Server?
+
+The `codex-mcp-server` has a fundamental limitation we discovered by reading the source:
+
+```text
+MCP Client (with image support)
+    ↓
+MCP Server (TEXT-ONLY interface) ← bottleneck
+    ↓
+Codex Core (full multimodal support)
+```
+
+The MCP server only accepts `String` prompts:
+
+```rust
+// codex-rs/mcp-server/src/codex_tool_config.rs
+pub struct CodexToolCallParam {
+    pub prompt: String,  // Text only - no image support
+}
+```
+
+Even though Codex core supports `UserInput::Image` and `UserInput::LocalImage`, the MCP protocol interface wraps input as `UserInput::Text` only.
+
+For a chat application where users share images, this is a dealbreaker.
+
+### Why App Server Wins
+
+`codex app-server` provides:
+
+1. **Thread-based sessions** - Create once, resume indefinitely
+2. **Full multimodal support** - Direct access to Codex core (no MCP bottleneck)
+3. **Streaming events** - Real-time text/thinking deltas via JSON-RPC
+4. **Per-thread instructions** - Each thread maintains its own system prompt
+
+```
+User sends message
+  → Route to existing app-server instance
+  → Resume thread (instant)
+  → Stream response in real-time
+  → Thread persists for next message
 ```
 
 ---
 
-## Architecture Patterns
+## Why Per-Agent Instances
 
-### Per-Agent Instance Pattern
+### The Alternative: Shared Instance
 
-For multi-agent applications, use **dedicated app-server instances per agent**:
+A simpler approach would be one `codex app-server` serving all agents:
+
+```
+Single App Server
+├── Thread for Alice in Room 1
+├── Thread for Bob in Room 1
+├── Thread for Alice in Room 2
+└── ...
+```
+
+**Problems:**
+- MCP servers are configured at startup, not per-thread
+- Agent-specific tools (memory, actions) can't vary per-thread
+- A crash affects ALL agents simultaneously
+
+### Our Approach: Per-Agent Instances
 
 ```
 CodexAppServerPool (singleton)
-├── Agent "Alice" → CodexAppServerInstance (port 8001)
-├── Agent "Bob"   → CodexAppServerInstance (port 8002)
-└── Agent "Carol" → CodexAppServerInstance (port 8003)
+├── Agent "Alice" → CodexAppServerInstance (with Alice's MCP config)
+├── Agent "Bob"   → CodexAppServerInstance (with Bob's MCP config)
+└── ...
+```
+
+Each instance has agent-specific MCP servers baked in at startup:
+
+```python
+mcp_servers = {
+    "memory_server": {
+        "env": {"AGENT_NAME": "alice"}  # Agent-specific
+    }
+}
 ```
 
 **Benefits:**
 - Complete isolation between agents
-- Agent-specific MCP configurations
-- No cross-contamination of context
-- Independent failure recovery
+- Agent-specific tools without workarounds
+- Crash isolation (one agent down ≠ all agents down)
+- Independent scaling and lifecycle
 
-### Thread Affinity
+**Trade-off:** Higher memory usage (one process per agent). Mitigated by:
+- Idle timeout eviction (default: 10 minutes)
+- Max instance limit with LRU eviction
+- Lazy creation (instances spawn on first interaction)
 
-Always route follow-up messages to the same instance using thread IDs:
+---
+
+## Why Instructions at Session Init
+
+### The Codex Constraint
+
+From analyzing the Codex source, we found:
+
+> Instructions are applied at INIT TIME (session/thread creation), NOT per-turn
+
+The resolution order (from `codex.rs:285-294`):
+
+1. `config.base_instructions` override (CLI/API)
+2. `conversation_history.get_base_instructions()` (session persistence)
+3. `model_info.get_model_instructions()` (model default)
+
+This means:
+
+- `base_instructions` is set when creating a thread
+- Changing personality mid-conversation requires a new thread
+- Per-turn instruction changes are ignored
+
+### Implications for ChitChats
+
+Since agent personalities are defined in `base_instructions`, we:
+
+1. **Create thread at first interaction** with the agent's full system prompt
+2. **Persist thread_id** in database for session continuity
+3. **Resume existing threads** for follow-up messages in the same room
+
+If an agent's personality files change, we'd need to invalidate their threads—but this is rare in practice.
+
+### The `instructions` Config Field is Dead Code
+
+A surprising finding: the `instructions` field in `config.toml` is **defined but never read**:
+
+```rust
+// ConfigToml struct in config/mod.rs
+pub instructions: Option<String>,  // Never used!
+```
+
+No code reads `cfg.instructions` anywhere in the codebase. Use `base_instructions` or `model_instructions_file` instead.
+
+---
+
+## Why We Disable Certain Features
+
+### The Roleplay Use Case
+
+ChitChats agents are characters in chat rooms, not coding assistants. Codex's default features work against this:
+
+| Feature | Why Disable |
+|---------|-------------|
+| `shell_tool` | Characters shouldn't execute system commands |
+| `web_search` | Breaks immersion, leaks real-world info |
+| `view_image` | We handle images directly, not via Codex tool |
+| Skills (`~/.codex/skills/`) | Auto-injected prompts break character |
+| `AGENTS.md` pickup | Reads project files, contaminates personality |
+
+### Skills Injection Problem
+
+Codex auto-loads instructions from `~/.codex/skills/` into every session. For roleplay:
+
+```
+System: You are Alice, a shy librarian...
+Skills: [AUTO-INJECTED] You are a helpful coding assistant...
+```
+
+This destroys character immersion. Solution: `chmod 000 ~/.codex/skills`
+
+### Working Directory Contamination
+
+Codex reads `AGENTS.md` and other files from the working directory. If running from the ChitChats repo:
+
+```
+System: You are Alice...
+Codex: [Reads AGENTS.md] Oh, I see there are multiple agents configured...
+```
+
+Solution: Use an empty temp directory as `cwd`:
 
 ```python
-# Store thread_id in database
-thread_id = await instance.create_thread(config)
-await db.save_session(agent_id, room_id, thread_id)
-
-# Later: retrieve and route to same thread
-thread_id = await db.get_session(agent_id, room_id)
-await instance.resume_thread(thread_id, config)
+cwd = Path(tempfile.gettempdir()) / "codex-empty"
 ```
 
 ---
 
-## App Server Mode
+## Implementation Reference
 
-### Why App Server Mode?
-
-The `codex app-server` command provides significant advantages over spawning `codex` processes per query:
-
-| Approach | Startup Overhead | Memory | Session Persistence |
-|----------|-----------------|--------|---------------------|
-| `codex` per query | ~2-3 seconds | High (new process each time) | None |
-| `codex app-server` | Once at startup | Shared | Thread-based |
-
-### Starting App Server
-
-```bash
-# Basic startup
-codex app-server
-
-# With configuration overrides
-codex app-server -c "features.shell_tool=false" -c "web_search=disabled"
-```
-
-### JSON-RPC 2.0 Protocol
-
-App server uses JSON-RPC 2.0 over stdio (without the `jsonrpc` field):
-
-```python
-# Request format
-{"method": "thread/start", "params": {...}, "id": 1}
-
-# Response format
-{"result": {...}, "id": 1}
-
-# Notification format (streaming events, no id)
-{"method": "item/agentMessage/delta", "params": {...}}
-```
-
-### Key Methods
-
-| Method | Purpose |
-|--------|---------|
-| `thread/start` | Create new conversation thread |
-| `thread/resume` | Resume existing thread |
-| `turn/start` | Start a new turn in thread |
-| `turn/interrupt` | Interrupt ongoing turn |
-
-### Streaming Events
-
-```python
-# Event types to handle
-TURN_STARTED = "turn/started"
-TURN_COMPLETED = "turn/completed"
-ITEM_COMPLETED = "item/completed"
-AGENT_MESSAGE_DELTA = "item/agentMessage/delta"  # Text streaming
-REASONING_DELTA = "item/reasoning/textDelta"      # Thinking streaming
-MCP_TOOL_CALL_COMPLETED = "item/mcpToolCall/completed"
-```
-
----
-
-## Session Management
-
-### Thread Lifecycle
-
-```python
-# 1. Create thread (first interaction)
-params = {
-    "cwd": "/path/to/workspace",
-    "model": "gpt-5.2",
-    "baseInstructions": "You are a helpful assistant...",
-    "sandbox": "danger-full-access",  # or "workspace-write", "read-only"
-    "approvalPolicy": "never",        # or "on-request", "on-failure"
-}
-thread_id = await send_request("thread/start", params)
-
-# 2. Start turn (send message)
-params = {
-    "threadId": thread_id,
-    "input": [{"type": "text", "text": "Hello!"}],
-    "baseInstructions": system_prompt,  # Can override per-turn
-    "model": "gpt-5.2",                 # Can override per-turn
-}
-async for event in stream_request("turn/start", params):
-    handle_event(event)
-
-# 3. Resume thread (subsequent sessions)
-await send_request("thread/resume", {"threadId": thread_id, ...})
-```
-
-### Database Persistence
-
-Store thread IDs for session continuity across restarts:
-
-```sql
--- Add to your room_agents or sessions table
-ALTER TABLE room_agents ADD COLUMN codex_thread_id VARCHAR(255);
-```
-
-```python
-# Save after creating thread
-await crud.update_room_agent_session(db, room_id, agent_id, "codex", thread_id)
-
-# Retrieve for continuation
-thread_id = await crud.get_room_agent_session(db, room_id, agent_id, "codex")
-```
-
----
-
-## MCP Server Integration
-
-### Configuring MCP Servers at Startup
-
-Unlike per-turn tool configuration, MCP servers must be configured at app-server startup:
-
-```python
-# Build MCP config
-mcp_servers = {
-    "action_server": {
-        "command": "python",
-        "args": ["-m", "mcp_servers.action"],
-        "env": {
-            "AGENT_NAME": agent_name,
-            "ROOM_ID": str(room_id),
-        }
-    },
-    "guidelines_server": {
-        "command": "python",
-        "args": ["-m", "mcp_servers.guidelines"],
-    }
-}
-
-# Pass via startup config
-startup_config = CodexStartupConfig(mcp_servers=mcp_servers)
-cli_args = startup_config.to_cli_args()
-```
-
-### Environment Isolation for MCP
-
-Use separate Python environments to avoid dependency conflicts:
-
-```python
-def get_python_executable():
-    """Prefer virtualenv Python for MCP servers."""
-    venv_python = Path(sys.prefix) / "bin" / "python"
-    if venv_python.exists():
-        return str(venv_python)
-    return sys.executable
-```
-
----
-
-## Configuration Tips
-
-### Disable Unwanted Features
-
-For chat/roleplay applications, disable shell and file access:
-
-```python
-config_overrides = {
-    "features.shell_tool": False,        # No shell execution
-    "features.unified_exec": False,      # No unified execution
-    "features.apply_patch_freeform": False,
-    "features.collab": False,
-    "tools.view_image": False,           # Receive images directly instead
-    "web_search": "disabled",
-}
-
-# Convert to CLI args
-cli_args = ["-c", f"{k}={v}" for k, v in config_overrides.items()]
-```
-
-### Disable Skills Injection
-
-Codex auto-injects instructions from `~/.codex/skills/` which can break character immersion:
-
-```bash
-# Disable skills (restrict permissions)
-chmod 000 ~/.codex/skills
-
-# Re-enable later
-chmod 755 ~/.codex/skills
-```
-
-### Isolate Working Directory
-
-Prevent Codex from reading project-specific files like `AGENTS.md`:
-
-```python
-import tempfile
-from pathlib import Path
-
-def get_isolated_working_dir() -> str:
-    """Use empty temp directory to isolate from project files."""
-    temp_dir = Path(tempfile.gettempdir()) / "codex-empty"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    return str(temp_dir)
-```
-
-### Prevent Browser Auto-Open
-
-When spawning subprocesses, prevent browser opening:
-
-```python
-import os
-
-subprocess_env = {**os.environ, "BROWSER": ""}
-process = await asyncio.create_subprocess_exec(
-    "codex", "app-server",
-    env=subprocess_env,
-    ...
-)
-```
-
----
-
-## Error Handling & Recovery
-
-### Session Recovery Pattern
-
-When sessions become invalid (e.g., MCP server restart), recover gracefully:
-
-```python
-class SessionRecoveryError(Exception):
-    """Raised when session needs full history restart."""
-    def __init__(self, old_thread_id: str):
-        self.old_thread_id = old_thread_id
-        super().__init__("Session recovery needed")
-
-async def generate_response(context):
-    try:
-        async for event in start_turn(context.thread_id, context.message):
-            yield event
-    except SessionRecoveryError as e:
-        # Rebuild with full conversation history
-        full_history = await get_full_conversation(context.room_id)
-        context.thread_id = None  # Force new thread
-        context.messages = full_history
-
-        async for event in start_turn(None, context):
-            yield event
-```
-
-### Instance Health Monitoring
-
-```python
-class CodexAppServerInstance:
-    @property
-    def is_healthy(self) -> bool:
-        """Check if server process is still running."""
-        return (
-            self._transport is not None
-            and self._transport.is_healthy
-        )
-
-# In pool manager
-async def get_or_create_instance(self, agent_key: str):
-    instance = self._instances.get(agent_key)
-
-    if instance and instance.is_healthy:
-        instance.touch()  # Update last access time
-        return instance
-
-    # Unhealthy or missing - recreate
-    if instance:
-        await instance.shutdown()
-        del self._instances[agent_key]
-
-    return await self._create_instance(agent_key)
-```
-
-### Graceful Shutdown
-
-```python
-async def shutdown_pool(timeout: float = 10.0):
-    """Shutdown all instances with timeout."""
-    tasks = [
-        asyncio.create_task(instance.shutdown())
-        for instance in self._instances.values()
-    ]
-
-    if tasks:
-        done, pending = await asyncio.wait(tasks, timeout=timeout)
-
-        for task in pending:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-```
-
----
-
-## Performance Optimization
-
-### Pool Configuration
-
-```bash
-# Environment variables for tuning
-export CODEX_MAX_INSTANCES=10      # Max concurrent app-server instances
-export CODEX_IDLE_TIMEOUT=600      # Seconds before idle instance shutdown (10 min)
-export CODEX_CLEANUP_INTERVAL=60   # Seconds between cleanup checks
-```
-
-### LRU Eviction
-
-When hitting max instances, evict least-recently-used:
-
-```python
-def _evict_lru_instance(self):
-    """Evict the least recently used instance."""
-    if not self._instances:
-        return None
-
-    oldest_key = min(
-        self._instances.keys(),
-        key=lambda k: self._instances[k].last_used
-    )
-
-    instance = self._instances.pop(oldest_key)
-    asyncio.create_task(instance.shutdown())
-    return oldest_key
-```
-
-### Large Message Handling
-
-For base64 images, use chunked writes:
-
-```python
-CHUNK_SIZE = 1024 * 1024  # 1MB chunks
-
-async def write_large_message(self, data: bytes):
-    """Write large messages in chunks to avoid buffer issues."""
-    for i in range(0, len(data), CHUNK_SIZE):
-        chunk = data[i:i + CHUNK_SIZE]
-        self._process.stdin.write(chunk)
-        await self._process.stdin.drain()
-```
-
----
-
-## Platform-Specific Notes
-
-### Windows Support
-
-For Windows deployment, consider bundling the Codex binary:
-
-```python
-def find_codex_executable() -> str:
-    """Find Codex executable with bundled binary fallback."""
-    # Check for bundled binary first
-    bundled_paths = [
-        "bin/codex-x86_64-pc-windows-msvc.exe",  # Windows
-        "bin/codex-aarch64-apple-darwin",         # macOS ARM
-        "bin/codex-x86_64-unknown-linux-gnu",     # Linux
-    ]
-
-    for path in bundled_paths:
-        if Path(path).exists():
-            return str(Path(path).absolute())
-
-    # Fall back to system PATH
-    return shutil.which("codex") or "codex"
-```
-
-### macOS Considerations
-
-On macOS, ensure proper code signing if distributing bundled binaries:
-
-```bash
-# Remove quarantine attribute
-xattr -d com.apple.quarantine ./bin/codex-aarch64-apple-darwin
-```
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| "command not found: codex" | Not installed | `npm install -g @openai/codex` |
-| Authentication fails | Token expired | Run `codex login` again |
-| Skills interfere with prompts | Auto-injection | `chmod 000 ~/.codex/skills` |
-| Picks up AGENTS.md | Wrong cwd | Use isolated temp directory |
-| Browser opens on startup | Default behavior | Set `BROWSER=""` in env |
-| Session invalid errors | MCP restart | Implement SessionRecoveryError pattern |
-
-### Debug Logging
-
-Enable verbose logging for troubleshooting:
-
-```python
-import logging
-
-# Enable debug logging
-logging.getLogger("codex").setLevel(logging.DEBUG)
-
-# Log all JSON-RPC messages
-async def log_message(direction: str, msg: dict):
-    logger.debug(f"[{direction}] {json.dumps(msg, indent=2)}")
-```
-
-### Health Check Endpoint
-
-Add a health check for monitoring:
-
-```python
-@app.get("/health/codex")
-async def codex_health():
-    pool = await CodexAppServerPool.get_instance()
-    stats = pool.get_stats()
-
-    return {
-        "status": "healthy" if stats["healthy_count"] > 0 else "degraded",
-        "active_instances": stats["active_instances"],
-        "healthy_instances": stats["healthy_count"],
-        "total_threads": stats["total_threads"],
-    }
-```
-
----
-
-## Quick Reference
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CODEX_MAX_INSTANCES` | 10 | Maximum app-server instances |
-| `CODEX_IDLE_TIMEOUT` | 600 | Seconds before idle shutdown |
-| `CODEX_CLEANUP_INTERVAL` | 60 | Cleanup check interval |
-| `CODEX_MODEL` | gpt-5.2 | Default model |
-| `BROWSER` | (system) | Set to "" to prevent auto-open |
-
-### Key Files in ChitChats Implementation
+### Key Files
 
 | File | Purpose |
 |------|---------|
-| `backend/providers/codex/app_server_pool.py` | Singleton pool manager |
-| `backend/providers/codex/app_server_instance.py` | Single instance lifecycle |
-| `backend/providers/codex/transport.py` | JSON-RPC transport layer |
-| `backend/providers/codex/parser.py` | Stream event parser |
-| `backend/providers/codex/constants.py` | Event types & exceptions |
-| `backend/providers/mcp_config.py` | MCP configuration builder |
+| `backend/providers/codex/app_server_pool.py` | Singleton pool with LRU eviction |
+| `backend/providers/codex/app_server_instance.py` | Per-agent process lifecycle |
+| `backend/providers/codex/transport.py` | JSON-RPC over stdio |
+| `backend/providers/codex/constants.py` | Event types, session recovery |
+
+### Configuration Defaults
+
+```bash
+CODEX_MAX_INSTANCES=10      # Max concurrent instances
+CODEX_IDLE_TIMEOUT=600      # 10 min idle before shutdown
+```
+
+### Session Recovery
+
+When an instance restarts (crash, idle timeout), threads become invalid. We handle this via `SessionRecoveryError`:
+
+1. Detect invalid thread_id from Codex error
+2. Raise `SessionRecoveryError` to caller
+3. Caller rebuilds full conversation history
+4. Create new thread with complete context
+
+This ensures users never see "session expired" errors—conversations continue seamlessly.
 
 ---
 
 ## Summary
 
-Key takeaways for using Codex CLI effectively:
+| Decision | Rationale |
+|----------|-----------|
+| App Server mode | Session persistence, full multimodal, streaming |
+| Per-agent instances | MCP isolation, crash isolation, agent-specific tools |
+| Instructions at init | Codex constraint—instructions aren't per-turn |
+| Disable shell/web/skills | Roleplay use case requires immersion |
+| Empty working directory | Prevent file contamination |
+| Thread persistence in DB | Resume across instance restarts |
 
-1. **Use App Server mode** for production - avoid per-query process spawning
-2. **Implement per-agent instances** for multi-agent applications
-3. **Persist thread IDs** in database for session continuity
-4. **Configure MCP at startup** - tools can't be changed per-turn
-5. **Disable skills injection** for roleplay/character applications
-6. **Isolate working directory** to prevent unwanted file pickup
-7. **Implement session recovery** for graceful error handling
-8. **Monitor instance health** and implement auto-recovery
-9. **Tune pool settings** based on your concurrency needs
+---
 
-For the complete implementation, see the [ChitChats backend/providers/codex/](../backend/providers/codex/) directory.
+## Appendix: Codex Internals
+
+This section documents Codex CLI internals discovered through source code analysis.
+
+### Instruction-Related Fields
+
+There are **multiple instruction fields** that serve different purposes:
+
+| Field | Location | Purpose | Status |
+|-------|----------|---------|--------|
+| `instructions` | ConfigToml | System instructions | **DEAD CODE** |
+| `base_instructions` | Config (runtime) | Actual system prompt | Active |
+| `developer_instructions` | Config | Separate "developer" role | Active |
+| `user_instructions` | Config | From AGENTS.md file | Active |
+| `model_instructions_file` | ConfigToml/Profile | Path to instructions file | Active |
+
+### Tool Disabling Reference
+
+**Tools that CAN be disabled:**
+
+| Tool | Config Option |
+|------|---------------|
+| Shell tools | `features.shell_tool = false` |
+| Web search | `web_search = "disabled"` |
+| View image | `tools_view_image = false` |
+| Apply patch | `include_apply_patch_tool = false` |
+| Collab tools | `features.collab = false` |
+
+**Tools that CANNOT be disabled** (hard-coded in `build_specs()`):
+
+- `plan` - Update plan tool
+- `list_mcp_resources`
+- `list_mcp_resource_templates`
+- `read_mcp_resource`
+
+### MCP Server Tool Filtering
+
+Per-server tool filtering via `config.toml`:
+
+```toml
+[mcp_servers.my_server]
+enabled_tools = ["tool1", "tool2"]   # Whitelist
+disabled_tools = ["tool3"]            # Blacklist (applied second)
+```
+
+### CLI Examples
+
+```bash
+# Disable shell tools
+codex app-server -c "features.shell_tool=false"
+
+# Disable web search
+codex app-server -c "web_search=disabled"
+
+# Set custom instructions
+codex app-server -c "base_instructions=You are Alice..."
+```
