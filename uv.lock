@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11, <3.14"
 
 [[package]]
@@ -305,7 +305,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.10.0" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "bcrypt", specifier = ">=4.2.0" },
-    { name = "claude-agent-sdk", specifier = ">=0.1.21" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.23" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fastapi-mcp", specifier = ">=0.3.0" },
     { name = "mcp", specifier = ">=1.0.0" },
@@ -336,18 +336,18 @@ dev = [
 
 [[package]]
 name = "claude-agent-sdk"
-version = "0.1.21"
+version = "0.1.23"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/f4/b2db70f5b07b1c82da3fc5de214e36ffa0613584a9f70d2a4f0019a67dd2/claude_agent_sdk-0.1.21.tar.gz", hash = "sha256:7e3c4941a93a3f9fc1d1fac9be91b94165578d02181aeb4c80cbc4fb3fafa712", size = 56182, upload-time = "2026-01-21T22:53:54.627Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/45/760b2f3292b7de21108d15bfc1fcab2da0ddbf4ff2590dd8b114f89dfe6a/claude_agent_sdk-0.1.23.tar.gz", hash = "sha256:c3002869e3e9e6868d195aaf475166a3ddef0a78b78eb1585220142657ccb3c6", size = 57112, upload-time = "2026-01-27T01:46:16.843Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/ba/00fb3e4da306f1b1be84c069ddb64d0fbf7dbb04b823d262bab164b833f5/claude_agent_sdk-0.1.21-py3-none-macosx_11_0_arm64.whl", hash = "sha256:4ffc130a4bf99912261fddb5e4aa61f3a94023e87e1793224515b3dad07275d2", size = 52930455, upload-time = "2026-01-21T22:53:38.077Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/53/b97724fd5518ecd64f4fa12120f308d9a1b4e1461ab7ffd67daebd73736e/claude_agent_sdk-0.1.21-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:fa3aecaadde66c50bf1d44a9f89e69e784126d537daa741a1d54e969b28feb24", size = 67043926, upload-time = "2026-01-21T22:53:42.83Z" },
-    { url = "https://files.pythonhosted.org/packages/14/ac/fc580fbf33781f6dd77c320ba4dd87f84569a0278b335443e8ca1bc3ad99/claude_agent_sdk-0.1.21-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:d1c6510d2ad31f1825469edcc7ec8d447c6efb05c9327970d441b863d4765c87", size = 68572640, upload-time = "2026-01-21T22:53:47.286Z" },
-    { url = "https://files.pythonhosted.org/packages/11/5a/66027a3775345e90ca9b8fba3d52a2676a8c9da565ed48e0f23b54318674/claude_agent_sdk-0.1.21-py3-none-win_amd64.whl", hash = "sha256:195c129e52ffd52ca3258ebd8af0f660d4275fcc0dbfe9834336b28894b40ccd", size = 71051088, upload-time = "2026-01-21T22:53:51.864Z" },
+    { url = "https://files.pythonhosted.org/packages/29/bb/35f6cebabc94beaa81042fc195f2fbc6a586498d18700f657e5acd434433/claude_agent_sdk-0.1.23-py3-none-macosx_11_0_arm64.whl", hash = "sha256:d91e1d431c5b7ba41791068d63f883b579d7314cb7cb4d9e401b68bf6440c1a2", size = 54527103, upload-time = "2026-01-27T01:46:01.621Z" },
+    { url = "https://files.pythonhosted.org/packages/28/33/0511fdf5b21d10947ab5e839a63b60034bf4cff31777e5237e9dc99fea14/claude_agent_sdk-0.1.23-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:2575f38a39e7e64a84cbd7144b4485b5cdcef88e35aab6ef42ceb919747d0e2d", size = 68705060, upload-time = "2026-01-27T01:46:07.024Z" },
+    { url = "https://files.pythonhosted.org/packages/76/6e/0e41f496ac979243e8bb2ee80899587377ecfda2979fb8a994861b9857b2/claude_agent_sdk-0.1.23-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:a392700455741d0ad0ef50412f6babd56657ba0ebc7a5bd26a13b82d4c4ae078", size = 70420014, upload-time = "2026-01-27T01:46:10.669Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/92/bb00bd631c4d88d9fbf1417a864c2645b992259886123c0e44ccfe87f355/claude_agent_sdk-0.1.23-py3-none-win_amd64.whl", hash = "sha256:05a44208a199cbd7c6cce034d3f91be3cb1a2b11df8e85bedb7c0e31c783d8c7", size = 72624773, upload-time = "2026-01-27T01:46:14.094Z" },
 ]
 
 [[package]]
