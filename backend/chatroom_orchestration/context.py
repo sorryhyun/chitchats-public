@@ -10,7 +10,7 @@ import logging
 import random
 from typing import List, Optional, Tuple
 
-from config import get_conversation_context_config
+from mcp_servers.config import get_conversation_context_config
 from core import get_settings
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.enums import ParticipantType
@@ -143,9 +143,9 @@ def build_conversation_context(
     if not recent_messages:
         return []
 
-    # Load conversation context configuration
-    context_config = get_conversation_context_config()
-    config = context_config.get("conversation_context", {})
+    # Load conversation context configuration (provider-specific)
+    context_config = get_conversation_context_config(provider)
+    config = context_config if "header" in context_config else context_config.get("conversation_context", {})
 
     # Build content blocks list for multimodal support
     content_blocks: List[dict] = []

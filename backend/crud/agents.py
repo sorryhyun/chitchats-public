@@ -37,7 +37,7 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.A
         profile_pic = file_config.profile_pic
 
     # Build system prompt using centralized helper
-    from config import build_system_prompt
+    from providers.prompt_builder import build_system_prompt
 
     system_prompt = build_system_prompt(agent.name, final_config)
 
@@ -150,7 +150,7 @@ async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.Ag
         agent.recent_events = agent_update.recent_events
 
     # Rebuild system prompt using centralized helper
-    from config import build_system_prompt
+    from providers.prompt_builder import build_system_prompt
 
     config_data = agent.get_config_data(use_cache=False)  # Don't use cache during update
     agent.system_prompt = build_system_prompt(agent.name, config_data)
@@ -229,7 +229,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
         agent.final_response = False
 
     # Rebuild system prompt from updated values using centralized helper
-    from config import build_system_prompt
+    from providers.prompt_builder import build_system_prompt
 
     config_obj = agent.get_config_data(use_cache=False)  # Don't use cache during reload
     agent.system_prompt = build_system_prompt(agent.name, config_obj)

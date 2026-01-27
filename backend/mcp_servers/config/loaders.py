@@ -9,9 +9,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from config.cache import get_cached_config
+from infrastructure.yaml_cache import get_cached_config
 
 logger = logging.getLogger(__name__)
+
+# Path to shared prompts config
+_PROMPTS_SHARED_PATH = Path(__file__).parent / "prompts_shared.yaml"
 
 
 def get_guidelines_file() -> str:
@@ -22,7 +25,7 @@ def get_guidelines_file() -> str:
         Guidelines file name (without .yaml extension)
 
     Note: This is deprecated. Guidelines are now split into
-    system_prompt.yaml and guidelines.yaml.
+    provider-specific prompts.yaml and guidelines.yaml.
     """
     from core import get_settings
 
@@ -41,18 +44,39 @@ def get_guidelines_config_path() -> Path:
     return get_settings().guidelines_config_path
 
 
-def get_system_prompt_config_path() -> Path:
+def get_provider_prompts(provider: str) -> Dict[str, Any]:
     """
-    Get the path to the system prompt config file.
+    Load provider-specific prompts configuration.
+
+    Args:
+        provider: The AI provider ("claude" or "codex")
 
     Returns:
-        Path to system_prompt.yaml
+        Dictionary containing system_prompt and conversation_context
     """
-    from core import get_settings
+    if provider == "claude":
+        from providers.claude.prompts import _get_prompts_config
 
-    return get_settings().system_prompt_config_path
+        return _get_prompts_config()
+    elif provider == "codex":
+        from providers.codex.prompts import _get_prompts_config
+
+        return _get_prompts_config()
+    else:
+        logger.warning(f"Unknown provider '{provider}', falling back to claude")
+        from providers.claude.prompts import _get_prompts_config
+
+        return _get_prompts_config()
 
 
+def get_shared_prompts_config() -> Dict[str, Any]:
+    """
+    Load shared prompts configuration from prompts_shared.yaml.
+
+    Returns:
+        Dictionary containing situation_builder and other shared templates
+    """
+    return get_cached_config(_PROMPTS_SHARED_PATH)
 
 
 def get_tools_config() -> Dict[str, Any]:
@@ -96,12 +120,30 @@ def get_guidelines_config() -> Dict[str, Any]:
 
 def get_system_prompt_config() -> Dict[str, Any]:
     """
-    Load the system prompt configuration from system_prompt.yaml.
+    Load the system prompt configuration.
+
+    DEPRECATED: Use get_provider_prompts(provider) instead.
+    This function now loads from provider-specific prompts.yaml files.
 
     Returns:
-        Dictionary containing system prompt templates
+        Dictionary containing system prompt templates (claude format for backwards compat)
     """
-    return get_cached_config(get_system_prompt_config_path())
+    logger.debug("get_system_prompt_config is deprecated, use get_provider_prompts() instead")
+    from providers.claude.prompts import _get_prompts_config
+
+    config = _get_prompts_config()
+
+    # Convert to old format for backwards compatibility
+    active_key = config.get("active_system_prompt", "system_prompt_v7")
+    prompt_content = config.get(active_key, "")
+
+    return {
+        "active_system_prompt": active_key,
+        active_key: {
+            "claude": prompt_content,
+            "codex": get_provider_prompts("codex").get(active_key, ""),
+        },
+    }
 
 
 def get_debug_config() -> Dict[str, Any]:
@@ -127,16 +169,30 @@ def get_debug_config() -> Dict[str, Any]:
     return config
 
 
-def get_conversation_context_config() -> Dict[str, Any]:
+def get_conversation_context_config(provider: str = "claude") -> Dict[str, Any]:
     """
-    Load the conversation context configuration from conversation_context.yaml.
+    Load the conversation context configuration.
+
+    Args:
+        provider: The AI provider ("claude" or "codex")
 
     Returns:
-        Dictionary containing conversation context templates
+        Dictionary containing conversation context templates merged with shared config
     """
-    from core import get_settings
+    # Get provider-specific context config
+    provider_prompts = get_provider_prompts(provider)
+    provider_context = provider_prompts.get("conversation_context", {})
 
-    return get_cached_config(get_settings().conversation_context_config_path)
+    # Get shared config (situation_builder, etc.)
+    shared_config = get_shared_prompts_config()
+
+    # Merge: shared config keys are added to provider context
+    result = dict(provider_context)
+    for key, value in shared_config.items():
+        if key not in result:
+            result[key] = value
+
+    return result
 
 
 def get_group_config(group_name: str) -> Dict[str, Any]:

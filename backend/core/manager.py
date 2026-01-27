@@ -14,7 +14,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, AsyncIterator, Optional, Union
 
-from config import get_debug_config
+from mcp_servers.config import get_debug_config
 from domain.contexts import AgentResponseContext
 from domain.streaming import (
     ResponseAccumulator,

@@ -15,7 +15,7 @@ from mcp_servers.config.loaders import (
 )
 from mcp_servers.config.tools import is_tool_enabled
 
-from .cache import clear_cache
+from infrastructure.yaml_cache import clear_cache
 
 logger = logging.getLogger(__name__)
 

@@ -284,9 +284,9 @@ class Settings(BaseSettings):
         Get the path to debug.yaml configuration file.
 
         Returns:
-            Path to debug.yaml
+            Path to debug.yaml in mcp_servers/config/
         """
-        return self.config_dir / "debug.yaml"
+        return self.mcp_servers_config_dir / "debug.yaml"
 
     @property
     def conversation_context_config_path(self) -> Path:

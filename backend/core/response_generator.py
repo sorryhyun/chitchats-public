@@ -14,7 +14,7 @@ import crud
 from chatroom_orchestration.context import build_conversation_context, detect_conversation_type
 from chatroom_orchestration.critic import save_critic_report
 from chatroom_orchestration.handlers import save_agent_message
-from config import build_system_prompt
+from providers.prompt_builder import build_system_prompt
 from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
 from domain.streaming import ContentDeltaEvent, StreamEndEvent, StreamStartEvent, ThinkingDeltaEvent
 from domain.task_identifier import TaskIdentifier

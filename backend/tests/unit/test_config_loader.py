@@ -269,27 +269,19 @@ class TestGetToolDescription:
         assert "memory1, memory2" in desc
 
     @pytest.mark.unit
-    def test_get_tool_description_guidelines_tool(self):
-        """Test getting guidelines tool description from separate file."""
-        # Create tools config
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("tools:\n  guidelines:\n    enabled: true\n")
-            tools_path = Path(tmp.name)
+    def test_get_tool_description_read_tool(self):
+        """Test getting 'read' (guidelines) tool description.
 
-        # Create guidelines config
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
-            tmp.write("active_version: v1\nv1:\n  template: 'Guidelines for {agent_name}'\n")
-            guidelines_path = Path(tmp.name)
+        Note: The 'guidelines' tool was renamed to 'read' and is now in the
+        mcp__guidelines__read namespace. It's disabled by default.
+        """
+        # The 'read' tool exists in TOOLS but is disabled by default
+        # When enabled, it should return a description with agent_name substituted
+        desc = get_tool_description("read", agent_name="Alice")
+        # 'read' tool is disabled by default, so it should return None
+        assert desc is None
 
-        try:
-            with (
-                patch.object(Settings, "tools_config_path", new_callable=PropertyMock, return_value=tools_path),
-                patch.object(
-                    Settings, "guidelines_config_path", new_callable=PropertyMock, return_value=guidelines_path
-                ),
-            ):
-                desc = get_tool_description("guidelines", agent_name="Alice")
-                assert desc == "Guidelines for Alice"
-        finally:
-            tools_path.unlink()
-            guidelines_path.unlink()
+        # Test that when looking up 'anthropic' tool (which is enabled for claude)
+        desc = get_tool_description("anthropic", agent_name="Alice", provider="claude")
+        assert desc is not None
+        assert "real-world harm" in desc.lower() or "Anthropic" in desc

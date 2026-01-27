@@ -443,7 +443,7 @@ def _get_group_config(group_name: str) -> dict[str, Any]:
         return {}
 
     try:
-        from config.cache import get_cached_config
+        from infrastructure.yaml_cache import get_cached_config
         from core import get_settings
 
         group_config_path = get_settings().agents_dir / f"group_{group_name}" / "group_config.yaml"
