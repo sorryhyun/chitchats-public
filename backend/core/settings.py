@@ -105,9 +105,6 @@ class Settings(BaseSettings):
     frontend_url: Optional[str] = None
     vercel_url: Optional[str] = None
 
-    # Guidelines system
-    guidelines_file: str = "guidelines_3rd"
-
     # Model configuration
     use_haiku: bool = False
 

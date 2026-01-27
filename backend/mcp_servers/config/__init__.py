@@ -12,7 +12,6 @@ from .loaders import (
     get_group_config,
     get_guidelines_config,
     get_guidelines_config_path,
-    get_guidelines_file,
     get_provider_prompts,
     get_shared_prompts_config,
     merge_tool_configs,
@@ -45,7 +44,6 @@ __all__ = [
     # Loaders
     "get_guidelines_config",
     "get_guidelines_config_path",
-    "get_guidelines_file",
     "get_debug_config",
     "get_conversation_context_config",
     "get_provider_prompts",

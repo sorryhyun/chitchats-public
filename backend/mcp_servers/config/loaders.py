@@ -17,21 +17,6 @@ logger = logging.getLogger(__name__)
 _PROMPTS_SHARED_PATH = Path(__file__).parent / "prompts_shared.yaml"
 
 
-def get_guidelines_file() -> str:
-    """
-    Get the guidelines file name from settings.
-
-    Returns:
-        Guidelines file name (without .yaml extension)
-
-    Note: This is deprecated. Guidelines are now split into
-    provider-specific prompts.yaml and guidelines.yaml.
-    """
-    from core import get_settings
-
-    return get_settings().guidelines_file
-
-
 def get_guidelines_config_path() -> Path:
     """
     Get the path to the guidelines config file.

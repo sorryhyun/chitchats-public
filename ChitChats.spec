@@ -16,21 +16,22 @@ project_root = Path(SPECPATH)
 backend_dir = project_root / 'backend'
 frontend_dist = project_root / 'frontend' / 'dist'
 agents_dir = project_root / 'agents'
-config_dir = backend_dir / 'config'
 
 # Data files to include
 # NOTE: Agents are NOT bundled here - they are distributed as agents.zip alongside the exe
 # This reduces exe size and allows users to update agents independently
 # Use `make agents-zip` to create agents.zip for distribution
 mcp_servers_config_dir = backend_dir / 'mcp_servers' / 'config'
+providers_dir = backend_dir / 'providers'
 
 datas = [
     # Frontend static files
     (str(frontend_dist), 'static'),
-    # Backend config files (YAML)
-    (str(config_dir), 'config'),
-    # MCP servers config files (tools.yaml, guidelines.yaml) - bundled at mcp_servers/config/
+    # MCP servers config files (tools.py, guidelines.yaml, debug.yaml) - bundled at mcp_servers/config/
     (str(mcp_servers_config_dir), 'mcp_servers/config'),
+    # Provider-specific prompts.yaml files
+    (str(providers_dir / 'claude' / 'prompts.yaml'), 'providers/claude'),
+    (str(providers_dir / 'codex' / 'prompts.yaml'), 'providers/codex'),
     # .env.example as template
     (str(project_root / '.env.example'), '.'),
 ]

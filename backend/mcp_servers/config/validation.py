@@ -10,7 +10,6 @@ from .loaders import (
     get_conversation_context_config,
     get_debug_config,
     get_guidelines_config,
-    get_guidelines_file,
     get_tools_config,
 )
 from .tools import is_tool_enabled
@@ -57,9 +56,9 @@ def validate_config_schema() -> list[str]:
                 if "description" not in tool:
                     errors.append(f"Tools registry tool '{tool_name}' missing 'description' field")
 
-    # Validate guidelines yaml (guidelines_3rd.yaml or guidelines_v2.yaml)
+    # Validate guidelines yaml (mcp_servers/config/guidelines.yaml)
     guidelines_config = get_guidelines_config()
-    guidelines_filename = f"{get_guidelines_file()}.yaml"
+    guidelines_filename = "guidelines.yaml"
     if not guidelines_config:
         errors.append(f"{guidelines_filename} is empty or missing")
     else:
@@ -75,10 +74,8 @@ def validate_config_schema() -> list[str]:
                 if "template" not in version_config:
                     errors.append(f"{guidelines_filename} version '{active_version}' missing 'template' field")
 
-        # Check for system_prompt
-        active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
-        if active_system_prompt not in guidelines_config:
-            errors.append(f"{guidelines_filename} missing system prompt: '{active_system_prompt}'")
+        # Note: system_prompt is now in provider-specific prompts.yaml files
+        # (providers/claude/prompts.yaml and providers/codex/prompts.yaml)
 
     # Validate debug.yaml
     debug_config = get_debug_config()
@@ -117,13 +114,9 @@ def log_config_validation():
     tools_config = get_tools_config()
     guidelines_config = get_guidelines_config()
 
-    logger.info(f"Guidelines file: {get_guidelines_file()}.yaml")
+    logger.info("Guidelines file: guidelines.yaml")
     active_version = guidelines_config.get("active_version", "unknown")
     logger.info(f"Active guidelines version: {active_version}")
-
-    # Log system prompt mode
-    active_system_prompt = guidelines_config.get("active_system_prompt", "system_prompt")
-    logger.info(f"Active system prompt: {active_system_prompt}")
 
     # Count enabled tools
     if "tools" in tools_config:

@@ -50,22 +50,6 @@ def get_base_system_prompt() -> str:
         return DEFAULT_FALLBACK_PROMPT
 
 
-def get_conversation_context_config() -> Dict[str, Any]:
-    """
-    Get conversation context configuration for Claude provider.
-
-    Returns:
-        Dictionary containing header, footer, recall_reminder, response_instruction
-    """
-    try:
-        config = _get_prompts_config()
-        return config.get("conversation_context", {})
-    except Exception as e:
-        logger.warning(f"Error loading Claude conversation context config: {e}")
-        return {}
-
-
 __all__ = [
     "get_base_system_prompt",
-    "get_conversation_context_config",
 ]
