@@ -169,7 +169,7 @@ class ClaudeProvider(AIProvider):
         Returns:
             ClaudeAgentOptions ready for client creation
         """
-        from config import get_tool_names_by_group
+        from mcp_servers.config import get_tool_names_by_group
 
         # Build MCP servers using centralized builder
         env_config = MCPServerEnv(

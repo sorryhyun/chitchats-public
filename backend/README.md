@@ -20,14 +20,15 @@ uv run pytest --cov=backend
 backend/
 ├── main.py                 # FastAPI entry point
 ├── schemas/                # Pydantic request/response models
-├── config/                 # YAML configs (system_prompt.yaml, debug.yaml)
 ├── core/                   # App factory, auth, settings, AgentManager
 ├── crud/                   # Database operations
-├── domain/                 # Domain models (TaskIdentifier, AgentConfigData)
+├── domain/                 # Domain models (AgentConfigData, agent_parser)
+│   └── agent_parser.py     # Agent config parsing from filesystem
 ├── mcp_servers/            # MCP server tools and config
 │   └── config/
 │       ├── tools.py        # Python tool registry (ToolDef, input models)
-│       ├── guidelines.yaml # Behavioral guidelines (v14 claude/codex)
+│       ├── guidelines.yaml # System prompt & behavioral guidelines
+│       ├── debug.yaml      # Debug logging configuration
 │       └── loaders.py      # Config file loaders
 ├── orchestration/          # Multi-agent conversation orchestration
 ├── providers/              # AI provider abstraction (Claude, Codex)
@@ -93,10 +94,10 @@ class ToolDef:
 
 ## System Prompt
 
-System prompts are defined in `config/system_prompt.yaml` with provider variants:
+System prompts are defined in `mcp_servers/config/guidelines.yaml` with provider variants:
 
-- `system_prompt_v8.claude` - Concise structured prompt for Claude
-- `system_prompt_v8.codex` - Frame-based prompt for Codex/GPT
+- `system_prompt.claude` - Concise structured prompt for Claude
+- `system_prompt.codex` - Frame-based prompt for Codex/GPT
 
 Change active prompt via `active_system_prompt` key.
 
@@ -121,6 +122,6 @@ The Codex parser uses clean event types from `providers/codex/events.py`:
 
 ## Debugging
 
-Enable with `DEBUG_AGENTS=true` in `.env` or edit `config/tools/debug.yaml`.
+Enable with `DEBUG_AGENTS=true` in `.env` or edit `mcp_servers/config/debug.yaml`.
 
 For caching details, see [CACHING.md](CACHING.md).

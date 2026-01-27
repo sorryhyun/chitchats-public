@@ -128,19 +128,28 @@ agents/
 
 **Agent configs**, **system prompt**, and **tool configurations** use filesystem as single source of truth:
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
-- System prompt: `backend/config/tools/guidelines_3rd.yaml` (`system_prompt` field)
-- Tool configurations: `backend/config/tools/*.yaml` files
+- Agent parsing: `backend/domain/agent_parser.py`
+- System prompt: `backend/mcp_servers/config/guidelines.yaml` (`system_prompt` field)
+- Tool configurations: `backend/mcp_servers/config/` directory
 - File locking prevents concurrent write conflicts
 - See `backend/infrastructure/locking.py` for implementation
 
-### Tool Configuration (YAML-Based)
+### Tool Configuration
 
-Tool descriptions and debug settings are configured via YAML files in `backend/config/tools/`:
+Tool descriptions and debug settings are configured in `backend/mcp_servers/config/`:
 
-**`tools.yaml`** - Tool definitions and descriptions
-- Defines available tools (skip, memorize, guidelines, configuration)
+**`tools.py`** - Tool definitions and descriptions (Python-based)
+- Defines available tools (skip, memorize, recall, read, etc.)
 - Tool descriptions support template variables (`{agent_name}`, `{config_sections}`)
 - Enable/disable tools individually
+
+**`guidelines.yaml`** - Role guidelines for agent behavior
+- Defines system prompt template and behavioral guidelines
+- Uses third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why)
+
+**`debug.yaml`** - Debug logging configuration
+- Control what gets logged (system prompt, tools, messages, responses)
+- Can be overridden by `DEBUG_AGENTS` environment variable
 
 ### Group Configuration
 
@@ -149,14 +158,6 @@ Groups (`group_*` folders) can have a `group_config.yaml` for shared settings:
 - **Behavior settings** - `interrupt_every_turn`, `priority`, `transparent`
 
 See `agents/group_config.yaml.example` for examples.
-
-**`guidelines_3rd.yaml`** - Role guidelines for agent behavior
-- Defines system prompt template and behavioral guidelines
-- Uses third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why)
-
-**`debug.yaml`** - Debug logging configuration
-- Control what gets logged (system prompt, tools, messages, responses)
-- Can be overridden by `DEBUG_AGENTS` environment variable
 
 ## Quick Start
 
@@ -216,13 +217,13 @@ See [SETUP.md](SETUP.md) for PostgreSQL setup and authentication configuration.
 
 **Update agent:** Edit `.md` files directly
 
-**Update system prompt:** Edit `system_prompt` section in `backend/config/tools/guidelines_3rd.yaml`
+**Update system prompt:** Edit `system_prompt` section in `backend/mcp_servers/config/guidelines.yaml`
 
-**Update tool descriptions:** Edit YAML files in `backend/config/tools/`
+**Update tool descriptions:** Edit `backend/mcp_servers/config/tools.py`
 
-**Update guidelines:** Edit `v1/v2/v3.template` section in `backend/config/tools/guidelines_3rd.yaml`
+**Update guidelines:** Edit version template sections in `backend/mcp_servers/config/guidelines.yaml`
 
-**Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/config/tools/debug.yaml`
+**Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/mcp_servers/config/debug.yaml`
 
 **Add database field:** Update `models.py`, add migration in `backend/infrastructure/database/migrations.py`, update `schemas.py` and `crud.py`, restart
 

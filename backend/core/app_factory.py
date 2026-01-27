@@ -61,7 +61,7 @@ def create_app() -> FastAPI:
         logger.info("🚀 Application startup...")
 
         # Validate configuration files
-        from config import log_config_validation
+        from mcp_servers.config import log_config_validation
 
         log_config_validation()
 

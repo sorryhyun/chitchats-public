@@ -289,7 +289,7 @@ def _load_memory_index_and_entries(config_file: Optional[str]) -> tuple[dict[str
         return {}, None
 
     try:
-        from config.parser import parse_long_term_memory, parse_long_term_memory_with_thoughts
+        from domain.agent_parser import parse_long_term_memory, parse_long_term_memory_with_thoughts
         from core import AgentConfigService
         from core.settings import get_settings
 

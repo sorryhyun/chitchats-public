@@ -118,7 +118,7 @@ class AgentConfigService:
             return None
 
         try:
-            from config import parse_agent_config
+            from domain.agent_parser import parse_agent_config
 
             # parse_agent_config now returns AgentConfigData directly
             return parse_agent_config(config_file)

@@ -12,9 +12,10 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from domain.agent_config import AgentConfigData
+if TYPE_CHECKING:
+    from .agent_config import AgentConfigData
 
 logger = logging.getLogger("ConfigParser")
 
@@ -193,7 +194,7 @@ def parse_long_term_memory_with_thoughts(file_path: Path) -> Dict[str, MemoryEnt
 # =============================================================================
 
 
-def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
+def parse_agent_config(file_path: str) -> Optional["AgentConfigData"]:
     """
     Parse an agent configuration from a folder with separate markdown files.
 
@@ -210,6 +211,9 @@ def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
     Returns:
         AgentConfigData object or None if folder doesn't exist
     """
+    # Import here to avoid circular dependency
+    from .agent_config import AgentConfigData
+
     # Resolve path relative to agents directory if not absolute
     path = Path(file_path)
     if not path.is_absolute():
@@ -238,8 +242,10 @@ def parse_agent_config(file_path: str) -> Optional[AgentConfigData]:
         return None
 
 
-def _parse_folder_config(folder_path: Path) -> AgentConfigData:
+def _parse_folder_config(folder_path: Path) -> "AgentConfigData":
     """Parse agent configuration from folder with separate .md files."""
+    # Import here to avoid circular dependency
+    from .agent_config import AgentConfigData
 
     def read_section(filename: str) -> str:
         file_path = folder_path / filename

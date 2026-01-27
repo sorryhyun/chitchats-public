@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
-    from config.parser import MemoryEntry
+    from .agent_parser import MemoryEntry
 
 
 @dataclass

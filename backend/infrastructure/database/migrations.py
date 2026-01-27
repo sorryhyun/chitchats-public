@@ -340,7 +340,7 @@ async def _add_indexes(conn):
 
 async def _sync_agents_from_filesystem(conn):
     """Sync agent data from filesystem (paths, groups, profile pics, system prompts)."""
-    from config import list_available_configs, parse_agent_config
+    from domain.agent_parser import list_available_configs, parse_agent_config
     from providers.prompt_builder import config_to_markdown, get_base_system_prompt
     from i18n.korean import format_with_particles
 

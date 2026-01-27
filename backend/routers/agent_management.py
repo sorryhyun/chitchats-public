@@ -7,7 +7,7 @@ from typing import Optional
 
 import crud
 import schemas
-from config import list_available_configs
+from domain.agent_parser import list_available_configs
 from core import require_admin
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse

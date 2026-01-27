@@ -35,6 +35,11 @@ from .tools import (
     get_tools_by_group,
     is_tool_enabled,
 )
+from .validation import (
+    log_config_validation,
+    reload_all_configs,
+    validate_config_schema,
+)
 
 __all__ = [
     # Loaders
@@ -66,4 +71,8 @@ __all__ = [
     "GuidelinesReadInput",
     "GuidelinesAnthropicInput",
     "CurrentTimeInput",
+    # Validation
+    "reload_all_configs",
+    "validate_config_schema",
+    "log_config_validation",
 ]

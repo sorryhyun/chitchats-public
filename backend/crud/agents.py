@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 
 import schemas
-from config import list_available_configs, parse_agent_config
+from domain.agent_parser import list_available_configs, parse_agent_config
 from domain.agent_config import AgentConfigData
 from infrastructure.database import models
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +48,7 @@ async def create_agent(db: AsyncSession, agent: schemas.AgentCreate) -> models.A
     final_response = getattr(agent, "final_response", False)  # Use provided value by default
 
     if agent.group:
-        from config import get_group_config
+        from mcp_servers.config import get_group_config
 
         group_config = get_group_config(agent.group)
         # Override with group config if present
@@ -199,7 +199,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
 
     # Load group config to update interrupt_every_turn, priority, transparent, and final_response if agent belongs to a group
     if agent.group:
-        from config import get_group_config
+        from mcp_servers.config import get_group_config
 
         group_config = get_group_config(agent.group)
         if "interrupt_every_turn" in group_config:

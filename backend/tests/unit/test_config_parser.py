@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from config.parser import _parse_folder_config, parse_agent_config
+from domain.agent_parser import _parse_folder_config, parse_agent_config
 from domain.agent_config import AgentConfigData
 
 
@@ -288,7 +288,7 @@ class TestParseAgentConfigLongTermMemory:
 
         # Create a long-term memory file with proper format: ## [subtitle]
         # Using default filename: consolidated_memory.md
-        from config.parser import _parse_folder_config
+        from domain.agent_parser import _parse_folder_config
 
         ltm_content = """## [Memory 1]
 

@@ -6,14 +6,14 @@ Provides functions for validating configuration schema and startup logging.
 
 import logging
 
-from mcp_servers.config.loaders import (
+from .loaders import (
     get_conversation_context_config,
     get_debug_config,
     get_guidelines_config,
     get_guidelines_file,
     get_tools_config,
 )
-from mcp_servers.config.tools import is_tool_enabled
+from .tools import is_tool_enabled
 
 from infrastructure.yaml_cache import clear_cache
 
@@ -109,7 +109,7 @@ def log_config_validation():
         logger.error("Configuration validation failed:")
         for error in errors:
             logger.error(f"   - {error}")
-        logger.error("Fix configuration files in backend/config/")
+        logger.error("Fix configuration files in mcp_servers/config/")
     else:
         logger.info("All configuration files validated successfully")
 
