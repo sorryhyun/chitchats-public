@@ -217,6 +217,7 @@ function AppContent() {
           agent={agentContext.profileAgent}
           onClose={agentContext.closeProfile}
           onUpdate={agentContext.refreshAgents}
+          onDelete={agentContext.deleteAgent}
         />
       )}
 

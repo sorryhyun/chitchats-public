@@ -9,6 +9,45 @@ interface RoomListPanelProps {
   onDeleteRoom: (roomId: number) => Promise<void>;
 }
 
+// Get provider icon for room
+const getProviderIcon = (provider: string): string => {
+  switch (provider) {
+    case 'claude': return 'C';
+    case 'codex': return 'X';
+    case 'custom': return '★';
+    default: return '#';
+  }
+};
+
+// Get provider background color
+const getProviderBgColor = (provider: string, isSelected: boolean): string => {
+  if (isSelected) {
+    switch (provider) {
+      case 'claude': return 'bg-[#D97757]';
+      case 'codex': return 'bg-[#10A37F]';
+      case 'custom': return 'bg-[#F59E0B]';
+      default: return 'bg-slate-700';
+    }
+  }
+  switch (provider) {
+    case 'claude': return 'bg-[#D97757]/20 group-hover:bg-[#D97757]/30';
+    case 'codex': return 'bg-[#10A37F]/20 group-hover:bg-[#10A37F]/30';
+    case 'custom': return 'bg-[#F59E0B]/20 group-hover:bg-[#F59E0B]/30';
+    default: return 'bg-slate-200 group-hover:bg-slate-300';
+  }
+};
+
+// Get provider text color
+const getProviderTextColor = (provider: string, isSelected: boolean): string => {
+  if (isSelected) return 'text-white';
+  switch (provider) {
+    case 'claude': return 'text-[#D97757]';
+    case 'codex': return 'text-[#10A37F]';
+    case 'custom': return 'text-[#F59E0B]';
+    default: return 'text-slate-600';
+  }
+};
+
 export const RoomListPanel = ({
   rooms,
   selectedRoomId,
@@ -19,7 +58,7 @@ export const RoomListPanel = ({
   const [deletingRoomId, setDeletingRoomId] = useState<number | null>(null);
 
   return (
-    <div className="absolute inset-0 overflow-y-auto p-2 sm:p-3 space-y-1">
+    <div className="absolute inset-0 overflow-y-auto p-2 sm:p-3 divide-y divide-slate-300">
       {rooms.length === 0 ? (
         <div className="text-center text-slate-500 mt-8 px-4">
           <p className="text-xs sm:text-sm">No rooms yet</p>
@@ -38,10 +77,10 @@ export const RoomListPanel = ({
           >
             <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
               <div className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                selectedRoomId === room.id ? 'bg-slate-700' : 'bg-slate-200 group-hover:bg-slate-300'
+                getProviderBgColor(room.default_provider, selectedRoomId === room.id)
               }`}>
-                <span className={`text-base sm:text-lg ${selectedRoomId === room.id ? 'text-white' : 'text-slate-600'}`}>
-                  {room.name.startsWith('Direct: ') ? '@' : '#'}
+                <span className={`text-base sm:text-lg font-semibold ${getProviderTextColor(room.default_provider, selectedRoomId === room.id)}`}>
+                  {getProviderIcon(room.default_provider)}
                 </span>
                 {room.has_unread && (
                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>

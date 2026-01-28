@@ -1,33 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { Agent, AgentUpdate } from '../types';
-import { api } from '../services';
-import { getAgentProfilePicUrl } from '../services/agentService';
+import { api, getAgentProfilePicUrl } from '../services';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AgentProfileModalProps {
   agent: Agent;
   onClose: () => void;
   onUpdate: () => void;
+  onDelete?: (agentId: number) => Promise<void>;
 }
 
-export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModalProps) => {
+export const AgentProfileModal = ({ agent, onClose, onUpdate, onDelete }: AgentProfileModalProps) => {
+  const { isAdmin } = useAuth();
   const [editedAgent, setEditedAgent] = useState<Agent>(agent);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Focus trap for modal
   const modalRef = useFocusTrap<HTMLDivElement>(true);
-
-  // Compute the profile pic URL - use base64 for new uploads, API URL for existing
-  const profilePicSrc = useMemo(() => {
-    if (!editedAgent.profile_pic) return null;
-    // If it's a base64 data URL (new upload), use it directly
-    if (editedAgent.profile_pic.startsWith('data:')) {
-      return editedAgent.profile_pic;
-    }
-    // Otherwise, use the API endpoint to get the image
-    return getAgentProfilePicUrl(agent, 128);
-  }, [editedAgent.profile_pic, agent]);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -96,9 +88,25 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
     }
   };
 
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    if (!confirm(`Delete agent "${agent.name}"? This action cannot be undone.`)) return;
+
+    try {
+      setIsDeleting(true);
+      setError(null);
+      await onDelete(agent.id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete agent');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <div className="modal-overlay">
-      <div ref={modalRef} className="modal-container max-w-3xl">
+    <div className="modal-overlay" onClick={onClose}>
+      <div ref={modalRef} className="modal-container max-w-3xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-cyan-600 p-4 sm:p-6 rounded-t-lg sm:rounded-t-xl z-10">
           <div className="flex items-center justify-between gap-3">
@@ -116,9 +124,13 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
                   className="cursor-pointer block w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-white/30 hover:border-white/60 active:border-white transition-all touch-manipulation"
                   title="Click to change profile picture"
                 >
-                  {profilePicSrc ? (
+                  {editedAgent.profile_pic ? (
                     <img
-                      src={profilePicSrc}
+                      src={
+                        editedAgent.profile_pic.startsWith('data:')
+                          ? editedAgent.profile_pic
+                          : getAgentProfilePicUrl(editedAgent, 128) || ''
+                      }
                       alt={agent.name}
                       className="w-full h-full object-cover"
                     />
@@ -287,20 +299,42 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate }: AgentProfileModa
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-slate-50 p-4 sm:p-6 rounded-b-lg sm:rounded-b-xl border-t border-slate-200 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
-          <button
-            onClick={onClose}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 active:bg-slate-200 font-medium transition-colors text-sm sm:text-base min-h-[44px] touch-manipulation"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed font-medium transition-colors shadow-sm hover:shadow-md text-sm sm:text-base min-h-[44px] touch-manipulation"
-          >
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </button>
+        <div className="sticky bottom-0 bg-slate-50 p-4 sm:p-6 rounded-b-lg sm:rounded-b-xl border-t border-slate-200 flex flex-col sm:flex-row justify-between gap-2 sm:gap-3">
+          {/* Delete button - admin only */}
+          {isAdmin && onDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-white border border-red-300 text-red-600 rounded-lg hover:bg-red-50 active:bg-red-100 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed font-medium transition-colors text-sm sm:text-base min-h-[44px] touch-manipulation flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          )}
+          {/* Spacer when no delete button */}
+          {!(isAdmin && onDelete) && <div />}
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <button
+              onClick={onClose}
+              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 active:bg-slate-200 font-medium transition-colors text-sm sm:text-base min-h-[44px] touch-manipulation"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed font-medium transition-colors shadow-sm hover:shadow-md text-sm sm:text-base min-h-[44px] touch-manipulation"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -220,7 +220,6 @@ export const MainSidebar = ({
               agents={filteredAndSortedAgents}
               selectedAgentId={agentContext.selectedAgentId}
               onSelectAgent={onSelectAgent}
-              onDeleteAgent={agentContext.deleteAgent}
               onViewProfile={agentContext.viewProfile}
             />
           </div>

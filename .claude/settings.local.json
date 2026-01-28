@@ -23,7 +23,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(git show:*)",
       "Bash(xargs:*)",
-      "Bash(git grep:*)"
+      "Bash(git grep:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

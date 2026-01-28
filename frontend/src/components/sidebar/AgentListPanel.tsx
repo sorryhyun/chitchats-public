@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Agent } from '../../types';
 import { AgentAvatar } from '../AgentAvatar';
-import { useAuth } from '../../contexts/AuthContext';
 
 type Provider = 'claude' | 'codex';
 
@@ -9,7 +8,6 @@ interface AgentListPanelProps {
   agents: Agent[];
   selectedAgentId: number | null;
   onSelectAgent: (agentId: number, provider: Provider) => void;
-  onDeleteAgent: (agentId: number) => Promise<void>;
   onViewProfile: (agent: Agent) => void;
 }
 
@@ -17,10 +15,8 @@ export const AgentListPanel = ({
   agents,
   selectedAgentId,
   onSelectAgent,
-  onDeleteAgent,
   onViewProfile,
 }: AgentListPanelProps) => {
-  const { isAdmin } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Group agents by their group field
@@ -72,16 +68,16 @@ export const AgentListPanel = ({
             : 'group-hover:ring-2 group-hover:ring-slate-300'
         }`}
       />
-      {/* Agent name - hidden on hover when action buttons shown */}
+      {/* Agent name */}
       <span
-        className={`font-medium truncate text-sm sm:text-base flex-1 min-w-0 sm:group-hover:hidden ${
+        className={`font-medium truncate text-sm sm:text-base flex-1 min-w-0 ${
           selectedAgentId === agent.id ? 'text-slate-800' : 'text-slate-700'
         }`}
       >
         {agent.name}
       </span>
-      {/* Action buttons - shown on hover */}
-      <div className="hidden sm:group-hover:flex gap-1 flex-1 justify-end">
+      {/* Action buttons - always visible */}
+      <div className="flex gap-1 flex-shrink-0">
         {/* Codex button */}
         <button
           onClick={(e) => {
@@ -104,33 +100,12 @@ export const AgentListPanel = ({
         >
           c
         </button>
-        {isAdmin && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm(`Delete agent "${agent.name}"?`)) {
-                onDeleteAgent(agent.id);
-              }
-            }}
-            className="p-2 hover:bg-red-100 active:bg-red-200 rounded text-red-500 hover:text-red-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
-            title="Delete agent"
-          >
-            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        )}
       </div>
     </div>
   );
 
   return (
-    <div className="absolute inset-0 overflow-y-auto p-2 sm:p-3 space-y-3">
+    <div className="absolute inset-0 overflow-y-auto p-2 sm:p-3 divide-y-2 divide-slate-400">
       {agents.length === 0 ? (
         <div className="text-center text-slate-500 mt-8 px-4">
           <p className="text-xs sm:text-sm">No agents yet</p>
@@ -140,7 +115,7 @@ export const AgentListPanel = ({
         groupedAgents.map(([groupName, groupAgents]) => {
           const isCollapsed = collapsedGroups.has(groupName);
           return (
-            <div key={groupName} className="space-y-1">
+            <div key={groupName}>
               {/* Group Header */}
               <button
                 onClick={() => toggleGroup(groupName)}
@@ -168,7 +143,7 @@ export const AgentListPanel = ({
 
               {/* Group Agents */}
               {!isCollapsed && (
-                <div className="space-y-1 pl-2">
+                <div className="pl-2 divide-y divide-slate-300">
                   {groupAgents.map(renderAgent)}
                 </div>
               )}
