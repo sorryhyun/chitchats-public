@@ -150,17 +150,23 @@ def generate_jwt_token(role: str = "admin", expiration_hours: int = 168, user_id
     Generate a JWT token for authentication.
 
     Args:
-        role: User role ('admin' or 'guest')
+        role: User role ('admin', 'guest', or 'user')
         expiration_hours: Hours until token expires (default: 168 = 7 days)
-        user_id: Unique identifier for the authenticated user (auto-generated for guests)
+        user_id: Unique identifier for the authenticated user
+                 - admin: defaults to 'admin'
+                 - guest: auto-generated as 'guest-{random}'
+                 - user: required, should be 'user-{db_id}' for Google Sign-In users
 
     Returns:
         str: Encoded JWT token
     """
-    # Default user_id handling (ensures each guest gets a unique identity)
+    # Default user_id handling
     if user_id is None:
         if role == "guest":
             user_id = f"guest-{secrets.token_hex(6)}"
+        elif role == "user":
+            # user role requires explicit user_id (from database)
+            raise ValueError("user_id is required for 'user' role")
         else:
             user_id = "admin"
 
@@ -200,7 +206,7 @@ def validate_jwt_token(token: str) -> dict | None:
         return None
 
 
-def generate_sse_ticket(room_id: int, expiration_seconds: int = 60) -> str:
+def generate_sse_ticket(room_id: int, user_id: str, expiration_seconds: int = 60) -> str:
     """
     Generate a short-lived SSE ticket for a specific room.
 
@@ -210,6 +216,7 @@ def generate_sse_ticket(room_id: int, expiration_seconds: int = 60) -> str:
 
     Args:
         room_id: The room ID this ticket is valid for
+        user_id: User ID that owns this ticket (for access control)
         expiration_seconds: Seconds until ticket expires (default: 60)
 
     Returns:
@@ -221,11 +228,12 @@ def generate_sse_ticket(room_id: int, expiration_seconds: int = 60) -> str:
         "iat": datetime.utcnow(),
         "type": "sse_ticket",
         "room_id": room_id,
+        "user_id": user_id,
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
-def validate_sse_ticket(ticket: str, room_id: int) -> bool:
+def validate_sse_ticket(ticket: str, room_id: int) -> dict | None:
     """
     Validate an SSE ticket for a specific room.
 
@@ -234,7 +242,7 @@ def validate_sse_ticket(ticket: str, room_id: int) -> bool:
         room_id: The room ID to validate against
 
     Returns:
-        bool: True if ticket is valid for this room, False otherwise
+        dict | None: Ticket payload with user_id if valid, None otherwise
     """
     try:
         secret = get_jwt_secret()
@@ -243,23 +251,23 @@ def validate_sse_ticket(ticket: str, room_id: int) -> bool:
         # Verify this is an SSE ticket
         if payload.get("type") != "sse_ticket":
             logger.warning("⚠️  Token is not an SSE ticket")
-            return False
+            return None
 
         # Verify room_id matches
         if payload.get("room_id") != room_id:
             logger.warning(f"⚠️  SSE ticket room_id mismatch: expected {room_id}, got {payload.get('room_id')}")
-            return False
+            return None
 
-        return True
+        return payload
     except jwt.ExpiredSignatureError:
         logger.warning("⚠️  SSE ticket has expired")
-        return False
+        return None
     except jwt.InvalidTokenError as e:
         logger.warning(f"⚠️  Invalid SSE ticket: {e}")
-        return False
+        return None
     except Exception as e:
         logger.error(f"❌ Error validating SSE ticket: {e}")
-        return False
+        return None
 
 
 def get_role_from_token(token: str) -> str | None:
@@ -270,7 +278,7 @@ def get_role_from_token(token: str) -> str | None:
         token: The JWT token
 
     Returns:
-        str | None: The role ('admin' or 'guest') if valid, None otherwise
+        str | None: The role ('admin', 'guest', or 'user') if valid, None otherwise
     """
     payload = validate_jwt_token(token)
     if payload:
@@ -320,6 +328,7 @@ class AuthMiddleware:
         "/openapi.json",
         "/redoc",
         "/auth/login",
+        "/auth/google",  # Google Sign-In endpoint
         "/auth/health",
         "/register",  # OAuth dynamic client registration (for MCP clients)
     }
@@ -374,6 +383,11 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Skip auth for voice status check and audio file serving
+        if path == "/voice/status" or path.startswith("/voice/audio/"):
+            await self.app(scope, receive, send)
+            return
+
         # Skip auth for SSE stream endpoints (they handle auth via query param)
         # EventSource API doesn't support custom headers, so auth is passed as query param
         if path.startswith("/rooms/") and path.endswith("/stream"):
@@ -390,8 +404,19 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Extract token from header
+        # Extract token from header (primary) or cookie (fallback)
         token = headers.get(b"x-api-key", b"").decode("utf-8") or None
+
+        # If no header token, try cookie
+        if not token:
+            cookie_header = headers.get(b"cookie", b"").decode("utf-8")
+            if cookie_header:
+                # Parse cookies to find auth_token
+                for cookie in cookie_header.split(";"):
+                    cookie = cookie.strip()
+                    if cookie.startswith("auth_token="):
+                        token = cookie[len("auth_token=") :]
+                        break
 
         # Validate JWT token
         token_payload = validate_jwt_token(token) if token else None
@@ -461,4 +486,33 @@ def require_admin(request: Request):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This action requires admin privileges.",
+        )
+
+
+async def ensure_room_access(room, user_id: str, user_role: str) -> None:
+    """
+    Verify that a user can access a specific room.
+
+    Room access rules:
+    - Admins can access all rooms
+    - Non-admins can only access rooms they own (owner_id matches user_id)
+
+    Args:
+        room: Room object (must have owner_id attribute)
+        user_id: The user's ID
+        user_role: The user's role ('admin', 'guest', or 'user')
+
+    Raises:
+        HTTPException: 403 Forbidden if user cannot access the room
+    """
+    # Admins can access all rooms
+    if user_role == "admin":
+        return
+
+    # Non-admins can only access their own rooms
+    if room.owner_id != user_id:
+        logger.warning(f"⚠️  User {user_id} attempted to access room owned by {room.owner_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this room.",
         )

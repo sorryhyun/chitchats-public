@@ -49,6 +49,10 @@ def get_provider(provider_type: str | ProviderType) -> AIProvider:
         from .codex import CodexProvider
 
         provider = CodexProvider()
+    elif provider_type == ProviderType.CUSTOM:
+        from .custom import CustomProvider
+
+        provider = CustomProvider()
     else:
         raise ValueError(f"Provider type {provider_type} is not implemented")
 

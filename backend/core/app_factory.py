@@ -5,20 +5,21 @@ This module provides functions for creating and configuring the FastAPI applicat
 with all necessary middleware, routers, and dependencies.
 """
 
+import asyncio
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import crud
-from fastapi import FastAPI
+from chatroom_orchestration import ChatOrchestrator
+from fastapi import FastAPI, Request
 from fastapi_mcp import FastApiMCP
 from infrastructure.database import get_db, init_db, shutdown_db
 from infrastructure.scheduler import BackgroundScheduler
-from chatroom_orchestration import ChatOrchestrator
 
 from core import get_logger, get_settings
-from core.sse import EventBroadcaster
 from core.manager import AgentManager
+from core.sse import EventBroadcaster
 
 logger = get_logger("AppFactory")
 
@@ -43,13 +44,113 @@ def create_app() -> FastAPI:
         rooms,
         serve_mcp,
         sse,
+        tools_api,
+        user,
         voice,
     )
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
-    from slowapi.util import get_remote_address
 
     from core.auth import AuthMiddleware
+    from core.logging import set_correlation_id
+
+    class CorrelationIdMiddleware:
+        """Middleware to set correlation ID for request tracking."""
+
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                # Check for existing correlation ID in headers
+                headers = dict(scope.get("headers", []))
+                correlation_id = headers.get(b"x-correlation-id", b"").decode("utf-8") or None
+                # Set correlation ID for this request context
+                set_correlation_id(correlation_id)
+
+            await self.app(scope, receive, send)
+
+    def get_client_ip(request: Request) -> str:
+        """
+        Get the real client IP address, respecting trusted proxies.
+
+        Uses X-Forwarded-For header when behind a trusted proxy, otherwise
+        falls back to the direct connection IP.
+
+        Args:
+            request: FastAPI request object
+
+        Returns:
+            Client IP address as a string
+        """
+        trusted_proxy_count = settings.trusted_proxy_count
+
+        if trusted_proxy_count > 0:
+            # Check X-Forwarded-For header
+            forwarded_for = request.headers.get("x-forwarded-for")
+            if forwarded_for:
+                # X-Forwarded-For can contain multiple IPs: client, proxy1, proxy2, ...
+                # We want the IP at position -(trusted_proxy_count + 1) from the end
+                ips = [ip.strip() for ip in forwarded_for.split(",")]
+                # Calculate index: if trusted_proxy_count=1, we want the second-to-last
+                # which is ips[-2] or len(ips) - 2
+                target_index = len(ips) - trusted_proxy_count - 1
+                if target_index >= 0:
+                    return ips[target_index]
+                # If not enough IPs, use the first one (likely the real client)
+                return ips[0]
+
+        # No proxy configured or no X-Forwarded-For, use direct connection IP
+        if request.client:
+            return request.client.host
+        return "127.0.0.1"
+
+    # Body size limit middleware (10MB max)
+    MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB
+
+    class BodySizeLimitMiddleware:
+        """Middleware to limit request body size to prevent memory exhaustion."""
+
+        def __init__(self, app, max_size: int = MAX_BODY_SIZE):
+            self.app = app
+            self.max_size = max_size
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            content_length = None
+            for header_name, header_value in scope.get("headers", []):
+                if header_name == b"content-length":
+                    try:
+                        content_length = int(header_value.decode())
+                    except (ValueError, UnicodeDecodeError):
+                        pass
+                    break
+
+            # Reject if Content-Length exceeds limit
+            if content_length is not None and content_length > self.max_size:
+                response_body = b'{"detail":"Request body too large"}'
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 413,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(response_body)).encode()),
+                        ],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": response_body,
+                    }
+                )
+                return
+
+            await self.app(scope, receive, send)
 
     settings = get_settings()
 
@@ -61,7 +162,7 @@ def create_app() -> FastAPI:
         logger.info("🚀 Application startup...")
 
         # Validate configuration files
-        from mcp_servers.config import log_config_validation
+        from core import log_config_validation
 
         log_config_validation()
 
@@ -103,60 +204,81 @@ def create_app() -> FastAPI:
         # Start background scheduler
         background_scheduler.start()
 
-        # Codex App Server uses on-demand instance creation
-        logger.info("🔧 Codex App Server mode enabled (instances created on-demand)")
+        # Initialize Codex App Server pool (lazy - instances created on demand)
+        codex_server_pool = None
+        try:
+            from providers.codex import CodexAppServerPool
+
+            logger.info("🔧 Initializing Codex App Server pool...")
+            codex_server_pool = await CodexAppServerPool.get_instance()
+            pool_stats = codex_server_pool.get_stats()
+            logger.info(
+                f"✅ Codex App Server pool ready "
+                f"(max_instances: {pool_stats['max_instances']}, "
+                f"idle_timeout: {pool_stats['idle_timeout']}s)"
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to initialize Codex App Server pool: {e}")
+            logger.warning("   Codex provider will not be available")
 
         logger.info("✅ Application startup complete")
 
         yield
 
-        # Shutdown with timeout to prevent hanging on Ctrl+C
-        import asyncio
+        # Shutdown
+        logger.info("🛑 Application shutdown...")
 
-        SHUTDOWN_TIMEOUT = 5.0  # seconds
-
-        async def _shutdown_tasks():
-            """Run all shutdown tasks."""
+        try:
             # Shutdown SSE connections first (allows clients to disconnect gracefully)
             await event_broadcaster.shutdown()
 
-            # Shutdown Codex App Server pool if it was created
-            try:
-                from providers.codex import CodexAppServerPool
+            # Shutdown Codex server pool if it was started
+            if codex_server_pool is not None:
+                try:
+                    logger.info("🔧 Shutting down Codex server pool...")
+                    await codex_server_pool.shutdown()
+                    logger.info("✅ Codex server pool shutdown complete")
+                except asyncio.CancelledError:
+                    logger.info("⚠️ Codex server pool shutdown interrupted")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error shutting down Codex server pool: {e}")
 
-                pool = await CodexAppServerPool.get_instance()
-                if pool.is_started:
-                    logger.info("🔧 Shutting down Codex App Server pool...")
-                    await pool.shutdown()
-                    logger.info("✅ Codex App Server pool shutdown complete")
-            except Exception as e:
-                logger.warning(f"⚠️ Error shutting down Codex App Server pool: {e}")
-
-            # Stop background scheduler (uses wait=False for fast shutdown)
             background_scheduler.stop()
-
-            # Shutdown agent manager
             await agent_manager.shutdown()
-
-            # Dispose database connections
             await shutdown_db()
+            # Use print() for final message - logging system may be shutting down
+            print("✅ Application shutdown complete", flush=True)
 
-        logger.info("🛑 Application shutdown...")
-        try:
-            await asyncio.wait_for(_shutdown_tasks(), timeout=SHUTDOWN_TIMEOUT)
-            logger.info("✅ Application shutdown complete")
-        except asyncio.TimeoutError:
-            logger.warning(f"⚠️ Shutdown timed out after {SHUTDOWN_TIMEOUT}s, forcing exit")
+        except asyncio.CancelledError:
+            # Shutdown was interrupted by Ctrl+C - this is expected
+            logger.info("⚠️ Shutdown interrupted, cleaning up...")
+            background_scheduler.stop()
+            # Force kill any remaining Codex processes
+            if codex_server_pool is not None:
+                for instance in list(codex_server_pool._instances.values()):
+                    if instance.is_healthy:
+                        try:
+                            instance.kill()
+                        except Exception:
+                            pass
+            # Use print() for final message - logging system may be shutting down
+            print("✅ Emergency cleanup complete", flush=True)
 
     # Initialize rate limiter
-    limiter = Limiter(key_func=get_remote_address)
+    limiter = Limiter(key_func=get_client_ip)
 
     # Create app with lifespan
     app = FastAPI(title="ChitChats API", lifespan=lifespan)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # Add authentication middleware FIRST (will process after CORS)
+    # Add body size limit middleware FIRST (processes last, rejects huge requests early)
+    app.add_middleware(BodySizeLimitMiddleware, max_size=MAX_BODY_SIZE)
+
+    # Add correlation ID middleware for request tracking
+    app.add_middleware(CorrelationIdMiddleware)
+
+    # Add authentication middleware (will process after CORS)
     app.add_middleware(AuthMiddleware)
 
     # CORS middleware added LAST (processes requests FIRST in Starlette)
@@ -188,6 +310,8 @@ def create_app() -> FastAPI:
     app.include_router(providers.router, tags=["Providers"])
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])
     app.include_router(voice.router, prefix="/voice", tags=["Voice"])
+    app.include_router(user.router, prefix="/user", tags=["User"])
+    app.include_router(tools_api.router, tags=["Tools"])
     app.include_router(serve_mcp.router, tags=["MCP Tools"])
 
     # Mount MCP server - exposes simplified tools for easy LLM integration
@@ -219,19 +343,14 @@ def create_app() -> FastAPI:
             # Catch-all route for SPA - must be last
             @app.get("/{full_path:path}")
             async def serve_spa(full_path: str):
-                """Serve static files or index.html for SPA routing."""
+                """Serve index.html for all non-API routes (SPA routing)."""
                 # Check if it's an API route (already handled by routers)
                 if full_path.startswith(("api/", "auth/", "rooms/", "agents/", "debug/", "mcp")):
                     return None
-
-                # Check if the requested file exists in static directory
-                # This handles root-level files like chitchats.webp, manifest.json
-                if full_path:
-                    requested_file = static_dir / full_path
-                    if requested_file.is_file():
-                        return FileResponse(requested_file)
-
                 # Serve index.html for SPA routes
+                index_file = static_dir / "index.html"
+                if index_file.exists():
+                    return FileResponse(index_file)
                 return FileResponse(static_dir / "index.html")
         else:
             logger.warning(f"⚠️ Static files directory not found: {static_dir}")

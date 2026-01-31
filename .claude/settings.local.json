@@ -24,7 +24,8 @@
       "Bash(git show:*)",
       "Bash(xargs:*)",
       "Bash(git grep:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

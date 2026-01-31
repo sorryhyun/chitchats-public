@@ -22,6 +22,7 @@ from .tools import (
     GuidelinesAnthropicInput,
     GuidelinesReadInput,
     MemorizeInput,
+    MoltbookInput,
     RecallInput,
     SkipInput,
     ToolDef,
@@ -69,6 +70,7 @@ __all__ = [
     "GuidelinesReadInput",
     "GuidelinesAnthropicInput",
     "CurrentTimeInput",
+    "MoltbookInput",
     # Validation
     "reload_all_configs",
     "validate_config_schema",

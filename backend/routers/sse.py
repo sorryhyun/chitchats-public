@@ -69,8 +69,11 @@ async def create_sse_ticket(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
+    # Get user_id from auth middleware (set in AuthMiddleware)
+    user_id = getattr(request.state, "user_id", "anonymous")
+
     # Generate short-lived ticket (60 seconds)
-    ticket = generate_sse_ticket(room_id, expiration_seconds=60)
+    ticket = generate_sse_ticket(room_id, user_id=user_id, expiration_seconds=60)
 
     return {
         "ticket": ticket,

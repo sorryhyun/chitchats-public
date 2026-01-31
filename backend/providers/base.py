@@ -29,6 +29,7 @@ class ProviderType(str, Enum):
 
     CLAUDE = "claude"
     CODEX = "codex"
+    CUSTOM = "custom"
 
 
 @dataclass

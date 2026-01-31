@@ -6,7 +6,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   apiKey: string | null;
-  role: 'admin' | 'guest' | null;
+  role: 'admin' | 'guest' | 'user' | null;
   userId: string | null;
   isGuest: boolean;
   isAdmin: boolean;
@@ -31,7 +31,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [role, setRole] = useState<'admin' | 'guest' | null>(null);
+  const [role, setRole] = useState<'admin' | 'guest' | 'user' | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,34 +41,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const checkAuth = async () => {
       const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
 
-      if (storedKey) {
-        // Verify the stored key is still valid
-        try {
-          const response = await fetch(`${API_BASE_URL}/auth/verify`, {
-            headers: {
-              'X-API-Key': storedKey,
-            },
-          });
+      // Try to verify auth - first with stored key, then with cookies
+      try {
+        const headers: Record<string, string> = {};
+        if (storedKey) {
+          headers['X-API-Key'] = storedKey;
+        }
 
-          if (response.ok) {
-            const data = await response.json();
-            setApiKey(storedKey);
-            setRole(data.role || 'admin'); // Default to admin for backward compatibility
-            setUserId(data.user_id || null);
+        const response = await fetch(`${API_BASE_URL}/auth/verify`, {
+          headers,
+          credentials: 'include', // Include cookies for cookie-based auth
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // If we verified with cookie but no stored key, the cookie is our auth
+          const authKey = storedKey || 'cookie-auth';
+          setApiKey(authKey);
+          setRole(data.role || 'admin'); // Default to admin for backward compatibility
+          setUserId(data.user_id || null);
+          if (storedKey) {
             setGlobalApiKey(storedKey);
-          } else {
-            // Invalid key, remove it
-            localStorage.removeItem(API_KEY_STORAGE_KEY);
-            setGlobalApiKey(null);
           }
-        } catch (err) {
-          console.error('Auth verification error:', err);
-          // Clear the key on verification failure to prevent using invalid credentials
+        } else {
+          // Invalid key, remove it
           localStorage.removeItem(API_KEY_STORAGE_KEY);
-          setApiKey(null);
-          setRole(null);
           setGlobalApiKey(null);
         }
+      } catch (err) {
+        console.error('Auth verification error:', err);
+        // Clear the key on verification failure to prevent using invalid credentials
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+        setApiKey(null);
+        setRole(null);
+        setGlobalApiKey(null);
       }
 
       setIsLoading(false);
@@ -87,6 +93,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for cookie-based auth
         body: JSON.stringify({ password }),
       });
 
@@ -116,7 +123,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Call logout endpoint to clear cookie
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+
+    // Clear local state regardless of server response
     localStorage.removeItem(API_KEY_STORAGE_KEY);
     setApiKey(null);
     setRole(null);

@@ -45,6 +45,10 @@ _lazy_imports = {
     "AgentConfigService": "agent_config_service",
     "CacheService": "cache_service",
     "build_system_prompt": "prompt_builder",
+    # Config validation (lazy to avoid circular imports with mcp_servers.config)
+    "log_config_validation": "mcp_servers.config.validation",
+    "reload_all_configs": "mcp_servers.config.validation",
+    "validate_config_schema": "mcp_servers.config.validation",
 }
 
 
@@ -54,7 +58,11 @@ def __getattr__(name: str):
         module_name = _lazy_imports[name]
         import importlib
 
-        module = importlib.import_module(f".{module_name}", __name__)
+        # Use absolute import for external packages, relative for core submodules
+        if "." in module_name and not module_name.startswith("core."):
+            module = importlib.import_module(module_name)
+        else:
+            module = importlib.import_module(f".{module_name}", __name__)
         return getattr(module, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -93,4 +101,8 @@ __all__ = [
     "AgentConfigService",
     "CacheService",
     "build_system_prompt",
+    # Config validation (lazy-loaded)
+    "log_config_validation",
+    "reload_all_configs",
+    "validate_config_schema",
 ]

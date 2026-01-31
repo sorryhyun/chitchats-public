@@ -37,15 +37,10 @@ def _get_work_dir() -> Path:
         # Running in development - project root
         return Path(__file__).parent.parent.parent
 
+
 # ============================================================================
 # Application Constants
 # ============================================================================
-
-# Default fallback prompt if no configuration is provided
-DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."
-
-# Skip message text (displayed when agent chooses not to respond)
-SKIP_MESSAGE_TEXT = "(무시함)"
 
 # Bundled Codex binary paths by platform (relative to project root)
 BUNDLED_CODEX_PATHS: Dict[str, str] = {
@@ -57,29 +52,11 @@ BUNDLED_CODEX_PATHS: Dict[str, str] = {
     "linux-aarch64": "bundled/codex-aarch64-unknown-linux-gnu",
 }
 
-# Character-specific MCP tool names organized by group
-# These are the tools available to each agent for character-based interactions
-AGENT_TOOL_NAMES_BY_GROUP: Dict[str, Dict[str, str]] = {
-    "action": {
-        "skip": "mcp__action__skip",
-        "memorize": "mcp__action__memorize",
-        "recall": "mcp__action__recall",
-    },
-    "character": {
-        "memory_select": "mcp__character__character_identity",
-    },
-    "guidelines": {
-        "read": "mcp__guidelines__read",
-        "anthropic": "mcp__guidelines__anthropic",
-    },
-}
+# Default fallback prompt if no configuration is provided
+DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."
 
-# Backward compatibility: Flat dictionary for legacy code
-AGENT_TOOL_NAMES = {
-    tool_key: tool_name
-    for group_tools in AGENT_TOOL_NAMES_BY_GROUP.values()
-    for tool_key, tool_name in group_tools.items()
-}
+# Skip message text (displayed when agent chooses not to respond)
+SKIP_MESSAGE_TEXT = "(무시함)"
 
 
 class Settings(BaseSettings):
@@ -105,6 +82,9 @@ class Settings(BaseSettings):
     frontend_url: Optional[str] = None
     vercel_url: Optional[str] = None
 
+    # Guidelines system
+    guidelines_file: str = "guidelines_3rd"
+
     # Model configuration
     use_haiku: bool = False
 
@@ -120,21 +100,26 @@ class Settings(BaseSettings):
     # Codex provider configuration
     codex_model: str = "gpt-5.2"  # Default model for Codex provider
 
+    # Custom OpenAI-compatible provider configuration
+    custom_api_key: Optional[str] = None  # API key for custom provider
+    custom_base_url: Optional[str] = None  # Base URL for custom provider (e.g., https://api.example.com/v1)
+    custom_model: str = "gpt-4"  # Model for custom provider (set via CUSTOM_MODEL env var)
+    enable_custom_provider: bool = False  # Feature flag to enable custom provider
+
     # Voice server configuration
-    voice_server_url: str = "http://localhost:8002"  # URL to voice TTS server
+    voice_server_url: str = "http://localhost:8002"  # Voice TTS server URL
+
+    # Moltbook API configuration
+    moltbook_api_key: Optional[str] = None  # API key for Moltbook social network
 
     # Memory preview configuration
-    memory_preview_with_thoughts: bool = True  # Show thoughts in recall tool preview
+    memory_preview_with_thoughts: bool = False  # Show thoughts in recall tool preview
 
-    @field_validator("memory_preview_with_thoughts", mode="before")
-    @classmethod
-    def validate_memory_preview_with_thoughts(cls, v: Optional[str]) -> bool:
-        """Parse memory_preview_with_thoughts from string to bool."""
-        if isinstance(v, bool):
-            return v
-        if isinstance(v, str):
-            return v.lower() == "true"
-        return True  # Default to True
+    # Google OAuth configuration
+    google_client_id: Optional[str] = None  # Google OAuth Client ID for Sign-In
+
+    # Proxy configuration for rate limiting
+    trusted_proxy_count: int = 0  # Number of trusted proxies (for X-Forwarded-For handling)
 
     @field_validator("enable_guest_login", mode="before")
     @classmethod
@@ -170,6 +155,26 @@ class Settings(BaseSettings):
     @classmethod
     def validate_experimental_custom_cli(cls, v: Optional[str]) -> bool:
         """Parse experimental_custom_cli from string to bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return False
+
+    @field_validator("memory_preview_with_thoughts", mode="before")
+    @classmethod
+    def validate_memory_preview_with_thoughts(cls, v: Optional[str]) -> bool:
+        """Parse memory_preview_with_thoughts from string to bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == "true"
+        return False
+
+    @field_validator("enable_custom_provider", mode="before")
+    @classmethod
+    def validate_enable_custom_provider(cls, v: Optional[str]) -> bool:
+        """Parse enable_custom_provider from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -259,21 +264,11 @@ class Settings(BaseSettings):
         Get the MCP servers configuration directory.
 
         Returns:
-            Path to mcp_servers/config directory (for tools.yaml, guidelines)
+            Path to mcp_servers/config directory (for tools.py, guidelines)
         """
         if _is_frozen():
             return _get_base_path() / "mcp_servers" / "config"
         return self.backend_dir / "mcp_servers" / "config"
-
-    @property
-    def tools_config_path(self) -> Path:
-        """
-        Get the path to tools.yaml configuration file.
-
-        Returns:
-            Path to tools.yaml
-        """
-        return self.mcp_servers_config_dir / "tools.yaml"
 
     @property
     def debug_config_path(self) -> Path:
@@ -281,27 +276,36 @@ class Settings(BaseSettings):
         Get the path to debug.yaml configuration file.
 
         Returns:
-            Path to debug.yaml in mcp_servers/config/
+            Path to debug.yaml
         """
         return self.mcp_servers_config_dir / "debug.yaml"
 
     @property
     def conversation_context_config_path(self) -> Path:
         """
-        Get the path to conversation_context.yaml configuration file.
+        Get the path to the legacy conversation_context.yaml configuration file.
+
+        DEPRECATED: Conversation context is now loaded from:
+        - Shared config: config/prompts_shared.yaml
+        - Provider-specific: providers/{provider}/prompts.yaml
+
+        This property is kept for backward compatibility.
 
         Returns:
-            Path to conversation_context.yaml
+            Path to conversation_context.yaml in backend/config/ (may not exist)
         """
         return self.config_dir / "conversation_context.yaml"
 
     @property
     def system_prompt_config_path(self) -> Path:
         """
-        Get the path to the system prompt configuration file.
+        Get the path to the legacy system prompt configuration file.
+
+        DEPRECATED: System prompts are now stored in providers/{provider}/prompts.yaml.
+        This property is kept for backward compatibility.
 
         Returns:
-            Path to system_prompt.yaml in backend/config/
+            Path to system_prompt.yaml in backend/config/ (may not exist)
         """
         return self.config_dir / "system_prompt.yaml"
 
