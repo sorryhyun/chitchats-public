@@ -57,7 +57,7 @@ class ClaudeSessionConfig:
     # System prompt for the agent
     system_prompt: str = ""
 
-    # Model to use (e.g., "claude-opus-4-5-20251101")
+    # Model to use (e.g., "claude-opus-4-6")
     model: Optional[str] = None
 
     # Maximum thinking tokens
