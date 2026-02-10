@@ -24,10 +24,6 @@ make build-non-tauri
 
 This creates a single `ChitChats.exe` with embedded frontend that works reliably on Windows.
 
-### If You Still Need Tauri
+### Note
 
-The Tauri source code remains in `frontend/src-tauri/` but is not actively maintained. Use at your own risk:
-
-```bash
-make build-tauri-archived
-```
+The Tauri source code (`frontend/src-tauri/`) has been removed. This script is kept for historical reference only.

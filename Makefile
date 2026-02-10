@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-voice run-tunnel-backend run-tunnel-frontend dev dev-voice dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri build-tauri-archived test-e2e-archived test-e2e-ui-archived test-e2e-debug-archived
+.PHONY: help install run-backend run-frontend run-voice run-tunnel-backend run-tunnel-frontend dev dev-voice dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -19,10 +19,6 @@ help:
 	@echo "Build:"
 	@echo "  make build-exe         - Build standalone Windows exe (recommended)"
 	@echo "  make build-non-tauri   - Build standalone Windows exe (same as build-exe)"
-	@echo ""
-	@echo "Archived (not recommended for Windows):"
-	@echo "  make build-tauri-archived  - [ARCHIVED] Tauri desktop app (see scripts/archive/)"
-	@echo "  make test-e2e-archived     - [ARCHIVED] Tauri E2E tests"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make env               - Create .env file (prompts for password)"
@@ -187,77 +183,3 @@ endif
 # Archived Commands (Not Recommended for Windows)
 # =============================================================================
 
-# [ARCHIVED] Tauri desktop app with bundled backend sidecar
-# Note: Tauri build has issues on Windows. Use build-exe instead.
-# See scripts/archive/README.md for details.
-build-tauri-archived:
-	@echo "=========================================="
-	@echo "[ARCHIVED] Tauri Build"
-	@echo "=========================================="
-	@echo ""
-	@echo "WARNING: Tauri build is archived and not recommended for Windows."
-	@echo "Use 'make build-exe' instead for a reliable standalone executable."
-	@echo ""
-	@echo "See scripts/archive/README.md for more information."
-	@echo ""
-	@read -p "Continue anyway? (y/N): " confirm; \
-	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
-		$(MAKE) _build-tauri-internal; \
-	else \
-		echo "Aborted. Use 'make build-exe' for the recommended build."; \
-	fi
-
-_build-tauri-internal:
-ifeq ($(OS),Windows_NT)
-	@powershell.exe -ExecutionPolicy Bypass -File scripts/archive/build_tauri.ps1
-else
-	@echo "Building Tauri desktop app with bundled backend..."
-	@echo ""
-	@echo "Step 1: Building backend sidecar..."
-	uv run pyinstaller ChitChats.spec --clean
-	@mkdir -p frontend/src-tauri/sidecars
-	@if [ -f "dist/ChitChats.exe" ]; then \
-		cp dist/ChitChats.exe frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe; \
-		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-pc-windows-msvc.exe"; \
-	elif [ -f "dist/ChitChats" ]; then \
-		cp dist/ChitChats frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu; \
-		echo "Backend sidecar built: frontend/src-tauri/sidecars/chitchats-backend-x86_64-unknown-linux-gnu"; \
-	else \
-		echo "Error: PyInstaller output not found"; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "Step 2: Building Tauri app..."
-	cd frontend && npm run tauri:build
-	@echo ""
-	@echo "=========================================="
-	@echo "Tauri Desktop App Build Complete!"
-	@echo "=========================================="
-	@echo ""
-	@echo "Installers can be found in:"
-	@echo "  frontend/src-tauri/target/release/bundle/"
-	@echo ""
-endif
-
-# [ARCHIVED] E2E Testing with Playwright (requires Tauri)
-# Note: These tests depend on Tauri which is archived.
-
-test-e2e-archived:
-	@echo "[ARCHIVED] Tauri E2E tests"
-	@echo ""
-	@echo "WARNING: E2E tests require Tauri which is archived."
-	@echo "Prerequisites:"
-	@echo "  1. Build the Tauri app first: make build-tauri-archived"
-	@echo "  2. Install tauri-driver: cargo install tauri-driver"
-	@echo ""
-	cd frontend && npm run test:e2e
-
-test-e2e-ui-archived:
-	@echo "[ARCHIVED] E2E tests with Playwright UI mode"
-	@echo ""
-	cd frontend && npm run test:e2e:ui
-
-test-e2e-debug-archived:
-	@echo "[ARCHIVED] E2E tests in debug mode"
-	@echo ""
-	cd frontend && npm run test:e2e:debug

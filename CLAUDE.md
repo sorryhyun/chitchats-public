@@ -41,9 +41,6 @@ cd frontend && npm run lint                      # ESLint
 # Build commands
 make build-exe         # Standalone Windows exe (recommended)
 make build-non-tauri   # Same as build-exe
-
-# Archived (not recommended for Windows)
-make build-tauri-archived  # Tauri desktop app (see scripts/archive/)
 ```
 
 ## Architecture Overview
