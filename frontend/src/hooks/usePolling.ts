@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Message, ImageItem } from '../types';
-import { getApiKey, API_BASE_URL } from '../services';
+import { messageService } from '../services/messageService';
 import { useSSE } from './useSSE';
 
 interface UsePollingReturn {
@@ -35,34 +35,14 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      };
+      const allMessages = await messageService.getMessages(roomId);
+      setMessages(allMessages);
 
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+      if (allMessages.length > 0) {
+        lastMessageIdRef.current = allMessages[allMessages.length - 1].id as number;
       }
 
-      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, {
-        headers,
-      });
-
-      if (response.ok) {
-        const allMessages = await response.json();
-        setMessages(allMessages);
-
-        // Update last message ID
-        if (allMessages.length > 0) {
-          lastMessageIdRef.current = allMessages[allMessages.length - 1].id;
-        }
-
-        setIsConnected(true);
-      } else {
-        console.error('Failed to fetch messages:', response.statusText);
-        setIsConnected(false);
-      }
+      setIsConnected(true);
     } catch (error) {
       console.error('Error fetching messages:', error);
       setIsConnected(false);
@@ -74,49 +54,24 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      };
+      const newMessages = await messageService.pollMessages(roomId, lastMessageIdRef.current);
 
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+      if (newMessages.length > 0) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map(m => m.id));
+          const uniqueNewMessages = newMessages.filter((m: Message) => !existingIds.has(m.id));
+          if (uniqueNewMessages.length === 0) return prev;
+
+          const newAgentIds = new Set(uniqueNewMessages.map((m: Message) => m.agent_id).filter(Boolean));
+          const realMessages = prev.filter(m => !m.is_chatting);
+          const chattingIndicators = prev.filter(m => m.is_chatting && !newAgentIds.has(m.agent_id));
+
+          return [...realMessages, ...uniqueNewMessages, ...chattingIndicators];
+        });
+        lastMessageIdRef.current = newMessages[newMessages.length - 1].id as number;
       }
 
-      const url = lastMessageIdRef.current > 0
-        ? `${API_BASE_URL}/rooms/${roomId}/messages/poll?since_id=${lastMessageIdRef.current}`
-        : `${API_BASE_URL}/rooms/${roomId}/messages/poll`;
-
-      const response = await fetch(url, { headers });
-
-      if (response.ok) {
-        const newMessages = await response.json();
-
-        if (newMessages.length > 0) {
-          setMessages((prev) => {
-            // Deduplicate: only add messages not already in state
-            const existingIds = new Set(prev.map(m => m.id));
-            const uniqueNewMessages = newMessages.filter((m: Message) => !existingIds.has(m.id));
-            if (uniqueNewMessages.length === 0) return prev;
-
-            // Separate chatting indicators from real messages
-            // Also remove any "ended" indicators for agents whose real messages just arrived
-            const newAgentIds = new Set(uniqueNewMessages.map((m: Message) => m.agent_id).filter(Boolean));
-            const realMessages = prev.filter(m => !m.is_chatting);
-            const chattingIndicators = prev.filter(m => m.is_chatting && !newAgentIds.has(m.agent_id));
-
-            return [...realMessages, ...uniqueNewMessages, ...chattingIndicators];
-          });
-          // Update last message ID
-          lastMessageIdRef.current = newMessages[newMessages.length - 1].id;
-        }
-
-        setIsConnected(true);
-      } else {
-        console.error('Failed to poll messages:', response.statusText);
-        setIsConnected(false);
-      }
+      setIsConnected(true);
     } catch (error) {
       console.error('Error polling messages:', error);
       setIsConnected(false);
@@ -128,67 +83,48 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      };
+      const data = await messageService.getChattingAgents(roomId);
+      const chattingAgents = data.chatting_agents || [];
 
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
-      }
+      setMessages((prev) => {
+        const prevChatting = prev.filter(m => m.is_chatting);
 
-      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/chatting-agents`, { headers });
+        if (chattingAgents.length === 0 && prevChatting.length === 0) {
+          return prev;
+        }
 
-      if (response.ok) {
-        const data = await response.json();
-        const chattingAgents = data.chatting_agents || [];
+        const withoutChatting = prev.filter(m => !m.is_chatting);
 
-        // Add/update chatting indicators in messages
-        setMessages((prev) => {
-          const prevChatting = prev.filter(m => m.is_chatting);
+        const chattingMessages = chattingAgents.map((agent: any) => ({
+          id: `chatting_${agent.id}` as any,
+          agent_id: agent.id,
+          agent_name: agent.name,
+          agent_profile_pic: agent.profile_pic,
+          content: agent.response_text || '',
+          role: 'assistant' as const,
+          timestamp: new Date().toISOString(),
+          is_chatting: true,
+          thinking: agent.thinking_text || null,
+        }));
 
-          // If nothing is chatting now and nothing was chatting before, avoid rewriting state
-          if (chattingAgents.length === 0 && prevChatting.length === 0) {
-            return prev;
-          }
+        const hasSameChattingState =
+          chattingMessages.length === prevChatting.length &&
+          chattingMessages.every((msg: typeof chattingMessages[number]) =>
+            prevChatting.some((prevMsg) =>
+              prevMsg.agent_id === msg.agent_id &&
+              prevMsg.agent_name === msg.agent_name &&
+              prevMsg.agent_profile_pic === msg.agent_profile_pic &&
+              prevMsg.thinking === msg.thinking &&
+              prevMsg.content === msg.content
+            )
+          );
 
-          // Remove old chatting indicators
-          const withoutChatting = prev.filter(m => !m.is_chatting);
+        if (hasSameChattingState) {
+          return prev;
+        }
 
-          // Add new chatting indicators for agents that are chatting
-          const chattingMessages = chattingAgents.map((agent: any) => ({
-            id: `chatting_${agent.id}` as any,
-            agent_id: agent.id,
-            agent_name: agent.name,
-            agent_profile_pic: agent.profile_pic,
-            content: agent.response_text || '',
-            role: 'assistant' as const,
-            timestamp: new Date().toISOString(),
-            is_chatting: true,
-            thinking: agent.thinking_text || null,
-          }));
-
-          // If the chatting state hasn't changed (same agents with same thinking/content), avoid state churn
-          const hasSameChattingState =
-            chattingMessages.length === prevChatting.length &&
-            chattingMessages.every((msg: typeof chattingMessages[number]) =>
-              prevChatting.some((prevMsg) =>
-                prevMsg.agent_id === msg.agent_id &&
-                prevMsg.agent_name === msg.agent_name &&
-                prevMsg.agent_profile_pic === msg.agent_profile_pic &&
-                prevMsg.thinking === msg.thinking &&
-                prevMsg.content === msg.content
-              )
-            );
-
-          if (hasSameChattingState) {
-            return prev;
-          }
-
-          return [...withoutChatting, ...chattingMessages];
-        });
-      }
+        return [...withoutChatting, ...chattingMessages];
+      });
     } catch (error) {
       console.error('Error polling chatting agents:', error);
     }
@@ -202,12 +138,10 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
       const prevChatting = prev.filter(m => m.is_chatting);
       const withoutChatting = prev.filter(m => !m.is_chatting);
 
-      // If nothing is streaming and nothing was chatting before, avoid rewriting state
       if (streamingAgents.size === 0 && prevChatting.length === 0) {
         return prev;
       }
 
-      // Build a map of previous profile pics for fallback
       const prevProfilePics = new Map<number, string | null | undefined>();
       prevChatting.forEach(m => {
         if (m.agent_id !== undefined && m.agent_id !== null) {
@@ -215,7 +149,6 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
         }
       });
 
-      // Build chatting indicators from currently streaming agents
       const chattingMessages: Message[] = [];
       streamingAgents.forEach((state, agentId) => {
         const profilePic = state.agent_profile_pic ?? prevProfilePics.get(agentId);
@@ -232,19 +165,14 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
         });
       });
 
-      // Keep existing chatting indicators for agents that FINISHED streaming
-      // (not currently in streamingAgents) until the real message arrives via poll.
-      // This prevents flickering between stream_end and poll completing.
       prevChatting.forEach(msg => {
         if (msg.agent_id !== undefined && msg.agent_id !== null) {
-          // Only keep if agent is NOT currently streaming (would be replaced by fresh indicator above)
           if (!streamingAgents.has(msg.agent_id)) {
             chattingMessages.push(msg);
           }
         }
       });
 
-      // If the chatting state hasn't changed, avoid state churn
       const hasSameChattingState =
         chattingMessages.length === prevChatting.length &&
         chattingMessages.every((msg) =>
@@ -265,15 +193,12 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     });
   }, [sseConnected, streamingAgents]);
 
-  // Trigger immediate poll when an agent finishes streaming (stream_end received)
-  // This reduces the delay between chatting indicator disappearing and message appearing
+  // Trigger immediate poll when an agent finishes streaming
   useEffect(() => {
     const currentCount = streamingAgents.size;
     const prevCount = prevStreamingCountRef.current;
 
-    // If count decreased, an agent finished streaming - poll immediately for the new message
     if (prevCount > 0 && currentCount < prevCount) {
-      // Small delay to ensure DB write completes before polling
       const timeoutId = setTimeout(() => {
         pollNewMessages();
       }, 100);
@@ -292,52 +217,40 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
       return;
     }
 
-    // Clear messages when switching rooms
     setMessages([]);
     lastMessageIdRef.current = 0;
     isInitialLoadRef.current = true;
     let isActive = true;
 
-    // Initial load
     fetchAllMessages();
-
-    // Immediately fetch chatting agents on room switch (don't wait for poll interval)
-    // This ensures we see streaming indicators right away when switching back to a room
     pollChattingAgents();
 
-    // Start polling for new messages using setTimeout to prevent stacking
     const scheduleNextPoll = () => {
       if (!isActive) return;
 
       pollIntervalRef.current = setTimeout(async () => {
         await pollNewMessages();
-        scheduleNextPoll(); // Schedule next poll after this one completes
+        scheduleNextPoll();
       }, POLL_INTERVAL);
     };
 
-    // Start polling for chatting agent status (fallback when SSE not connected)
     const scheduleNextStatusPoll = () => {
       if (!isActive) return;
 
       statusPollIntervalRef.current = setTimeout(async () => {
-        // Only poll for chatting agents if SSE is not connected
-        // SSE provides real-time streaming updates when connected
         if (!sseConnected) {
           await pollChattingAgents();
         }
-        scheduleNextStatusPoll(); // Schedule next poll after this one completes
+        scheduleNextStatusPoll();
       }, STATUS_POLL_INTERVAL);
     };
 
-    // Start both polling cycles
     scheduleNextPoll();
-    // Only start status polling if SSE is not connected
     if (!sseConnected) {
       scheduleNextStatusPoll();
     }
 
     return () => {
-      // Cleanup on unmount or room change
       isActive = false;
       if (pollIntervalRef.current) {
         clearTimeout(pollIntervalRef.current);
@@ -359,70 +272,36 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     if (!roomId) return;
 
     try {
-      const apiKey = getApiKey();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      };
-
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
-      }
-
-      const messageData: any = {
+      await messageService.sendMessage(roomId, {
         content,
-        role: 'user',  // Required by MessageCreate schema
-      };
-      if (participant_type) {
-        messageData.participant_type = participant_type;
-      }
-      if (participant_name) {
-        messageData.participant_name = participant_name;
-      }
-      if (images && images.length > 0) {
-        messageData.images = images;
-      }
-      if (mentioned_agent_ids && mentioned_agent_ids.length > 0) {
-        messageData.mentioned_agent_ids = mentioned_agent_ids;
-      }
-
-      const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages/send`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(messageData),
+        participant_type,
+        participant_name,
+        images,
+        mentioned_agent_ids,
       });
 
-      if (response.ok) {
-        // The new message will be picked up by the next poll
-        // Cancel any pending immediate poll and schedule a new one
-        if (immediatePollTimeoutRef.current) {
-          clearTimeout(immediatePollTimeoutRef.current);
-        }
-        immediatePollTimeoutRef.current = setTimeout(() => {
-          pollNewMessages();
-          immediatePollTimeoutRef.current = null;
-        }, 100);
-      } else {
-        console.error('Failed to send message:', response.statusText);
+      // Schedule immediate poll to pick up the new message
+      if (immediatePollTimeoutRef.current) {
+        clearTimeout(immediatePollTimeoutRef.current);
       }
+      immediatePollTimeoutRef.current = setTimeout(() => {
+        pollNewMessages();
+        immediatePollTimeoutRef.current = null;
+      }, 100);
     } catch (error) {
       console.error('Error sending message:', error);
     }
   };
 
   const resetMessages = useCallback(async () => {
-    // Clear all messages and reset polling state
     setMessages([]);
     lastMessageIdRef.current = 0;
 
-    // Cancel any pending immediate poll to prevent race conditions
     if (immediatePollTimeoutRef.current) {
       clearTimeout(immediatePollTimeoutRef.current);
       immediatePollTimeoutRef.current = null;
     }
 
-    // Trigger immediate fetch to ensure we're in sync with backend
-    // Wait for this to complete before allowing polling to continue
     await fetchAllMessages();
   }, [fetchAllMessages]);
 

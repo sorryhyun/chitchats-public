@@ -1,4 +1,4 @@
-import { useState, FormEvent, KeyboardEvent, ClipboardEvent, useRef, DragEvent, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
+import { useState, memo, FormEvent, KeyboardEvent, ClipboardEvent, useRef, DragEvent, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Agent, ParticipantType, ImageItem } from '../../types';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
 const MAX_IMAGES = 5;  // Maximum number of images per message
 
-export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({ isConnected, onSendMessage, roomAgents = [] }, ref) => {
+export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProps>(({ isConnected, onSendMessage, roomAgents = [] }, ref) => {
   const { t } = useTranslation('chat');
   const [inputMessage, setInputMessage] = useState('');
   const [participantType, setParticipantType] = useState<ParticipantType>('user');
@@ -483,4 +483,4 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(({
       </form>
     </div>
   );
-});
+}));

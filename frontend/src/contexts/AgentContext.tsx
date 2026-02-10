@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import type { Agent, AgentCreate } from '../types';
 import { useAgents } from '../hooks/useAgents';
-import { api } from '../services';
+import { agentService } from '../services/agentService';
 
 type Provider = 'claude' | 'codex';
 
@@ -49,47 +49,39 @@ export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderPr
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
 
-  const selectAgent = async (agentId: number, provider: Provider = 'claude') => {
+  const selectAgent = useCallback(async (agentId: number, provider: Provider = 'claude') => {
     try {
-      // Get or create direct room with this agent using the specified provider
-      const room = await api.getAgentDirectRoom(agentId, provider);
+      const room = await agentService.getAgentDirectRoom(agentId, provider);
       setSelectedAgentId(agentId);
-
-      // Notify parent (App) about the room selection
-      if (onAgentRoomSelected) {
-        onAgentRoomSelected(room.id);
-      }
+      onAgentRoomSelected?.(room.id);
     } catch (err) {
       console.error('Failed to open direct chat:', err);
       throw err;
     }
-  };
+  }, [onAgentRoomSelected]);
 
-  const createAgent = async (agentData: AgentCreate) => {
+  const createAgent = useCallback(async (agentData: AgentCreate) => {
     return await createAgentHook(agentData);
-  };
+  }, [createAgentHook]);
 
-  const deleteAgent = async (agentId: number) => {
+  const deleteAgent = useCallback(async (agentId: number) => {
     await deleteAgentHook(agentId);
-    // Clear selection if we deleted the currently selected agent
-    if (selectedAgentId === agentId) {
-      setSelectedAgentId(null);
-    }
-  };
+    setSelectedAgentId((prev) => (prev === agentId ? null : prev));
+  }, [deleteAgentHook]);
 
-  const viewProfile = (agent: Agent) => {
+  const viewProfile = useCallback((agent: Agent) => {
     setProfileAgent(agent);
-  };
+  }, []);
 
-  const closeProfile = () => {
+  const closeProfile = useCallback(() => {
     setProfileAgent(null);
-  };
+  }, []);
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedAgentId(null);
-  };
+  }, []);
 
-  const value: AgentContextValue = {
+  const value = useMemo<AgentContextValue>(() => ({
     agents,
     selectedAgentId,
     profileAgent,
@@ -101,7 +93,7 @@ export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderPr
     viewProfile,
     closeProfile,
     clearSelection,
-  };
+  }), [agents, selectedAgentId, profileAgent, loading, selectAgent, createAgent, deleteAgent, refreshAgents, viewProfile, closeProfile, clearSelection]);
 
   return (
     <AgentContext.Provider value={value}>

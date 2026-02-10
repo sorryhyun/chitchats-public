@@ -59,8 +59,6 @@ export function useWhiteboard(messages: Message[]): Map<number | string, Whitebo
           isWhiteboardMessage: true,
         });
 
-        // Debug: log rendered content
-        console.log('[Whiteboard] Rendered for message', message.id, ':', rendered.substring(0, 100));
       } else {
         // This is a whiteboard message but not a diff format
         // Might be the old full-content format - just show as-is

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import type { ProviderType, RoomSummary, Room } from '../types';
 import { useRooms } from '../hooks/useRooms';
 
@@ -45,31 +45,28 @@ export function RoomProvider({ children }: RoomProviderProps) {
 
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
 
-  const selectRoom = (roomId: number) => {
+  const selectRoom = useCallback((roomId: number) => {
     setSelectedRoomId(roomId);
-  };
+  }, []);
 
-  const createRoom = async (name: string, provider?: ProviderType) => {
+  const createRoom = useCallback(async (name: string, provider?: ProviderType) => {
     return await createRoomHook(name, provider);
-  };
+  }, [createRoomHook]);
 
-  const deleteRoom = async (roomId: number) => {
+  const deleteRoom = useCallback(async (roomId: number) => {
     await deleteRoomHook(roomId);
-    // Clear selection if we deleted the currently selected room
-    if (selectedRoomId === roomId) {
-      setSelectedRoomId(null);
-    }
-  };
+    setSelectedRoomId((prev) => (prev === roomId ? null : prev));
+  }, [deleteRoomHook]);
 
-  const renameRoom = async (roomId: number, name: string) => {
+  const renameRoom = useCallback(async (roomId: number, name: string) => {
     return await renameRoomHook(roomId, name);
-  };
+  }, [renameRoomHook]);
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedRoomId(null);
-  };
+  }, []);
 
-  const value: RoomContextValue = {
+  const value = useMemo<RoomContextValue>(() => ({
     rooms,
     selectedRoomId,
     loading,
@@ -80,7 +77,7 @@ export function RoomProvider({ children }: RoomProviderProps) {
     refreshRooms,
     markRoomAsReadOptimistic,
     clearSelection,
-  };
+  }), [rooms, selectedRoomId, loading, selectRoom, createRoom, deleteRoom, renameRoom, refreshRooms, markRoomAsReadOptimistic, clearSelection]);
 
   return (
     <RoomContext.Provider value={value}>

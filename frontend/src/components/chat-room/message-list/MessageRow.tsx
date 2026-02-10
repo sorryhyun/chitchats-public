@@ -1,12 +1,8 @@
 import { memo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { Message } from '../../../types';
 import { getAgentProfilePicUrl } from '../../../services/agentService';
 import { ImageAttachment } from './ImageAttachment';
+import { MarkdownContent } from './MarkdownContent';
 import { useVoice } from '../../../contexts/VoiceContext';
 
 export interface MessageRowProps {
@@ -114,7 +110,10 @@ export const MessageRow = memo(({
                   if (parent) {
                     const fallback = document.createElement('div');
                     fallback.className = 'avatar-mobile rounded-full flex items-center justify-center flex-shrink-0 bg-slate-300';
-                    fallback.innerHTML = `<span class="text-slate-700 font-semibold text-sm">${message.agent_name?.[0]?.toUpperCase() || 'A'}</span>`;
+                    const span = document.createElement('span');
+                    span.className = 'text-slate-700 font-semibold text-sm';
+                    span.textContent = message.agent_name?.[0]?.toUpperCase() || 'A';
+                    fallback.appendChild(span);
                     parent.appendChild(fallback);
                   }
                 }}
@@ -210,49 +209,7 @@ export const MessageRow = memo(({
                       {/* Show streaming response content with same styling as finished messages */}
                       {message.content ? (
                         <div className={`prose prose-base max-w-none break-words leading-relaxed select-text prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:rounded-xl pr-1 ${message.role === 'user' ? 'prose-invert text-white' : ''}`}>
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkBreaks]}
-                            components={{
-                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                              em: ({ children }) => <em className="italic">{children}</em>,
-                              ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                              li: ({ children }) => <li className="mb-1">{children}</li>,
-                              code: ({ inline, className, children, ...props }: any) => {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const codeString = String(children).replace(/\n$/, '');
-                                const isInline = inline ?? (!className && !codeString.includes('\n'));
-
-                                return isInline ? (
-                                  <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                                    {children}
-                                  </code>
-                                ) : (
-                                  <SyntaxHighlighter
-                                    style={oneDark}
-                                    language={match ? match[1] : 'text'}
-                                    PreTag="div"
-                                    customStyle={{
-                                      margin: 0,
-                                      borderRadius: '0.75rem',
-                                      fontSize: '0.875rem',
-                                    }}
-                                    {...props}
-                                  >
-                                    {codeString}
-                                  </SyntaxHighlighter>
-                                );
-                              },
-                              pre: ({ children }) => (
-                                <div className="mb-2 overflow-hidden rounded-xl">
-                                  {children}
-                                </div>
-                              ),
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                          <MarkdownContent content={message.content} />
                           <span className="inline-block w-2 h-4 bg-slate-600 ml-0.5 animate-pulse"></span>
                         </div>
                       ) : !message.thinking ? (
@@ -276,49 +233,7 @@ export const MessageRow = memo(({
                             {getDisplayContent(message)}
                           </pre>
                         ) : (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkBreaks]}
-                            components={{
-                              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                              em: ({ children }) => <em className="italic">{children}</em>,
-                              ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                              li: ({ children }) => <li className="mb-1">{children}</li>,
-                              code: ({ inline, className, children, ...props }: any) => {
-                                const match = /language-(\w+)/.exec(className || '');
-                                const codeString = String(children).replace(/\n$/, '');
-                                const isInline = inline ?? (!className && !codeString.includes('\n'));
-
-                                return isInline ? (
-                                  <code className="bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                                    {children}
-                                  </code>
-                                ) : (
-                                  <SyntaxHighlighter
-                                    style={oneDark}
-                                    language={match ? match[1] : 'text'}
-                                    PreTag="div"
-                                    customStyle={{
-                                      margin: 0,
-                                      borderRadius: '0.75rem',
-                                      fontSize: '0.875rem',
-                                    }}
-                                    {...props}
-                                  >
-                                    {codeString}
-                                  </SyntaxHighlighter>
-                                );
-                              },
-                              pre: ({ children }) => (
-                                <div className="mb-2 overflow-hidden rounded-xl">
-                                  {children}
-                                </div>
-                              ),
-                            }}
-                          >
-                            {getDisplayContent(message)}
-                          </ReactMarkdown>
+                          <MarkdownContent content={getDisplayContent(message)} />
                         )}
                         {message.is_streaming && (
                           <span className="inline-block w-2 h-4 bg-slate-600 ml-0.5 animate-pulse"></span>

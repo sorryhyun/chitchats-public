@@ -96,22 +96,6 @@ class ClaudeClientPool(BaseClientPool[ClaudeClient, ClaudeAgentOptions]):
         raise RuntimeError(f"Failed to create client for {task_id} after {max_retries} retries")
 
 
-def _get_cli_path() -> Optional[str]:
-    """Get the CLI path based on platform and settings.
-
-    Returns None to use the native Claude Code CLI when:
-    - EXPERIMENTAL_CUSTOM_CLI is set to false
-
-    Returns the bundled patched CLI path when:
-    - EXPERIMENTAL_CUSTOM_CLI is set to true
-    """
-    # Check if custom CLI is enabled
-    if not _settings.experimental_custom_cli:
-        return None  # Use native Claude Code CLI
-
-    return str(_settings.project_root / "bundled" / "cli.js")
-
-
 def _get_claude_working_dir() -> str:
     """Get a valid working directory for Claude subprocess."""
     temp_dir = Path(tempfile.gettempdir()) / "claude-empty"
@@ -208,7 +192,7 @@ class ClaudeProvider(AIProvider):
         options = ClaudeAgentOptions(
             model=model,
             system_prompt=base_options.system_prompt,
-            cli_path=_get_cli_path(),
+            cli_path=None,
             permission_mode=static.permission_mode,
             max_thinking_tokens=base_options.max_thinking_tokens,
             mcp_servers=mcp_servers,

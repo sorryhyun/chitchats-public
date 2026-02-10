@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, DragEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePolling } from '../../hooks/usePolling';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
@@ -6,7 +6,8 @@ import { MessageList } from './message-list/MessageList';
 import { AgentManager } from '../AgentManager';
 import { ChatHeader } from './ChatHeader';
 import { MessageInput, MessageInputHandle } from './MessageInput';
-import { api } from '../../services';
+import { roomService } from '../../services/roomService';
+import { messageService } from '../../services/messageService';
 import type { Room, ParticipantType, ImageItem } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -68,7 +69,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
         onMarkRoomAsReadRef.current?.(roomId);
 
         // Then make the API call in the background
-        api.markRoomAsRead(roomId)
+        roomService.markRoomAsRead(roomId)
           .catch(err => {
             console.error('Failed to mark room as read:', err);
             // On error, refresh to get the actual state from backend
@@ -87,7 +88,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
       onMarkRoomAsReadRef.current?.(roomId);
 
       // Then make the API call in the background
-      api.markRoomAsRead(roomId)
+      roomService.markRoomAsRead(roomId)
         .catch(err => {
           console.error('Failed to mark room as read:', err);
         });
@@ -99,46 +100,36 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     localStorage.setItem('agentManagerCollapsed', String(isAgentManagerCollapsed));
   }, [isAgentManagerCollapsed]);
 
-  // Handle Escape key to close agent manager drawer
+  // Combined keyboard listener for Escape, Enter (confirm reset), and F5 (open reset)
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showAgentManager) {
-        setShowAgentManager(false);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case 'Escape':
+          if (showAgentManager) setShowAgentManager(false);
+          break;
+        case 'Enter':
+          if (showClearConfirm) {
+            e.preventDefault();
+            handleClearMessages();
+          }
+          break;
+        case 'F5':
+          if (roomId) {
+            e.preventDefault();
+            setShowClearConfirm(true);
+          }
+          break;
       }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [showAgentManager]);
-
-  // Handle Enter key to confirm reset modal
-  useEffect(() => {
-    const handleEnter = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && showClearConfirm) {
-        e.preventDefault();
-        handleClearMessages();
-      }
-    };
-    window.addEventListener('keydown', handleEnter);
-    return () => window.removeEventListener('keydown', handleEnter);
-  }, [showClearConfirm]);
-
-  // Handle F5 key to open reset confirmation modal
-  useEffect(() => {
-    const handleF5 = (e: KeyboardEvent) => {
-      if (e.key === 'F5' && roomId) {
-        e.preventDefault();
-        setShowClearConfirm(true);
-      }
-    };
-    window.addEventListener('keydown', handleF5);
-    return () => window.removeEventListener('keydown', handleF5);
-  }, [roomId]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAgentManager, showClearConfirm, roomId]);
 
   const fetchRoomDetails = async () => {
     if (!roomId) return;
 
     try {
-      const room = await api.getRoom(roomId);
+      const room = await roomService.getRoom(roomId);
       setRoomName(room.name);
       setRoomData(room);
       // Note: Messages are now handled entirely by usePolling hook
@@ -153,8 +144,8 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
 
     try {
       const updatedRoom = roomData.is_paused
-        ? await api.resumeRoom(roomId)
-        : await api.pauseRoom(roomId);
+        ? await roomService.resumeRoom(roomId)
+        : await roomService.pauseRoom(roomId);
       setRoomData(updatedRoom);
     } catch (err) {
       console.error('Failed to toggle pause:', err);
@@ -165,7 +156,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     if (!roomId) return;
 
     try {
-      const updatedRoom = await api.updateRoom(roomId, { max_interactions: limit });
+      const updatedRoom = await roomService.updateRoom(roomId, { max_interactions: limit });
       setRoomData(updatedRoom);
     } catch (err) {
       console.error('Failed to update interaction limit:', err);
@@ -177,7 +168,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
 
     setClearError(null);
     try {
-      await api.clearRoomMessages(roomId);
+      await messageService.clearRoomMessages(roomId);
       // Manually clear messages and reset polling state
       // Wait for reset to complete to avoid race conditions with polling
       await resetMessages();
@@ -216,9 +207,13 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     }
   };
 
-  const handleSendMessage = (message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => {
+  const handleSendMessage = useCallback((message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => {
     sendMessage(message, participantType, characterName, images, mentionedAgentIds);
-  };
+  }, [sendMessage]);
+
+  const handleOpenClearConfirm = useCallback(() => setShowClearConfirm(true), []);
+  const handleToggleAgentManager = useCallback(() => setShowAgentManager(prev => !prev), []);
+  const handleToggleAgentManagerCollapse = useCallback(() => setIsAgentManagerCollapsed(prev => !prev), []);
 
   // Drag-and-drop handlers for the entire chatroom
   const handleDragEnter = (e: DragEvent) => {
@@ -267,7 +262,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
       if (now - lastMarkAsReadRef.current > 1000) {
         lastMarkAsReadRef.current = now;
         onMarkRoomAsReadRef.current?.(roomId);
-        api.markRoomAsRead(roomId).catch(err => {
+        roomService.markRoomAsRead(roomId).catch(err => {
           console.error('Failed to mark room as read:', err);
         });
       }
@@ -336,11 +331,11 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
           isRefreshing={isRefreshing}
           onPauseToggle={handlePauseToggle}
           onLimitUpdate={handleLimitUpdate}
-          onClearMessages={() => setShowClearConfirm(true)}
+          onClearMessages={handleOpenClearConfirm}
           onRenameRoom={handleRenameRoom}
-          onShowAgentManager={() => setShowAgentManager(!showAgentManager)}
+          onShowAgentManager={handleToggleAgentManager}
           isAgentManagerCollapsed={isAgentManagerCollapsed}
-          onToggleAgentManagerCollapse={() => setIsAgentManagerCollapsed(!isAgentManagerCollapsed)}
+          onToggleAgentManagerCollapse={handleToggleAgentManagerCollapse}
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={onToggleSidebar}
         />

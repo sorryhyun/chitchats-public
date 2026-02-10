@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { api } from '../services';
+import { agentService } from '../services/agentService';
 import type { AgentConfig } from '../types';
 
 /**
@@ -15,7 +15,7 @@ export function useFetchAgentConfigs() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getAgentConfigs();
+      const data = await agentService.getAgentConfigs();
       setConfigs(data.configs);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to fetch configs');

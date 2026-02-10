@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Room, Message } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { RoomTitleEditor } from './header/RoomTitleEditor';
@@ -26,7 +27,7 @@ interface ChatHeaderProps {
   onToggleSidebar?: () => void;
 }
 
-export const ChatHeader = ({
+export const ChatHeader = memo(({
   roomName,
   roomData,
   isConnected,
@@ -41,7 +42,7 @@ export const ChatHeader = ({
   isAgentManagerCollapsed,
   onToggleAgentManagerCollapse,
   isSidebarCollapsed,
-  onToggleSidebar,
+  onToggleSidebar: _onToggleSidebar,
 }: ChatHeaderProps) => {
   const { isAdmin } = useAuth();
 
@@ -132,4 +133,4 @@ export const ChatHeader = ({
       </div>
     </div>
   );
-};
+});

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { Agent, AgentUpdate } from '../types';
-import { api, getAgentProfilePicUrl } from '../services';
+import { agentService, getAgentProfilePicUrl } from '../services/agentService';
 import { useAuth } from '../contexts/AuthContext';
 
 interface AgentProfileModalProps {
@@ -78,7 +78,7 @@ export const AgentProfileModal = ({ agent, onClose, onUpdate, onDelete }: AgentP
         recent_events: editedAgent.recent_events,
       };
 
-      await api.updateAgent(agent.id, updateData);
+      await agentService.updateAgent(agent.id, updateData);
       onUpdate();
       onClose();
     } catch (err) {

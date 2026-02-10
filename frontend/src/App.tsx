@@ -12,6 +12,7 @@ import { SettingsModal } from './components/sidebar/SettingsModal';
 import { ExportModal } from './components/sidebar/ExportModal';
 import { Login } from './components/Login';
 import { SetupWizard } from './components/SetupWizard';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { BREAKPOINTS } from './config/breakpoints';
 import { isTauri, checkSetupNeeded } from './utils/tauri';
 
@@ -290,7 +291,9 @@ function AgentProviderWrapper() {
     <AgentProvider onAgentRoomSelected={(roomId) => {
       roomContext.selectRoom(roomId);
     }}>
-      <AppContent />
+      <ErrorBoundary>
+        <AppContent />
+      </ErrorBoundary>
     </AgentProvider>
   );
 }

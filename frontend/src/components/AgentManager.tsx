@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api } from '../services';
+import { agentService } from '../services/agentService';
 import type { Agent } from '../types';
 import { AgentAvatar } from './AgentAvatar';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,7 +26,7 @@ export const AgentManager = memo(({ roomId }: AgentManagerProps) => {
   useEffect(() => {
     const fetchRoomAgents = async () => {
       try {
-        const data = await api.getRoomAgents(roomId);
+        const data = await agentService.getRoomAgents(roomId);
         setRoomAgents(data);
       } catch {
         addToast(t('unableToLoadRoom'), 'error');
@@ -35,7 +35,7 @@ export const AgentManager = memo(({ roomId }: AgentManagerProps) => {
 
     const fetchAllAgents = async () => {
       try {
-        const data = await api.getAllAgents();
+        const data = await agentService.getAllAgents();
         setAllAgents(data);
       } catch {
         addToast(t('unableToLoadAgents'), 'error');
@@ -50,7 +50,7 @@ export const AgentManager = memo(({ roomId }: AgentManagerProps) => {
 
   const fetchRoomAgents = async () => {
     try {
-      const data = await api.getRoomAgents(roomId);
+      const data = await agentService.getRoomAgents(roomId);
       setRoomAgents(data);
     } catch {
       addToast(t('unableToLoadRoom'), 'error');
@@ -59,7 +59,7 @@ export const AgentManager = memo(({ roomId }: AgentManagerProps) => {
 
   const handleAddAgent = async (agentId: number) => {
     try {
-      await api.addAgentToRoom(roomId, agentId);
+      await agentService.addAgentToRoom(roomId, agentId);
       fetchRoomAgents();
       addToast(t('agentAdded'), 'success');
     } catch (err) {
@@ -70,7 +70,7 @@ export const AgentManager = memo(({ roomId }: AgentManagerProps) => {
 
   const handleRemoveAgent = async (agentId: number) => {
     try {
-      await api.removeAgentFromRoom(roomId, agentId);
+      await agentService.removeAgentFromRoom(roomId, agentId);
       fetchRoomAgents();
       addToast(t('agentRemoved'), 'success');
     } catch (err) {
