@@ -336,21 +336,22 @@ def create_app() -> FastAPI:
         static_dir = base_path / "static"
 
         if static_dir.exists():
-            # Mount static assets (JS, CSS, images)
-            app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
             logger.info(f"📦 Serving static files from: {static_dir}")
 
             # Catch-all route for SPA - must be last
             @app.get("/{full_path:path}")
             async def serve_spa(full_path: str):
-                """Serve index.html for all non-API routes (SPA routing)."""
+                """Serve static files if they exist, otherwise index.html for SPA routing."""
                 # Check if it's an API route (already handled by routers)
                 if full_path.startswith(("api/", "auth/", "rooms/", "agents/", "debug/", "mcp")):
                     return None
-                # Serve index.html for SPA routes
-                index_file = static_dir / "index.html"
-                if index_file.exists():
-                    return FileResponse(index_file)
+
+                # Serve actual static files (fonts, images, assets, manifest, etc.)
+                static_file = static_dir / full_path
+                if full_path and static_file.exists() and static_file.is_file():
+                    return FileResponse(static_file)
+
+                # Fall back to index.html for SPA routes
                 return FileResponse(static_dir / "index.html")
         else:
             logger.warning(f"⚠️ Static files directory not found: {static_dir}")
