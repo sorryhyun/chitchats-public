@@ -1,10 +1,11 @@
-import { useState, memo, FormEvent, KeyboardEvent, ClipboardEvent, useRef, DragEvent, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
+import { useState, useCallback, memo, FormEvent, KeyboardEvent, ClipboardEvent, useRef, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Agent, ParticipantType, ImageItem } from '../../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useMention } from '../../hooks/useMention';
+import { useImageDrop } from '../../hooks/useImageDrop';
 import { MentionDropdown } from './MentionDropdown';
 
 interface ImageData {
@@ -34,7 +35,6 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
   const [participantType, setParticipantType] = useState<ParticipantType>('user');
   const [characterName, setCharacterName] = useState('');
   const [attachedImages, setAttachedImages] = useState<ImageData[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
 
   // State to toggle the persona menu
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
@@ -139,40 +139,15 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
     e.target.value = '';
   };
 
-  // Handle drag events
-  const handleDragEnter = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      // Filter for image files only
-      const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-      if (imageFiles.length === 1) {
-        handleFileSelect(imageFiles[0]);
-      } else if (imageFiles.length > 1) {
-        handleMultipleFileSelect(imageFiles);
-      }
+  // Drag-and-drop via shared hook
+  const handleDroppedFiles = useCallback((files: File[]) => {
+    if (files.length === 1) {
+      handleFileSelect(files[0]);
+    } else if (files.length > 1) {
+      handleMultipleFileSelect(files);
     }
-  };
+  }, []);
+  const { isDragging, dragHandlers } = useImageDrop({ onFiles: handleDroppedFiles });
 
   // Handle paste from clipboard (Ctrl+V) - supports multiple images
   const handlePaste = (e: ClipboardEvent) => {
@@ -301,10 +276,7 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
         "relative bg-white/90 backdrop-blur border-t border-border input-padding-mobile shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] z-20 transition-all flex-shrink-0",
         isDragging && "bg-blue-50 border-blue-300"
       )}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
+      {...dragHandlers}
     >
       {/* Drag overlay */}
       {isDragging && (

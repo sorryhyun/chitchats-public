@@ -16,5 +16,10 @@
   "messagesRefreshed": "메시지가 새로고침되었습니다",
   "dropImageHere": "여기에 이미지를 놓으세요",
   "failedToReset": "대화 초기화 실패",
-  "failedToResetRetry": "대화 초기화에 실패했습니다. 다시 시도해주세요."
+  "failedToResetRetry": "대화 초기화에 실패했습니다. 다시 시도해주세요.",
+  "failedToFetchRoom": "방 정보 로드 실패",
+  "failedToTogglePause": "일시정지 전환 실패",
+  "failedToUpdateLimit": "상호작용 제한 수정 실패",
+  "failedToRenameRoom": "방 이름 변경 실패",
+  "failedToSendMessage": "메시지 전송 실패"
 }

@@ -1,18 +1,26 @@
 import type { Message, ImageItem } from '../types';
 import { API_BASE_URL, getFetchOptions } from './apiClient';
 
+export interface ChattingAgent {
+  id: number;
+  name: string;
+  profile_pic?: string | null;
+  response_text?: string;
+  thinking_text?: string;
+}
+
 export const messageService = {
-  async getMessages(roomId: number): Promise<Message[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions());
+  async getMessages(roomId: number, signal?: AbortSignal): Promise<Message[]> {
+    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions({ signal }));
     if (!response.ok) throw new Error('Failed to fetch messages');
     return response.json();
   },
 
-  async pollMessages(roomId: number, sinceId?: number): Promise<Message[]> {
+  async pollMessages(roomId: number, sinceId?: number, signal?: AbortSignal): Promise<Message[]> {
     const url = sinceId && sinceId > 0
       ? `${API_BASE_URL}/rooms/${roomId}/messages/poll?since_id=${sinceId}`
       : `${API_BASE_URL}/rooms/${roomId}/messages/poll`;
-    const response = await fetch(url, getFetchOptions());
+    const response = await fetch(url, getFetchOptions({ signal }));
     if (!response.ok) throw new Error('Failed to poll messages');
     return response.json();
   },
@@ -38,7 +46,7 @@ export const messageService = {
     if (!response.ok) throw new Error('Failed to send message');
   },
 
-  async getChattingAgents(roomId: number): Promise<{ chatting_agents: any[] }> {
+  async getChattingAgents(roomId: number): Promise<{ chatting_agents: ChattingAgent[] }> {
     const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/chatting-agents`, getFetchOptions());
     if (!response.ok) throw new Error('Failed to fetch chatting agents');
     return response.json();
@@ -49,6 +57,5 @@ export const messageService = {
       method: 'DELETE',
     }));
     if (!response.ok) throw new Error('Failed to clear messages');
-    return response.json();
   },
 };

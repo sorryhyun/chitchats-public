@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useFocusTrap } from './hooks/useFocusTrap';
 import { useAuth } from './contexts/AuthContext';
 import { RoomProvider, useRoomContext } from './contexts/RoomContext';
@@ -7,12 +7,13 @@ import { VoiceProvider } from './contexts/VoiceContext';
 import { MainSidebar } from './components/sidebar/MainSidebar';
 import { ChatRoom } from './components/chat-room/ChatRoom';
 import { AgentProfileModal } from './components/AgentProfileModal';
-import { HowToDocsModal } from './components/HowToDocsModal';
-import { SettingsModal } from './components/sidebar/SettingsModal';
-import { ExportModal } from './components/sidebar/ExportModal';
 import { Login } from './components/Login';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BREAKPOINTS } from './config/breakpoints';
+
+const HowToDocsModal = lazy(() => import('./components/HowToDocsModal').then(m => ({ default: m.HowToDocsModal })));
+const SettingsModal = lazy(() => import('./components/sidebar/SettingsModal').then(m => ({ default: m.SettingsModal })));
+const ExportModal = lazy(() => import('./components/sidebar/ExportModal').then(m => ({ default: m.ExportModal })));
 
 function AppContent() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -220,26 +221,26 @@ function AppContent() {
         />
       )}
 
-      {/* How To Docs Modal */}
-      {showDocsModal && (
-        <HowToDocsModal onClose={() => setShowDocsModal(false)} />
-      )}
+      {/* Lazy-loaded modals */}
+      <Suspense fallback={null}>
+        {showDocsModal && (
+          <HowToDocsModal onClose={() => setShowDocsModal(false)} />
+        )}
 
-      {/* Settings Modal */}
-      {showSettingsModal && (
-        <SettingsModal
-          isOpen={showSettingsModal}
-          onClose={() => setShowSettingsModal(false)}
-        />
-      )}
+        {showSettingsModal && (
+          <SettingsModal
+            isOpen={showSettingsModal}
+            onClose={() => setShowSettingsModal(false)}
+          />
+        )}
 
-      {/* Export Modal */}
-      {showExportModal && (
-        <ExportModal
-          isOpen={showExportModal}
-          onClose={() => setShowExportModal(false)}
-        />
-      )}
+        {showExportModal && (
+          <ExportModal
+            isOpen={showExportModal}
+            onClose={() => setShowExportModal(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

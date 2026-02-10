@@ -16,5 +16,10 @@
   "messagesRefreshed": "Messages refreshed",
   "dropImageHere": "Drop image here",
   "failedToReset": "Failed to reset conversation",
-  "failedToResetRetry": "Failed to reset conversation. Please try again."
+  "failedToResetRetry": "Failed to reset conversation. Please try again.",
+  "failedToFetchRoom": "Failed to load room details",
+  "failedToTogglePause": "Failed to toggle pause",
+  "failedToUpdateLimit": "Failed to update interaction limit",
+  "failedToRenameRoom": "Failed to rename room",
+  "failedToSendMessage": "Failed to send message"
 }

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Message, ImageItem } from '../types';
-import { messageService } from '../services/messageService';
+import { messageService, type ChattingAgent } from '../services/messageService';
 import { useSSE } from './useSSE';
 
 interface UsePollingReturn {
   messages: Message[];
-  sendMessage: (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => void;
+  sendMessage: (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => Promise<void>;
   isConnected: boolean;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   resetMessages: () => Promise<void>;
@@ -23,6 +23,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
   const immediatePollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMessageIdRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // SSE streaming for real-time updates
   const { isConnected: sseConnected, streamingAgents } = useSSE(useSSEStreaming ? roomId : null);
@@ -35,7 +36,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     if (!roomId) return;
 
     try {
-      const allMessages = await messageService.getMessages(roomId);
+      const allMessages = await messageService.getMessages(roomId, abortControllerRef.current?.signal);
       setMessages(allMessages);
 
       if (allMessages.length > 0) {
@@ -44,6 +45,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
 
       setIsConnected(true);
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('Error fetching messages:', error);
       setIsConnected(false);
     }
@@ -54,7 +56,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     if (!roomId) return;
 
     try {
-      const newMessages = await messageService.pollMessages(roomId, lastMessageIdRef.current);
+      const newMessages = await messageService.pollMessages(roomId, lastMessageIdRef.current, abortControllerRef.current?.signal);
 
       if (newMessages.length > 0) {
         setMessages((prev) => {
@@ -73,6 +75,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
 
       setIsConnected(true);
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('Error polling messages:', error);
       setIsConnected(false);
     }
@@ -95,8 +98,8 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
 
         const withoutChatting = prev.filter(m => !m.is_chatting);
 
-        const chattingMessages = chattingAgents.map((agent: any) => ({
-          id: `chatting_${agent.id}` as any,
+        const chattingMessages = chattingAgents.map((agent: ChattingAgent) => ({
+          id: `chatting_${agent.id}` as string,
           agent_id: agent.id,
           agent_name: agent.name,
           agent_profile_pic: agent.profile_pic,
@@ -222,6 +225,10 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     isInitialLoadRef.current = true;
     let isActive = true;
 
+    // Abort any in-flight requests from the previous room
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
     fetchAllMessages();
     pollChattingAgents();
 
@@ -252,6 +259,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
 
     return () => {
       isActive = false;
+      abortControllerRef.current?.abort();
       if (pollIntervalRef.current) {
         clearTimeout(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -268,9 +276,12 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     };
   }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents, sseConnected]);
 
-  const sendMessage = async (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => {
-    if (!roomId) return;
+  const isSendingRef = useRef(false);
 
+  const sendMessage = async (content: string, participant_type?: string, participant_name?: string, images?: ImageItem[], mentioned_agent_ids?: number[]) => {
+    if (!roomId || isSendingRef.current) return;
+
+    isSendingRef.current = true;
     try {
       await messageService.sendMessage(roomId, {
         content,
@@ -290,6 +301,9 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
       }, 100);
     } catch (error) {
       console.error('Error sending message:', error);
+      throw error;
+    } finally {
+      isSendingRef.current = false;
     }
   };
 

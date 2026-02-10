@@ -1,9 +1,24 @@
-import { memo } from 'react';
+import { memo, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+const LazyHighlighter = lazy(() =>
+  Promise.all([
+    import('react-syntax-highlighter'),
+    import('react-syntax-highlighter/dist/esm/styles/prism'),
+  ]).then(([mod, styles]) => ({
+    default: (props: any) => (
+      <mod.Prism style={styles.oneDark} {...props} />
+    ),
+  }))
+);
+
+const CodeFallback = ({ children }: { children: string }) => (
+  <pre className="bg-slate-800 text-slate-200 p-4 rounded-xl text-sm font-mono overflow-x-auto">
+    <code>{children}</code>
+  </pre>
+);
 
 interface MarkdownContentProps {
   content: string;
@@ -29,19 +44,20 @@ export const MarkdownContent = memo(({ content }: MarkdownContentProps) => (
             {children}
           </code>
         ) : (
-          <SyntaxHighlighter
-            style={oneDark}
-            language={match ? match[1] : 'text'}
-            PreTag="div"
-            customStyle={{
-              margin: 0,
-              borderRadius: '0.75rem',
-              fontSize: '0.875rem',
-            }}
-            {...props}
-          >
-            {codeString}
-          </SyntaxHighlighter>
+          <Suspense fallback={<CodeFallback>{codeString}</CodeFallback>}>
+            <LazyHighlighter
+              language={match ? match[1] : 'text'}
+              PreTag="div"
+              customStyle={{
+                margin: 0,
+                borderRadius: '0.75rem',
+                fontSize: '0.875rem',
+              }}
+              {...props}
+            >
+              {codeString}
+            </LazyHighlighter>
+          </Suspense>
         );
       },
       pre: ({ children }) => (

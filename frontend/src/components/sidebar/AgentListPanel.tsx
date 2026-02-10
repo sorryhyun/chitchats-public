@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Agent } from '../../types';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -19,23 +19,25 @@ export const AgentListPanel = ({
 }: AgentListPanelProps) => {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-  // Group agents by their group field
-  const groups = new Map<string, Agent[]>();
+  // Group agents by their group field, memoized to avoid recomputation
+  const groupedAgents = useMemo(() => {
+    const groups = new Map<string, Agent[]>();
 
-  agents.forEach((agent) => {
-    const groupName = agent.group || 'Ungrouped';
-    if (!groups.has(groupName)) {
-      groups.set(groupName, []);
-    }
-    groups.get(groupName)!.push(agent);
-  });
+    agents.forEach((agent) => {
+      const groupName = agent.group || 'Ungrouped';
+      if (!groups.has(groupName)) {
+        groups.set(groupName, []);
+      }
+      groups.get(groupName)!.push(agent);
+    });
 
-  // Sort groups: Ungrouped last, others alphabetically (Korean-aware)
-  const groupedAgents = Array.from(groups.entries()).sort(([a], [b]) => {
-    if (a === 'Ungrouped') return 1;
-    if (b === 'Ungrouped') return -1;
-    return a.localeCompare(b, 'ko-KR', { sensitivity: 'base' });
-  });
+    // Sort groups: Ungrouped last, others alphabetically (Korean-aware)
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === 'Ungrouped') return 1;
+      if (b === 'Ungrouped') return -1;
+      return a.localeCompare(b, 'ko-KR', { sensitivity: 'base' });
+    });
+  }, [agents]);
 
   const toggleGroup = (groupName: string) => {
     setCollapsedGroups((prev) => {

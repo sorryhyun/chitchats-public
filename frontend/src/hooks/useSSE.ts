@@ -35,6 +35,7 @@ interface UseSSEReturn {
 
 // Reconnection backoff intervals in milliseconds
 const BACKOFF_INTERVALS = [1000, 2000, 5000, 10000, 30000];
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 /**
  * Fetch a short-lived SSE ticket for the given room.
@@ -85,8 +86,11 @@ export const useSSE = (roomId: number | null): UseSSEReturn => {
     // Fetch a short-lived ticket (keeps main JWT out of URLs/logs)
     const ticket = await fetchSSETicket(roomId);
     if (!ticket) {
+      if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        setError('Connection lost. Please refresh to reconnect.');
+        return;
+      }
       setError('Failed to obtain SSE ticket');
-      // Schedule reconnection
       const backoffIndex = Math.min(reconnectAttemptRef.current, BACKOFF_INTERVALS.length - 1);
       const delay = BACKOFF_INTERVALS[backoffIndex];
       reconnectAttemptRef.current++;
@@ -118,6 +122,11 @@ export const useSSE = (roomId: number | null): UseSSEReturn => {
       setIsConnected(false);
       eventSource.close();
       eventSourceRef.current = null;
+
+      if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        setError('Connection lost. Please refresh to reconnect.');
+        return;
+      }
 
       // Schedule reconnection with exponential backoff
       const backoffIndex = Math.min(reconnectAttemptRef.current, BACKOFF_INTERVALS.length - 1);

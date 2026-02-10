@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback, DragEvent } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePolling } from '../../hooks/usePolling';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
+import { useImageDrop } from '../../hooks/useImageDrop';
 import { MessageList } from './message-list/MessageList';
 import { AgentManager } from '../AgentManager';
 import { ChatHeader } from './ChatHeader';
@@ -36,9 +37,15 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
   });
   const { messages, sendMessage, isConnected, setMessages, resetMessages } = usePolling(roomId);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const messageInputRef = useRef<MessageInputHandle>(null);
-  const dragCounterRef = useRef(0);
+
+  // Shared drag-and-drop for the entire chatroom area
+  const handleDroppedFiles = useCallback((files: File[]) => {
+    if (files[0]) {
+      messageInputRef.current?.handleFileSelect(files[0]);
+    }
+  }, []);
+  const { isDragging, dragHandlers } = useImageDrop({ onFiles: handleDroppedFiles });
 
   // Focus trap for agent manager drawer
   const agentManagerRef = useFocusTrap<HTMLDivElement>(showAgentManager);
@@ -136,6 +143,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
       // No need to set messages here as it would conflict with polling
     } catch (err) {
       console.error('Failed to fetch room details:', err);
+      addToast(t('failedToFetchRoom'), 'error');
     }
   };
 
@@ -149,6 +157,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
       setRoomData(updatedRoom);
     } catch (err) {
       console.error('Failed to toggle pause:', err);
+      addToast(t('failedToTogglePause'), 'error');
     }
   };
 
@@ -160,6 +169,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
       setRoomData(updatedRoom);
     } catch (err) {
       console.error('Failed to update interaction limit:', err);
+      addToast(t('failedToUpdateLimit'), 'error');
     }
   };
 
@@ -190,6 +200,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
       setRoomData((prev) => (prev ? { ...prev, name: updatedRoom.name } : updatedRoom));
     } catch (err) {
       console.error('Failed to rename room:', err);
+      addToast(t('failedToRenameRoom'), 'error');
       throw err;
     }
   };
@@ -207,49 +218,17 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     }
   };
 
-  const handleSendMessage = useCallback((message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => {
-    sendMessage(message, participantType, characterName, images, mentionedAgentIds);
-  }, [sendMessage]);
+  const handleSendMessage = useCallback(async (message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => {
+    try {
+      await sendMessage(message, participantType, characterName, images, mentionedAgentIds);
+    } catch {
+      addToast(t('failedToSendMessage'), 'error');
+    }
+  }, [sendMessage, addToast, t]);
 
   const handleOpenClearConfirm = useCallback(() => setShowClearConfirm(true), []);
   const handleToggleAgentManager = useCallback(() => setShowAgentManager(prev => !prev), []);
   const handleToggleAgentManagerCollapse = useCallback(() => setIsAgentManagerCollapsed(prev => !prev), []);
-
-  // Drag-and-drop handlers for the entire chatroom
-  const handleDragEnter = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current++;
-    if (e.dataTransfer.types.includes('Files')) {
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    dragCounterRef.current = 0;
-
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      messageInputRef.current?.handleFileSelect(file);
-    }
-  };
 
   // Track last mark-as-read call to throttle
   const lastMarkAsReadRef = useRef<number>(0);
@@ -343,10 +322,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
         {/* Message content area - drag-and-drop zone for images */}
         <div
           className="flex-1 flex flex-col min-h-0 relative"
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+          {...dragHandlers}
         >
           {/* Drag overlay */}
           {isDragging && (
