@@ -184,6 +184,23 @@ export const MessageRow = memo(({
                   </>
                 )}
 
+                {/* Excuse reasons - visible when agent uses the excuse tool */}
+                {message.role === 'assistant' && message.excuse_reasons && message.excuse_reasons.length > 0 && (
+                  <div className="pl-3 py-2 my-1 border-l-2 border-amber-300 text-amber-700 text-sm bg-amber-50/50 rounded-r-lg">
+                    <div className="flex items-center gap-1.5 mb-1 font-medium text-xs text-amber-600">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Excuse</span>
+                    </div>
+                    {message.excuse_reasons.map((reason, i) => (
+                      <div key={i} className="whitespace-pre-wrap break-words leading-relaxed text-xs">
+                        {reason}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Image attachment - supports both new images array and legacy single image */}
                 {(message.images || (message.image_data && message.image_media_type)) && (
                   <ImageAttachment
@@ -312,6 +329,7 @@ export const MessageRow = memo(({
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.content === nextProps.message.content &&
     prevProps.message.thinking === nextProps.message.thinking &&
+    prevProps.message.excuse_reasons === nextProps.message.excuse_reasons &&
     prevProps.message.is_typing === nextProps.message.is_typing &&
     prevProps.message.is_chatting === nextProps.message.is_chatting &&
     prevProps.message.is_streaming === nextProps.message.is_streaming &&

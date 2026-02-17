@@ -85,6 +85,7 @@ class ParsedStreamMessage:
     skip_used: bool = False
     memory_entries: List[str] = field(default_factory=list)
     anthropic_calls: List[str] = field(default_factory=list)
+    excuse_reasons: List[str] = field(default_factory=list)
 
     @property
     def has_tool_usage(self) -> bool:
@@ -378,6 +379,7 @@ class AIProvider(ABC):
         base_options: AIClientOptions,
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
+        excuse_reasons_capture: Optional[List[str]] = None,
     ) -> Any:
         """Build provider-specific options from base configuration.
 
@@ -385,6 +387,7 @@ class AIProvider(ABC):
             base_options: Provider-agnostic configuration
             anthropic_calls_capture: List to capture anthropic tool calls
             skip_tool_capture: List to capture skip tool usage
+            excuse_reasons_capture: List to capture excuse tool reasons
 
         Returns:
             Provider-specific options object

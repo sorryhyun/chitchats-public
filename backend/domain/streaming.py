@@ -69,6 +69,7 @@ class StreamEndEvent:
     memory_entries: list[str]
     anthropic_calls: list[str]
     skipped: bool
+    excuse_reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dict for backward compatibility with existing consumers."""
@@ -81,6 +82,7 @@ class StreamEndEvent:
             "memory_entries": self.memory_entries,
             "anthropic_calls": self.anthropic_calls,
             "skipped": self.skipped,
+            "excuse_reasons": self.excuse_reasons,
         }
 
 
@@ -106,6 +108,7 @@ class ResponseAccumulator:
     skip_tool_called: bool = False
     memory_entries: list[str] = field(default_factory=list)
     anthropic_calls: list[str] = field(default_factory=list)
+    excuse_reasons: list[str] = field(default_factory=list)
     # Hook capture lists - these get mutated by PostToolUse hooks
     skip_tool_capture: list[bool] = field(default_factory=list)
 
@@ -207,6 +210,7 @@ class ResponseAccumulator:
             memory_entries=self.memory_entries,
             anthropic_calls=self.anthropic_calls,
             skipped=skipped,
+            excuse_reasons=self.excuse_reasons,
         )
 
     def create_interrupted_end_event(

@@ -59,6 +59,7 @@ export interface Message {
   is_typing?: boolean;
   is_chatting?: boolean;  // True when agent is generating a response (polling-based indicator)
   thinking?: string | null;
+  excuse_reasons?: string[] | null;
   is_streaming?: boolean;  // True while message is being streamed
   temp_id?: string;  // Temporary ID for streaming messages
   is_skipped?: boolean;  // True when agent chose to skip/ignore the message

@@ -126,6 +126,7 @@ class CodexProvider(AIProvider):
         base_options: AIClientOptions,
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
+        excuse_reasons_capture: Optional[List[str]] = None,
     ) -> CodexAppServerOptions:
         """Build Codex App Server options from base configuration.
 
@@ -133,6 +134,7 @@ class CodexProvider(AIProvider):
             base_options: Provider-agnostic configuration
             anthropic_calls_capture: Not used for Codex (tool capture via parsing)
             skip_tool_capture: Not used for Codex (tool capture via parsing)
+            excuse_reasons_capture: Not used for Codex (tool capture via parsing)
 
         Returns:
             CodexAppServerOptions ready for client creation
@@ -146,6 +148,7 @@ class CodexProvider(AIProvider):
         # Unused parameters (tool capture is done via stream parsing)
         _ = anthropic_calls_capture
         _ = skip_tool_capture
+        _ = excuse_reasons_capture
 
         # Build agent key for instance identification
         agent_id = base_options.mcp_tools.get("agent_id") if base_options.mcp_tools else None

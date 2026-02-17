@@ -135,6 +135,7 @@ class Message(Base):
     participant_name = Column(String, nullable=True)  # Custom name for 'character' mode
     thinking = Column(Text, nullable=True)  # Agent's thinking process (for assistant messages)
     anthropic_calls = Column(Text, nullable=True)  # JSON array of anthropic tool call situations
+    excuse_reasons = Column(Text, nullable=True)  # JSON array of excuse tool reasons
     timestamp = Column(DateTime, default=datetime.utcnow)
     image_data = Column(Text, nullable=True)  # DEPRECATED: Use images column instead
     image_media_type = Column(String, nullable=True)  # DEPRECATED: Use images column instead

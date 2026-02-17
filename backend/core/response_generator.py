@@ -154,6 +154,7 @@ class ResponseGenerator:
         new_session_id = session_id
         memory_entries = []
         anthropic_calls = []
+        excuse_reasons = []
         skipped = False
         stream_started = False
         end_event = None  # Store the end event for later SSE broadcast
@@ -179,6 +180,7 @@ class ResponseGenerator:
                         new_session_id = end.session_id or session_id
                         memory_entries = end.memory_entries
                         anthropic_calls = end.anthropic_calls
+                        excuse_reasons = end.excuse_reasons
                         skipped = end.skipped
 
         except SessionRecoveryError as e:
@@ -237,6 +239,7 @@ class ResponseGenerator:
                         new_session_id = end.session_id or session_id
                         memory_entries = end.memory_entries
                         anthropic_calls = end.anthropic_calls
+                        excuse_reasons = end.excuse_reasons
                         skipped = end.skipped
 
         # Memory entries are now written directly by the memorize tool
@@ -317,6 +320,7 @@ class ResponseGenerator:
             content=response_text,
             thinking=thinking_text,
             anthropic_calls=anthropic_calls if anthropic_calls else None,
+            excuse_reasons=excuse_reasons if excuse_reasons else None,
         )
         await save_agent_message(msg_context, message_data)
 

@@ -148,6 +148,7 @@ async def _migrate_messages_table(conn):
         ("image_data", "TEXT", None),
         ("image_media_type", "VARCHAR", None),
         ("anthropic_calls", "TEXT", None),
+        ("excuse_reasons", "TEXT", None),  # JSON array of excuse tool reasons
         ("images", "TEXT", None),  # JSON array for multiple images
         ("provider", "VARCHAR", None),  # v9: AI provider used ('claude' or 'codex')
     ]

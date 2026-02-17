@@ -49,6 +49,7 @@ class AgentMessageData:
     content: str
     thinking: Optional[str] = None
     anthropic_calls: Optional[list[str]] = None
+    excuse_reasons: Optional[list[str]] = None
 
 
 @dataclass

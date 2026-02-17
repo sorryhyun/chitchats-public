@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     # Voice server configuration
     voice_server_url: str = "http://localhost:8002"  # Voice TTS server URL
 
+    # Tool toggles
+    enable_excuse: bool = True  # Enable excuse tool for agents
+    enable_community: bool = False  # Enable community social tools (Moltbook)
+
     # Moltbook API configuration
     moltbook_api_key: Optional[str] = None  # API key for Moltbook social network
 

@@ -142,6 +142,7 @@ class ClaudeProvider(AIProvider):
         base_options: AIClientOptions,
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
+        excuse_reasons_capture: Optional[List[str]] = None,
     ) -> ClaudeAgentOptions:
         """Build Claude SDK options from base configuration.
 
@@ -149,6 +150,7 @@ class ClaudeProvider(AIProvider):
             base_options: Provider-agnostic configuration
             anthropic_calls_capture: List to capture anthropic tool calls
             skip_tool_capture: List to capture skip tool usage
+            excuse_reasons_capture: List to capture excuse tool reasons
 
         Returns:
             ClaudeAgentOptions ready for client creation
@@ -178,7 +180,7 @@ class ClaudeProvider(AIProvider):
         ]
 
         # Create PostToolUse hooks
-        hooks = self._build_tool_capture_hooks(anthropic_calls_capture, skip_tool_capture)
+        hooks = self._build_tool_capture_hooks(anthropic_calls_capture, skip_tool_capture, excuse_reasons_capture)
 
         # Determine model
         model = base_options.model
@@ -238,6 +240,7 @@ class ClaudeProvider(AIProvider):
         self,
         anthropic_calls_capture: Optional[List[str]],
         skip_tool_capture: Optional[List[bool]],
+        excuse_reasons_capture: Optional[List[str]] = None,
     ) -> Optional[dict]:
         """Build PostToolUse hooks for capturing tool calls."""
         hook_matchers = []
@@ -278,6 +281,26 @@ class ClaudeProvider(AIProvider):
                 return {"continue_": True}
 
             hook_matchers.append(HookMatcher(matcher="mcp__action__skip", hooks=[capture_skip_tool]))
+
+        # Hook for excuse tool calls
+        if excuse_reasons_capture is not None:
+
+            async def capture_excuse_tool(
+                input_data: PostToolUseHookInput,
+                _tool_use_id: Optional[str],
+                _ctx: dict,
+            ) -> SyncHookJSONOutput:
+                """Hook to capture excuse tool calls."""
+                tool_name = input_data.get("tool_name", "")
+                if tool_name.endswith("__excuse"):
+                    tool_input = input_data.get("tool_input", {})
+                    reason = tool_input.get("reason", "")
+                    if reason:
+                        excuse_reasons_capture.append(reason)
+                        logger.info(f"Captured excuse tool call: {reason[:100]}...")
+                return {"continue_": True}
+
+            hook_matchers.append(HookMatcher(matcher="mcp__action__excuse", hooks=[capture_excuse_tool]))
 
         if not hook_matchers:
             return None

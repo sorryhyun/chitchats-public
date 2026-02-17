@@ -382,7 +382,7 @@ class AgentManager:
             base_options = AIClientOptions.from_context(context, final_system_prompt, provider_type)
 
             # Build provider-specific options with tool capture hooks
-            options = provider.build_options(base_options, accumulator.anthropic_calls, accumulator.skip_tool_capture)
+            options = provider.build_options(base_options, accumulator.anthropic_calls, accumulator.skip_tool_capture, accumulator.excuse_reasons)
 
             # Build the message content using helper
             message_to_send = self._build_message_content(context)

@@ -31,6 +31,7 @@ async def save_agent_message(context: MessageContext, message_data: AgentMessage
         agent_id=context.agent.id,
         thinking=message_data.thinking if message_data.thinking else None,
         anthropic_calls=message_data.anthropic_calls if message_data.anthropic_calls else None,
+        excuse_reasons=message_data.excuse_reasons if message_data.excuse_reasons else None,
     )
     # Update room activity for agent messages so unread notifications appear
     saved_msg = await crud.create_message(context.db, context.room_id, agent_message, update_room_activity=True)

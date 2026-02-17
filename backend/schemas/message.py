@@ -23,6 +23,7 @@ class MessageCreate(MessageBase):
     agent_id: Optional[int] = None
     thinking: Optional[str] = None
     anthropic_calls: Optional[List[str]] = None
+    excuse_reasons: Optional[List[str]] = None
     mentioned_agent_ids: Optional[List[int]] = None  # Agent IDs from @mentions
 
 
@@ -32,6 +33,7 @@ class Message(MessageBase):
     agent_id: Optional[int]
     thinking: Optional[str] = None
     anthropic_calls: Optional[List[str]] = None
+    excuse_reasons: Optional[List[str]] = None
     timestamp: datetime
     agent_name: Optional[str] = None
     agent_profile_pic: Optional[str] = None
@@ -51,6 +53,14 @@ class Message(MessageBase):
                     anthropic_calls = json.loads(data.anthropic_calls)
                 except (json.JSONDecodeError, TypeError):
                     anthropic_calls = None
+
+            # Parse excuse_reasons from JSON string if stored
+            excuse_reasons = None
+            if hasattr(data, "excuse_reasons") and data.excuse_reasons:
+                try:
+                    excuse_reasons = json.loads(data.excuse_reasons)
+                except (json.JSONDecodeError, TypeError):
+                    excuse_reasons = None
 
             # Parse images from JSON string if stored
             images = None
@@ -79,6 +89,7 @@ class Message(MessageBase):
                 "participant_name": data.participant_name,
                 "thinking": data.thinking,
                 "anthropic_calls": anthropic_calls,
+                "excuse_reasons": excuse_reasons,
                 "timestamp": data.timestamp,
                 "agent_name": agent.name if agent else None,
                 "agent_profile_pic": agent.profile_pic if agent else None,

@@ -150,6 +150,9 @@ def create_action_server(
         elif name == "recall":
             return _handle_recall(arguments, context)
 
+        elif name == "excuse":
+            return _handle_excuse(arguments, context)
+
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -266,6 +269,26 @@ def _handle_recall(arguments: dict, context: dict) -> list[TextContent]:
         available = ", ".join(f"'{s}'" for s in memory_index.keys())
         response_text = f"Memory subtitle '{subtitle}' not found. Available: {available}"
 
+    return [TextContent(type="text", text=response_text)]
+
+
+def _handle_excuse(arguments: dict, context: dict) -> list[TextContent]:
+    """Handle excuse tool call."""
+    reason = arguments.get("reason", "")
+
+    if not reason.strip():
+        return [TextContent(type="text", text="Error: Reason cannot be empty")]
+
+    agent_name = context["agent_name"]
+    agent_group = context["agent_group"]
+    logger.info(f"[excuse] {agent_name}: {reason}")
+
+    response_text = get_tool_response(
+        "excuse",
+        group_name=agent_group,
+        agent_name=agent_name,
+        reason=reason,
+    )
     return [TextContent(type="text", text=response_text)]
 
 

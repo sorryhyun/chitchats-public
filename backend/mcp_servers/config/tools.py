@@ -58,6 +58,24 @@ class RecallInput(BaseModel):
         return v.strip()
 
 
+class ExcuseInput(BaseModel):
+    """Input model for excuse tool."""
+
+    reason: str = Field(
+        ...,
+        min_length=1,
+        description="The agent's authentic inner reaction — raw feelings before composing outward behavior",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        """Ensure reason is not just whitespace."""
+        if not v.strip():
+            raise ValueError("Reason cannot be empty or whitespace")
+        return v.strip()
+
+
 class GuidelinesReadInput(BaseModel):
     """Input model for guidelines read tool - takes no arguments."""
 
@@ -200,8 +218,10 @@ TOOLS: dict[str, ToolDef] = {
         name="mcp__action__skip",
         group="action",
         description=(
-            "Skip this turn when {agent_name} has left the scene or the message "
-            "doesn't warrant {agent_name}'s engagement. Others will continue without you."
+            "Skip this turn entirely — {agent_name} produces no response. "
+            "Use only when {agent_name} has genuinely nothing to add: "
+            "left the scene, not addressed, or the message is irrelevant to {agent_name}. "
+            "Do not use skip to avoid difficult topics; consider excuse instead."
         ),
         response="You have decided to skip this message. You will not respond.",
         input_model=SkipInput,
@@ -225,6 +245,24 @@ TOOLS: dict[str, ToolDef] = {
         response="{memory_content}",
         input_model=RecallInput,
         requires=["memory_index"],
+    ),
+    "excuse": ToolDef(
+        name="mcp__action__excuse",
+        group="action",
+        description=(
+            "Record {agent_name}'s authentic inner reaction before composing the outward response. "
+            "Use this when {agent_name}'s true feelings differ from how they would outwardly behave — "
+            "e.g. genuinely embarrassed but would act composed, secretly pleased but would feign indifference, "
+            "actually hurt but would deflect with humor. "
+            "The excuse captures the raw first reaction; the visible message should show {agent_name}'s "
+            "composed outward behavior that CONTRASTS with or MASKS the inner reaction."
+        ),
+        response=(
+            "Inner reaction noted: {reason}\n\n"
+            "Now write {agent_name}'s outward response — the composed behavior that follows this reaction. "
+            "Do not echo or blend the inner reaction into the visible message; let the contrast speak for itself."
+        ),
+        input_model=ExcuseInput,
     ),
     # Guidelines Tools
     "read": ToolDef(
@@ -304,6 +342,28 @@ def get_tools_by_group(group: str) -> dict[str, ToolDef]:
     return {name: tool for name, tool in TOOLS.items() if tool.group == group}
 
 
+def _is_tool_setting_enabled(tool_name: str) -> bool:
+    """Check if a tool is enabled via environment settings.
+
+    Some tools can be toggled on/off via env vars (e.g., ENABLE_EXCUSE).
+
+    Args:
+        tool_name: Name of the tool
+
+    Returns:
+        True if the tool is enabled (or has no env toggle)
+    """
+    if tool_name == "excuse":
+        from core import get_settings
+
+        return get_settings().enable_excuse
+    if tool_name == "moltbook":
+        from core import get_settings
+
+        return get_settings().enable_community
+    return True
+
+
 def is_tool_enabled(
     tool_name: str,
     group_name: str | None = None,
@@ -321,6 +381,10 @@ def is_tool_enabled(
         True if tool is enabled and available for the provider
     """
     if tool_name not in TOOLS:
+        return False
+
+    # Check env-level toggle
+    if not _is_tool_setting_enabled(tool_name):
         return False
 
     tool = _get_tool_with_overrides(tool_name, group_name)
@@ -425,8 +489,11 @@ def get_tool_names_by_group(group: str, enabled_only: bool = True) -> list[str]:
         List of full MCP tool names (e.g., ["mcp__action__skip"])
     """
     result = []
-    for tool in get_tools_by_group(group).values():
+    for name, tool in get_tools_by_group(group).items():
         if enabled_only and not tool.enabled:
+            continue
+        # Check env-level toggle (e.g., ENABLE_EXCUSE)
+        if enabled_only and not _is_tool_setting_enabled(name):
             continue
         result.append(tool.name)
     return result
