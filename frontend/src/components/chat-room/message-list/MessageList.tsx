@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo, useCallback } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useWhiteboard } from '../../../hooks/useWhiteboard';
+import { useExcusePreference } from '../../../hooks/useExcusePreference';
 import { MessageRow } from './MessageRow';
 
 interface MessageListProps {
@@ -19,6 +20,7 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
 
   // Process whiteboard diffs to get rendered content
   const whiteboardInfo = useWhiteboard(messages);
+  const { showExcuse } = useExcusePreference();
 
   // Reset state when messages become empty (e.g., switching rooms)
   useEffect(() => {
@@ -126,10 +128,11 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
       expandedThinking={expandedThinking}
       copiedMessageId={copiedMessageId}
       whiteboardInfo={whiteboardInfo}
+      showExcuse={showExcuse}
       onToggleThinking={toggleThinking}
       onCopyToClipboard={copyToClipboard}
     />
-  ), [messages, roomId, expandedThinking, copiedMessageId, whiteboardInfo, toggleThinking, copyToClipboard]);
+  ), [messages, roomId, expandedThinking, copiedMessageId, whiteboardInfo, showExcuse, toggleThinking, copyToClipboard]);
 
   if (messages.length === 0) {
     return (

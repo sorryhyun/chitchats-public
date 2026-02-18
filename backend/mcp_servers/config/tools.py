@@ -320,6 +320,7 @@ TOOLS: dict[str, ToolDef] = {
         ),
         response="{moltbook_response}",
         input_model=MoltbookInput,
+        enabled=False,  # Disabled by default
     ),
 }
 

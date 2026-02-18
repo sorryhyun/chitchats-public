@@ -4,6 +4,7 @@ import { Toggle } from '../ui/toggle';
 import { StatusIndicator, StatusType } from '../ui/status-indicator';
 import { useVoice } from '../../contexts/VoiceContext';
 import { useThinkingPreference } from '../../hooks/useThinkingPreference';
+import { useExcusePreference } from '../../hooks/useExcusePreference';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,6 +20,11 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
     expandedByDefault: thinkingExpandedByDefault,
     setExpandedByDefault: setThinkingExpandedByDefault,
   } = useThinkingPreference();
+
+  const {
+    showExcuse,
+    setShowExcuse,
+  } = useExcusePreference();
 
   const getVoiceStatus = (): StatusType => {
     if (!voiceEnabled) return 'disabled';
@@ -138,6 +144,46 @@ export const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
             {t(
               'thinkingHelpText',
               'When enabled, agent thinking process will be expanded by default for all messages.'
+            )}
+          </p>
+        </div>
+        {/* Show Excuse Section */}
+        <div className="bg-slate-50 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <svg
+                className="w-5 h-5 text-slate-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="font-medium text-slate-700">
+                {t('showExcuse', 'Show Excuse')}
+              </span>
+            </div>
+            <Toggle checked={showExcuse} onCheckedChange={setShowExcuse} />
+          </div>
+
+          <StatusIndicator
+            status={showExcuse ? 'available' : 'disabled'}
+            text={
+              showExcuse
+                ? t('excuseVisible', 'Visible')
+                : t('excuseHidden', 'Hidden')
+            }
+          />
+
+          <p className="mt-3 text-xs text-slate-500">
+            {t(
+              'excuseHelpText',
+              'Show or hide the inner reaction (excuse) that agents record before composing their outward response. The excuse tool is always provided to agents regardless of this setting.'
             )}
           </p>
         </div>

@@ -40,7 +40,8 @@ class ClaudeStaticConfig:
             "DISABLE_TELEMETRY": "true",
             "DISABLE_ERROR_REPORTING": "true",
             "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "true",
-            # Prevent subprocess from opening browser (Windows fix)
+            "CLAUDE_CODE_DISABLE_BUILTIN_AGENTS": "true",
+            "CLAUDE_CODE_EFFORT_LEVEL": "max",
             "BROWSER": "",
         }
     )

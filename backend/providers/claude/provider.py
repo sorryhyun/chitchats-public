@@ -185,7 +185,7 @@ class ClaudeProvider(AIProvider):
         # Determine model
         model = base_options.model
         if not model:
-            model = "claude-opus-4-6" if not _settings.use_haiku else "claude-haiku-4-5-20251001"
+            model = "claude-opus-4-6" if not _settings.use_haiku else "claude-sonnet-4-6"
 
         # Use static config for unchanging settings
         static = DEFAULT_CLAUDE_CONFIG

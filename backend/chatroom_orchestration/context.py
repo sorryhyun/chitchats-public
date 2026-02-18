@@ -261,17 +261,6 @@ def build_conversation_context(
 
     # Add response instruction (if requested)
     if include_response_instruction and agent_name:
-        # Pseudo-random sampling for uncommon/rare thought instructions
-        roll = random.random()
-        if roll < 0.05:
-            logger.info(f"Rare thought triggered for {agent_name} (roll={roll:.3f} < 0.05)")
-            rare_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 10% of the time.</special_instruction>\n"
-            current_text += rare_instruction
-        elif roll < 0.10:
-            logger.info(f"Uncommon thought triggered for {agent_name} (roll={roll:.3f} < 0.10)")
-            uncommon_instruction = f"<special_instruction>For this response only: Generate a thought {agent_name} would have less than 20% of the time.</special_instruction>\n"
-            current_text += uncommon_instruction
-
         # For Codex provider, try to use the _codex variant first
         if provider == "codex":
             instruction = config.get("response_instruction_codex", "")

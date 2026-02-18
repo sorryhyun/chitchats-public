@@ -252,83 +252,113 @@ if (-not $SkipFrontend) {
 Write-Step "Ensuring PyInstaller is installed..."
 $exitCode = Invoke-BuildCommand -Command "uv pip install pyinstaller --quiet"
 
-# Build the executable
-Write-Step "Building Windows executable with PyInstaller..."
-$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ChitChats.spec --noconfirm"
+# Helper function to finalize a built exe (checksum, sign, report)
+function Complete-ExeBuild {
+    param(
+        [string]$ExePath,
+        [string]$ExeName
+    )
 
-# Check output
-$exePath = Join-Path $repoRoot "dist/ChitChats.exe"
-if (Test-Path $exePath) {
-    $size = (Get-Item $exePath).Length / 1MB
-    Write-Success "Build complete!"
+    if (-not (Test-Path $ExePath)) {
+        Write-Error "Build failed - $ExeName not found"
+        return $false
+    }
+
+    $size = (Get-Item $ExePath).Length / 1MB
+    Write-Success "$ExeName build complete!"
     Write-Host ""
-    Write-Host "Output: $exePath" -ForegroundColor Yellow
+    Write-Host "Output: $ExePath" -ForegroundColor Yellow
     Write-Host "Size: $([math]::Round($size, 2)) MB" -ForegroundColor Yellow
 
     # Generate checksum (compatible with all PowerShell versions)
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    $fileStream = [System.IO.File]::OpenRead($exePath)
+    $sha256hash = [System.Security.Cryptography.SHA256]::Create()
+    $fileStream = [System.IO.File]::OpenRead($ExePath)
     try {
-        $hashBytes = $sha256.ComputeHash($fileStream)
+        $hashBytes = $sha256hash.ComputeHash($fileStream)
         $hashString = [BitConverter]::ToString($hashBytes) -replace '-', ''
     } finally {
         $fileStream.Close()
-        $sha256.Dispose()
+        $sha256hash.Dispose()
     }
     Write-Host "SHA256: $hashString" -ForegroundColor Yellow
 
     # Save checksum to file
-    $checksumFile = Join-Path $repoRoot "dist/ChitChats.exe.sha256"
-    "$hashString  ChitChats.exe" | Out-File -FilePath $checksumFile -Encoding ASCII
+    $checksumFile = "$ExePath.sha256"
+    "$hashString  $ExeName" | Out-File -FilePath $checksumFile -Encoding ASCII
     Write-Host "Checksum saved to: $checksumFile" -ForegroundColor Yellow
 
     # Sign the executable if requested
-    if ($Sign) {
+    if ($script:Sign) {
         Write-Host ""
 
-        # Check if certificate exists, offer to create if not
-        if (-not (Test-Path $CertPath)) {
-            Write-Host "Certificate not found: $CertPath" -ForegroundColor Yellow
+        # Check if certificate exists, offer to create if not (only prompt once)
+        if (-not (Test-Path $script:CertPath)) {
+            Write-Host "Certificate not found: $($script:CertPath)" -ForegroundColor Yellow
             $createCert = Read-Host "Create a development certificate? (Y/n)"
             if ($createCert -ne 'n' -and $createCert -ne 'N') {
-                if (-not $CertPassword) {
-                    $CertPassword = Read-Host "Enter password for new certificate"
+                if (-not $script:CertPassword) {
+                    $script:CertPassword = Read-Host "Enter password for new certificate"
                 }
-                if (-not (New-DevCertificate -CertPath $CertPath -Password $CertPassword)) {
+                if (-not (New-DevCertificate -CertPath $script:CertPath -Password $script:CertPassword)) {
                     Write-Error "Failed to create certificate"
-                    exit 1
+                    return $false
                 }
             } else {
                 Write-Host "Skipping code signing." -ForegroundColor Yellow
-                $Sign = $false
+                $script:Sign = $false
             }
         }
 
         # Prompt for password if not provided
-        if ($Sign -and -not $CertPassword) {
-            $CertPassword = Read-Host "Enter certificate password"
+        if ($script:Sign -and -not $script:CertPassword) {
+            $script:CertPassword = Read-Host "Enter certificate password"
         }
 
         # Sign the executable
-        if ($Sign) {
-            if (-not (Sign-Executable -ExePath $exePath -CertPath $CertPath -Password $CertPassword)) {
-                Write-Error "Code signing failed"
-                exit 1
+        if ($script:Sign) {
+            if (-not (Sign-Executable -ExePath $ExePath -CertPath $script:CertPath -Password $script:CertPassword)) {
+                Write-Error "Code signing failed for $ExeName"
+                return $false
             }
         }
     }
 
-    Write-Host ""
-    Write-Host "To run the application:" -ForegroundColor Cyan
-    Write-Host "  1. Copy ChitChats.exe to your desired location"
-    Write-Host "  2. Create a .env file with API_KEY_HASH and JWT_SECRET"
-    Write-Host "  3. Run ChitChats.exe"
-    Write-Host ""
+    return $true
+}
 
-    if (-not $Sign) {
-        Write-Host "Tip: Use -Sign to code sign the executable" -ForegroundColor DarkGray
-    }
-} else {
-    Write-Error "Build failed - executable not found"
+# Build the main executable (Opus mode)
+Write-Step "Building ChitChats.exe (Opus mode) with PyInstaller..."
+$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ChitChats.spec --noconfirm"
+
+$exePath = Join-Path $repoRoot "dist/ChitChats.exe"
+if (-not (Complete-ExeBuild -ExePath $exePath -ExeName "ChitChats.exe")) {
     exit 1
+}
+
+# Build the Haiku executable (Sonnet 4.6 mode)
+Write-Step "Building ChitChats-Haiku.exe (Sonnet 4.6 mode) with PyInstaller..."
+$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ChitChats-Haiku.spec --noconfirm"
+
+$haikuExePath = Join-Path $repoRoot "dist/ChitChats-Haiku.exe"
+if (-not (Complete-ExeBuild -ExePath $haikuExePath -ExeName "ChitChats-Haiku.exe")) {
+    exit 1
+}
+
+# Summary
+Write-Host ""
+Write-Host "=" * 60 -ForegroundColor Cyan
+Write-Host "Build Summary" -ForegroundColor Cyan
+Write-Host "=" * 60 -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  ChitChats.exe       - Uses Claude Opus 4.6 (default)" -ForegroundColor Yellow
+Write-Host "  ChitChats-Haiku.exe - Uses Claude Sonnet 4.6 (USE_HAIKU=true)" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "To run the application:" -ForegroundColor Cyan
+Write-Host "  1. Copy the desired .exe to your location"
+Write-Host "  2. Create a .env file with API_KEY_HASH and JWT_SECRET"
+Write-Host "  3. Run the .exe"
+Write-Host ""
+
+if (-not $Sign) {
+    Write-Host "Tip: Use -Sign to code sign the executables" -ForegroundColor DarkGray
 }
