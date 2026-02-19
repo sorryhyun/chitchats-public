@@ -11,17 +11,6 @@ This document tracks differences between the public repository (`claude_code_RP`
 
 ## Files Unique to This Repository (Public)
 
-### Backend
-
-#### `backend/providers/codex/windows_support.py`
-
-Platform-specific support for bundled Codex binaries:
-
-- Detects and resolves paths to bundled Codex executables across platforms (Windows, macOS, Linux)
-- Handles both development and PyInstaller bundle deployments
-- Maps platform identifiers to binary names (e.g., `codex-x86_64-pc-windows-msvc.exe`)
-- Searches multiple locations: exe directory, `_MEIPASS` temp directory, project `bundled/` folder
-
 ### Frontend
 
 #### `frontend/src/components/SetupWizard.tsx`

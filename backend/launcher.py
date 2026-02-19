@@ -31,10 +31,6 @@ _browser_opened = False
 DEFAULT_PORT = 8000
 FALLBACK_PORTS = [8001, 8080, 8888, 9000]
 
-# Codex binary download URL for Windows
-CODEX_DOWNLOAD_URL = "https://github.com/openai/codex/releases/download/rust-v0.98.0/codex-x86_64-pc-windows-msvc.exe"
-CODEX_BINARY_NAME = "codex-x86_64-pc-windows-msvc.exe"
-
 
 def find_available_port(preferred_port: int = DEFAULT_PORT) -> int:
     """Find an available port, starting with the preferred port.
@@ -134,54 +130,6 @@ def copy_default_agents():
             print("에이전트 폴더를 수동으로 생성해주세요.")
 
 
-def download_codex_binary():
-    """Download Codex CLI binary for Windows if not already present.
-
-    Only runs when packaged as a frozen exe on Windows.
-    Downloads the binary next to ChitChats.exe so that
-    windows_support.get_bundled_codex_path() can find it.
-    """
-    if not getattr(sys, "frozen", False):
-        return
-
-    if sys.platform != "win32":
-        return
-
-    work_dir = get_work_dir()
-    codex_path = work_dir / CODEX_BINARY_NAME
-
-    if codex_path.exists():
-        return  # Already downloaded
-
-    print("Codex CLI를 다운로드하는 중...")
-    print(f"URL: {CODEX_DOWNLOAD_URL}")
-
-    try:
-        import urllib.request
-
-        tmp_path = codex_path.with_suffix(".tmp")
-
-        def _progress_hook(block_num, block_size, total_size):
-            if total_size > 0:
-                downloaded = block_num * block_size
-                pct = min(100, downloaded * 100 // total_size)
-                mb_done = downloaded / (1024 * 1024)
-                mb_total = total_size / (1024 * 1024)
-                print(f"\r  다운로드 중... {pct}% ({mb_done:.1f}/{mb_total:.1f} MB)", end="", flush=True)
-
-        urllib.request.urlretrieve(CODEX_DOWNLOAD_URL, tmp_path, _progress_hook)
-        print()  # newline after progress
-
-        tmp_path.rename(codex_path)
-        print(f"Codex CLI 다운로드 완료: {codex_path}")
-    except Exception as e:
-        print(f"\n경고: Codex CLI 다운로드 실패: {e}")
-        print("Codex 기능을 사용하려면 수동으로 다운로드해주세요.")
-        # Clean up partial download
-        tmp_path = codex_path.with_suffix(".tmp")
-        if tmp_path.exists():
-            tmp_path.unlink()
-
 
 def is_env_configured(env_file: Path) -> bool:
     """Check if .env file has valid configuration."""
@@ -271,9 +219,8 @@ def setup_environment() -> bool:
     work_dir = get_work_dir()
     env_file = work_dir / ".env"
 
-    # Copy default agents and download Codex binary
+    # Copy default agents
     copy_default_agents()
-    download_codex_binary()
 
     # Check if setup is needed
     if is_env_configured(env_file):

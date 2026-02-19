@@ -7,7 +7,7 @@ All settings are loaded once at application startup.
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -41,16 +41,6 @@ def _get_work_dir() -> Path:
 # ============================================================================
 # Application Constants
 # ============================================================================
-
-# Bundled Codex binary paths by platform (relative to project root)
-BUNDLED_CODEX_PATHS: Dict[str, str] = {
-    "windows-amd64": "bundled/codex-x86_64-pc-windows-msvc.exe",
-    "windows-x86_64": "bundled/codex-x86_64-pc-windows-msvc.exe",
-    "darwin-arm64": "bundled/codex-aarch64-apple-darwin",
-    "darwin-x86_64": "bundled/codex-x86_64-apple-darwin",
-    "linux-x86_64": "bundled/codex-x86_64-unknown-linux-gnu",
-    "linux-aarch64": "bundled/codex-aarch64-unknown-linux-gnu",
-}
 
 # Default fallback prompt if no configuration is provided
 DEFAULT_FALLBACK_PROMPT = "You are a helpful AI assistant."

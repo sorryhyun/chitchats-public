@@ -21,7 +21,6 @@ from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTur
 
 from .constants import AppServerMethod, map_approval_policy, map_sandbox
 from .transport import JsonRpcTransport
-from .windows_support import get_bundled_codex_path
 
 logger = logging.getLogger("CodexAppServerInstance")
 
@@ -156,10 +155,8 @@ class CodexAppServerInstance:
         if self.is_started:
             return
 
-        # Prefer bundled Rust binary over npm-installed version (Windows support)
-        codex_path = get_bundled_codex_path()
-        if not codex_path:
-            codex_path = shutil.which("codex")
+        # Codex supports native Windows — always resolve from PATH
+        codex_path = shutil.which("codex")
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
