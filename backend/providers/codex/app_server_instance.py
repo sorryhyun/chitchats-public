@@ -2,7 +2,7 @@
 Single Codex App Server instance.
 
 This module provides the CodexAppServerInstance class that manages a single
-`codex app-server` subprocess using JSON-RPC 2.0 protocol over stdio.
+`codex app-server` subprocess communicating via WebSocket JSON-RPC 2.0.
 
 Unlike the MCP server, the App Server:
 - Uses JSON-RPC 2.0 (without jsonrpc header field)
@@ -13,14 +13,16 @@ Unlike the MCP server, the App Server:
 
 import asyncio
 import logging
+import os
 import shutil
+import socket
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTurnConfig
 
 from .constants import AppServerMethod, map_approval_policy, map_sandbox
-from .transport import JsonRpcTransport
+from .ws_transport import WsJsonRpcTransport
 
 logger = logging.getLogger("CodexAppServerInstance")
 
@@ -28,8 +30,8 @@ logger = logging.getLogger("CodexAppServerInstance")
 class CodexAppServerInstance:
     """Single Codex App Server instance.
 
-    Manages one `codex app-server` subprocess with JSON-RPC 2.0 communication.
-    Uses JsonRpcTransport for low-level message handling.
+    Manages one `codex app-server` subprocess with JSON-RPC 2.0 communication
+    over WebSocket. Uses WsJsonRpcTransport for message handling.
 
     Usage:
         instance = CodexAppServerInstance(instance_id=0)
@@ -57,7 +59,9 @@ class CodexAppServerInstance:
         self._startup_config = startup_config or DEFAULT_CODEX_CONFIG
         self._agent_key = agent_key
 
-        self._transport: Optional[JsonRpcTransport] = None
+        self._transport: Optional[WsJsonRpcTransport] = None
+        self._process: Optional[asyncio.subprocess.Process] = None
+        self._stderr_task: Optional[asyncio.Task] = None
         self._active_threads: Set[str] = set()
         self._current_turn_id: Optional[str] = None
         self._notification_queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
@@ -78,8 +82,12 @@ class CodexAppServerInstance:
 
     @property
     def is_healthy(self) -> bool:
-        """Check if the server is healthy."""
-        return self._transport is not None and self._transport.is_healthy
+        """Check if the server is healthy (WS connected AND process alive)."""
+        if self._transport is None or not self._transport.is_healthy:
+            return False
+        if self._process is None or self._process.returncode is not None:
+            return False
+        return True
 
     @property
     def active_thread_count(self) -> int:
@@ -109,15 +117,15 @@ class CodexAppServerInstance:
     @property
     def process_pid(self) -> Optional[int]:
         """Get the process PID if running."""
-        if self._transport and self._transport.process:
-            return self._transport.process.pid
+        if self._process and self._process.pid:
+            return self._process.pid
         return None
 
     def kill(self) -> None:
         """Forcefully kill the subprocess (sync, for emergency cleanup)."""
-        if self._transport and self._transport.process:
+        if self._process:
             try:
-                self._transport.process.kill()
+                self._process.kill()
             except ProcessLookupError:
                 pass
 
@@ -150,8 +158,53 @@ class CodexAppServerInstance:
         if self._notification_queue is not None:
             await self._notification_queue.put(message)
 
+    @staticmethod
+    def _find_free_port() -> int:
+        """Find a free port by binding to port 0 and letting the OS assign one."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    async def _read_stderr(self) -> None:
+        """Background task to log subprocess stderr at DEBUG level."""
+        if not self._process or not self._process.stderr:
+            return
+        try:
+            while True:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                text = line.decode(errors="replace").rstrip()
+                if text:
+                    logger.debug(f"[Instance {self._instance_id}] stderr: {text}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"[Instance {self._instance_id}] stderr reader error: {e}")
+
+    async def _terminate_process(self) -> None:
+        """Terminate the subprocess: SIGTERM -> 5s wait -> SIGKILL."""
+        if not self._process:
+            return
+        try:
+            if self._process.returncode is None:
+                self._process.terminate()
+                await asyncio.wait_for(self._process.wait(), timeout=5.0)
+        except asyncio.TimeoutError:
+            try:
+                self._process.kill()
+                await self._process.wait()
+            except ProcessLookupError:
+                pass
+        except ProcessLookupError:
+            pass
+        except Exception as e:
+            if str(e):
+                logger.warning(f"[Instance {self._instance_id}] Error terminating process: {e}")
+        self._process = None
+
     async def start(self) -> None:
-        """Start the Codex App Server process and initialize connection."""
+        """Start the Codex App Server process and initialize WebSocket connection."""
         if self.is_started:
             return
 
@@ -160,24 +213,49 @@ class CodexAppServerInstance:
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
+        # Allocate a free port for WebSocket
+        port = self._find_free_port()
+        ws_url = f"ws://127.0.0.1:{port}"
+
         # Build command with CLI args from startup config
         cli_args = self._startup_config.to_cli_args()
-        command = [codex_path, "app-server", *cli_args]
+        command = [codex_path, "app-server", *cli_args, "--listen", ws_url]
 
-        logger.info(f"[Instance {self._instance_id}] Starting Codex App Server with args: {' '.join(cli_args)}")
+        logger.info(f"[Instance {self._instance_id}] Starting Codex App Server on {ws_url} with args: {' '.join(cli_args)}")
 
-        # Create and start transport
-        self._transport = JsonRpcTransport(
-            command=command,
+        # Build environment with BROWSER="" to prevent subprocess from opening browser
+        subprocess_env = {**os.environ, "BROWSER": ""}
+
+        # Spawn subprocess with stdin/stdout detached (communication is via WebSocket)
+        self._process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+            env=subprocess_env,
+        )
+
+        logger.info(f"[Instance {self._instance_id}] Process started (PID: {self._process.pid})")
+
+        # Start stderr logging task
+        self._stderr_task = asyncio.create_task(self._read_stderr())
+
+        # Create WebSocket transport and connect with retry
+        self._transport = WsJsonRpcTransport(
             on_notification=self._handle_notification,
             instance_id=self._instance_id,
         )
-        await self._transport.start()
+        try:
+            await self._transport.connect(ws_url)
+        except RuntimeError:
+            # Connection failed — clean up the process
+            await self._terminate_process()
+            raise
 
         # Perform initialize handshake
         await self._initialize_handshake()
 
-        logger.info(f"[Instance {self._instance_id}] Codex App Server started")
+        logger.info(f"[Instance {self._instance_id}] Codex App Server started on {ws_url}")
 
     async def _initialize_handshake(self) -> None:
         """Perform JSON-RPC initialize handshake."""
@@ -388,12 +466,25 @@ class CodexAppServerInstance:
         await self.start()
 
     async def shutdown(self) -> None:
-        """Gracefully shutdown the app server."""
+        """Gracefully shutdown the app server (transport + process)."""
         logger.info(f"[Instance {self._instance_id}] Shutting down...")
 
+        # Shutdown WebSocket transport first
         if self._transport:
             await self._transport.shutdown()
             self._transport = None
+
+        # Cancel stderr reader
+        if self._stderr_task and not self._stderr_task.done():
+            self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except asyncio.CancelledError:
+                pass
+            self._stderr_task = None
+
+        # Terminate the subprocess
+        await self._terminate_process()
 
         self._notification_queue = None
         self._active_threads.clear()
