@@ -34,10 +34,16 @@ async def create_room(db: AsyncSession, room: schemas.RoomCreate, owner_id: str)
     room_name = room.name
     max_interactions = room.max_interactions
     provider = room.provider or "claude"
+    model = room.model  # Optional model override
 
     # Validate provider
     if provider not in ("claude", "codex"):
         raise ValueError(f"Invalid provider: {provider}")
+
+    # Validate model if specified
+    valid_models = ("claude-opus-4-6", "claude-sonnet-4-6")
+    if model and model not in valid_models:
+        raise ValueError(f"Invalid model: {model}. Must be one of {valid_models}")
 
     # Apply guest restrictions
     if owner_id.startswith("guest-"):
@@ -51,6 +57,7 @@ async def create_room(db: AsyncSession, room: schemas.RoomCreate, owner_id: str)
         max_interactions=max_interactions,
         owner_id=owner_id,
         default_provider=provider,
+        default_model=model,
     )
     db.add(db_room)
     await db.commit()
@@ -100,6 +107,7 @@ async def get_rooms(db: AsyncSession, identity=None) -> List[schemas.RoomSummary
             is_paused=bool(room.is_paused),
             is_finished=bool(room.is_finished),
             default_provider=room.default_provider,
+            default_model=room.default_model,
             created_at=room.created_at,
             last_activity_at=room.last_activity_at,
             last_read_at=room.last_read_at,
@@ -206,7 +214,7 @@ async def delete_room(db: AsyncSession, room_id: int) -> bool:
 
 
 async def get_or_create_direct_room(
-    db: AsyncSession, agent_id: int, owner_id: str, provider: str = "claude"
+    db: AsyncSession, agent_id: int, owner_id: str, provider: str = "claude", model: str | None = None
 ) -> Optional[models.Room]:
     """Get or create a direct 1-on-1 room with an agent.
 
@@ -215,6 +223,7 @@ async def get_or_create_direct_room(
         agent_id: ID of the agent
         owner_id: Owner identifier (user_id or guest-xxx)
         provider: AI provider - "claude" or "codex"
+        model: Optional model override - "claude-opus-4-6" or "claude-sonnet-4-6"
 
     Returns:
         Room object or None if agent not found
@@ -222,6 +231,11 @@ async def get_or_create_direct_room(
     # Validate provider
     if provider not in ("claude", "codex"):
         raise ValueError(f"Invalid provider: {provider}")
+
+    # Validate model if specified
+    valid_models = ("claude-opus-4-6", "claude-sonnet-4-6")
+    if model and model not in valid_models:
+        raise ValueError(f"Invalid model: {model}. Must be one of {valid_models}")
 
     # First, check if agent exists
     agent_result = await db.execute(select(models.Agent).where(models.Agent.id == agent_id))
@@ -233,9 +247,15 @@ async def get_or_create_direct_room(
     # Look for existing direct room with this agent for the current owner
     # Direct rooms have naming convention: "Direct: {agent_name}" or "guest: Direct: {agent_name}"
     # With provider suffix for non-claude: "Direct: {agent_name} (codex)"
+    # With model suffix for specific models: "Direct: {agent_name} [sonnet]"
     is_guest = owner_id.startswith("guest-")
     provider_suffix = f" ({provider})" if provider != "claude" else ""
-    base_room_name = f"Direct: {agent.name}{provider_suffix}"
+    model_suffix = ""
+    if model == "claude-sonnet-4-6":
+        model_suffix = " [sonnet]"
+    elif model == "claude-opus-4-6":
+        model_suffix = " [opus]"
+    base_room_name = f"Direct: {agent.name}{provider_suffix}{model_suffix}"
     room_name = f"guest: {base_room_name}" if is_guest else base_room_name
 
     result = await db.execute(
@@ -257,6 +277,7 @@ async def get_or_create_direct_room(
         owner_id=owner_id,
         max_interactions=max_interactions,
         default_provider=provider,
+        default_model=model,
     )
     db.add(db_room)
     await db.flush()  # Flush to get the room ID

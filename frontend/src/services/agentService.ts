@@ -74,8 +74,10 @@ export const agentService = {
     return response.json();
   },
 
-  async getAgentDirectRoom(agentId: number, provider: 'claude' | 'codex' = 'claude'): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}/direct-room?provider=${provider}`, getFetchOptions());
+  async getAgentDirectRoom(agentId: number, provider: 'claude' | 'codex' = 'claude', model?: string): Promise<Room> {
+    const params = new URLSearchParams({ provider });
+    if (model) params.set('model', model);
+    const response = await fetch(`${API_BASE_URL}/agents/${agentId}/direct-room?${params}`, getFetchOptions());
     if (!response.ok) throw new Error('Failed to get agent direct room');
     return response.json();
   },

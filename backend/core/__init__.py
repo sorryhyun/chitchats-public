@@ -36,7 +36,7 @@ from .exceptions import (
     RoomNotFoundError,
 )
 from .logging import get_logger, setup_logging
-from .settings import Settings, get_settings, get_use_sonnet, reset_settings, set_use_sonnet
+from .settings import Settings, get_settings, reset_settings
 
 # Lazy-loaded exports (to avoid circular imports)
 _lazy_imports = {
@@ -71,9 +71,7 @@ __all__ = [
     # Settings
     "Settings",
     "get_settings",
-    "get_use_sonnet",
     "reset_settings",
-    "set_use_sonnet",
     # Logging
     "setup_logging",
     "get_logger",

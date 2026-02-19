@@ -82,6 +82,7 @@ export interface Room {
   max_interactions: number | null;
   is_paused: boolean;
   default_provider: ProviderType;
+  default_model: string | null;
   created_at: string;
   last_activity_at: string | null;
   last_read_at: string | null;
@@ -96,6 +97,7 @@ export interface RoomSummary {
   max_interactions: number | null;
   is_paused: boolean;
   default_provider: ProviderType;
+  default_model: string | null;
   created_at: string;
   last_activity_at: string | null;
   last_read_at: string | null;
@@ -106,6 +108,7 @@ export interface RoomCreate {
   name: string;
   max_interactions?: number | null;
   provider?: ProviderType;
+  model?: string;
 }
 
 export interface RoomUpdate {

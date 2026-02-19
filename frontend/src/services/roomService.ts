@@ -20,10 +20,13 @@ export const roomService = {
     return response.json();
   },
 
-  async createRoom(name: string, provider?: ProviderType): Promise<Room> {
-    const body: { name: string; provider?: ProviderType } = { name };
+  async createRoom(name: string, provider?: ProviderType, model?: string): Promise<Room> {
+    const body: { name: string; provider?: ProviderType; model?: string } = { name };
     if (provider) {
       body.provider = provider;
+    }
+    if (model) {
+      body.model = model;
     }
     const response = await fetch(`${API_BASE_URL}/rooms`, getFetchOptions({
       method: 'POST',

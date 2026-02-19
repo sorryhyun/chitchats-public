@@ -9,39 +9,51 @@ interface RoomListPanelProps {
   onDeleteRoom: (roomId: number) => Promise<void>;
 }
 
-// Get provider icon for room
-const getProviderIcon = (provider: string): string => {
-  switch (provider) {
-    case 'claude': return 'C';
+// Determine the display key based on provider + model
+const getRoomDisplayKey = (provider: string, model: string | null): string => {
+  if (provider === 'codex') return 'codex';
+  if (provider === 'custom') return 'custom';
+  if (model === 'claude-sonnet-4-6') return 'sonnet';
+  return 'opus'; // default claude = opus
+};
+
+// Get room icon based on display key
+const getProviderIcon = (key: string): string => {
+  switch (key) {
+    case 'opus': return 'O';
+    case 'sonnet': return 'S';
     case 'codex': return 'X';
     case 'custom': return '★';
     default: return '#';
   }
 };
 
-// Get provider background color
-const getProviderBgColor = (provider: string, isSelected: boolean): string => {
+// Get room badge background color
+const getProviderBgColor = (key: string, isSelected: boolean): string => {
   if (isSelected) {
-    switch (provider) {
-      case 'claude': return 'bg-[#D97757]';
+    switch (key) {
+      case 'opus': return 'bg-[#D97757]';
+      case 'sonnet': return 'bg-[#B8860B]';
       case 'codex': return 'bg-[#10A37F]';
       case 'custom': return 'bg-[#F59E0B]';
       default: return 'bg-slate-700';
     }
   }
-  switch (provider) {
-    case 'claude': return 'bg-[#D97757]/20 group-hover:bg-[#D97757]/30';
+  switch (key) {
+    case 'opus': return 'bg-[#D97757]/20 group-hover:bg-[#D97757]/30';
+    case 'sonnet': return 'bg-[#B8860B]/20 group-hover:bg-[#B8860B]/30';
     case 'codex': return 'bg-[#10A37F]/20 group-hover:bg-[#10A37F]/30';
     case 'custom': return 'bg-[#F59E0B]/20 group-hover:bg-[#F59E0B]/30';
     default: return 'bg-slate-200 group-hover:bg-slate-300';
   }
 };
 
-// Get provider text color
-const getProviderTextColor = (provider: string, isSelected: boolean): string => {
+// Get room badge text color
+const getProviderTextColor = (key: string, isSelected: boolean): string => {
   if (isSelected) return 'text-white';
-  switch (provider) {
-    case 'claude': return 'text-[#D97757]';
+  switch (key) {
+    case 'opus': return 'text-[#D97757]';
+    case 'sonnet': return 'text-[#B8860B]';
     case 'codex': return 'text-[#10A37F]';
     case 'custom': return 'text-[#F59E0B]';
     default: return 'text-slate-600';
@@ -65,7 +77,9 @@ export const RoomListPanel = ({
           <p className="text-xs mt-1">Create one or select an agent!</p>
         </div>
       ) : (
-        rooms.map((room) => (
+        rooms.map((room) => {
+          const displayKey = getRoomDisplayKey(room.default_provider, room.default_model);
+          return (
           <div
             key={room.id}
             onClick={() => onSelectRoom(room.id)}
@@ -77,10 +91,10 @@ export const RoomListPanel = ({
           >
             <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
               <div className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                getProviderBgColor(room.default_provider, selectedRoomId === room.id)
+                getProviderBgColor(displayKey, selectedRoomId === room.id)
               }`}>
-                <span className={`text-base sm:text-lg font-semibold ${getProviderTextColor(room.default_provider, selectedRoomId === room.id)}`}>
-                  {getProviderIcon(room.default_provider)}
+                <span className={`text-base sm:text-lg font-semibold ${getProviderTextColor(displayKey, selectedRoomId === room.id)}`}>
+                  {getProviderIcon(displayKey)}
                 </span>
                 {room.has_unread && (
                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>
@@ -131,7 +145,8 @@ export const RoomListPanel = ({
               </button>
             )}
           </div>
-        ))
+          );
+        })
       )}
     </div>
   );

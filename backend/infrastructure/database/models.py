@@ -32,6 +32,9 @@ class Room(Base):
     default_provider = Column(
         String, default="claude"
     )  # Default AI provider: 'claude' or 'codex' (immutable after creation)
+    default_model = Column(
+        String, nullable=True
+    )  # Default model override: 'claude-sonnet-4-6' etc. (None = provider default)
 
     agents = relationship("Agent", secondary=room_agents, back_populates="rooms")
     messages = relationship("Message", back_populates="room", cascade="all, delete-orphan")

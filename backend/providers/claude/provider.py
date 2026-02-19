@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk.types import HookMatcher, PostToolUseHookInput, SyncHookJSONOutput
-from core.settings import get_use_sonnet
+from core import get_settings
 from domain.task_identifier import TaskIdentifier
 
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
@@ -180,10 +180,11 @@ class ClaudeProvider(AIProvider):
         # Create PostToolUse hooks
         hooks = self._build_tool_capture_hooks(anthropic_calls_capture, skip_tool_capture, excuse_reasons_capture)
 
-        # Determine model
+        # Determine model: room override → env var default → opus
         model = base_options.model
         if not model:
-            model = "claude-sonnet-4-6" if get_use_sonnet() else "claude-opus-4-6"
+            _settings = get_settings()
+            model = "claude-sonnet-4-6" if _settings.use_sonnet else "claude-opus-4-6"
 
         # Use static config for unchanging settings
         static = DEFAULT_CLAUDE_CONFIG

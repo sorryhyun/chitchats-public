@@ -147,12 +147,12 @@ class AIClientOptions:
         Returns:
             Configured AIClientOptions instance
         """
-        # Determine model based on provider
+        # Determine model: use room's model override, then provider default
         from core import get_settings
 
         settings = get_settings()
-        model = ""
-        if provider_type == ProviderType.CODEX and settings.codex_model:
+        model = context.model or ""
+        if not model and provider_type == ProviderType.CODEX and settings.codex_model:
             model = settings.codex_model
 
         return cls(

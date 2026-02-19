@@ -15,6 +15,7 @@ class RoomBase(BaseModel):
 class RoomCreate(RoomBase):
     max_interactions: Optional[int] = None
     provider: Optional[str] = "claude"  # AI provider: 'claude' or 'codex'
+    model: Optional[str] = None  # Model override: 'claude-sonnet-4-6' etc.
 
 
 class RoomUpdate(BaseModel):
@@ -31,6 +32,7 @@ class Room(TimestampSerializerMixin, RoomBase):
     is_paused: bool = False
     is_finished: bool = False
     default_provider: str = "claude"  # AI provider: 'claude' or 'codex'
+    default_model: Optional[str] = None  # Model override
     created_at: datetime
     last_activity_at: Optional[datetime] = None
     last_read_at: Optional[datetime] = None
@@ -48,6 +50,7 @@ class RoomSummary(TimestampSerializerMixin, RoomBase):
     is_paused: bool = False
     is_finished: bool = False
     default_provider: str = "claude"  # AI provider: 'claude' or 'codex'
+    default_model: Optional[str] = None  # Model override
     created_at: datetime
     last_activity_at: Optional[datetime] = None
     last_read_at: Optional[datetime] = None

@@ -220,6 +220,7 @@ async def _migrate_rooms_table(conn):
         ("last_read_at", "TIMESTAMP", None),
         ("is_finished", "BOOLEAN", "FALSE"),
         ("default_provider", "VARCHAR", "'claude'"),  # v9: AI provider support
+        ("default_model", "VARCHAR", None),  # v11: Per-room model selection (Opus/Sonnet)
     ]
 
     for col_name, col_type, default in simple_columns:

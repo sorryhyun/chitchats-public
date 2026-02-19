@@ -50,6 +50,7 @@ async def delete_agent(
 async def get_agent_direct_room(
     agent_id: int,
     provider: str = "claude",
+    model: str | None = None,
     identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -58,12 +59,13 @@ async def get_agent_direct_room(
     Args:
         agent_id: ID of the agent
         provider: AI provider - "claude" (default) or "codex"
+        model: Optional model override - "claude-opus-4-6" or "claude-sonnet-4-6"
     """
     if provider not in ("claude", "codex"):
         raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")
 
     owner_id = "admin" if identity.role == "admin" else identity.user_id
-    room = await crud.get_or_create_direct_room(db, agent_id, owner_id=owner_id, provider=provider)
+    room = await crud.get_or_create_direct_room(db, agent_id, owner_id=owner_id, provider=provider, model=model)
     if room is None:
         raise HTTPException(status_code=404, detail="Agent not found")
 

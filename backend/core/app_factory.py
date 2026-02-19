@@ -43,7 +43,6 @@ def create_app() -> FastAPI:
         room_agents,
         rooms,
         serve_mcp,
-        settings,
         sse,
         tools_api,
         user,
@@ -312,7 +311,6 @@ def create_app() -> FastAPI:
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])
     app.include_router(voice.router, prefix="/voice", tags=["Voice"])
     app.include_router(user.router, prefix="/user", tags=["User"])
-    app.include_router(settings.router, prefix="/settings", tags=["Settings"])
     app.include_router(tools_api.router, tags=["Tools"])
     app.include_router(serve_mcp.router, tags=["MCP Tools"])
 

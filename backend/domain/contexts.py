@@ -108,6 +108,7 @@ class AgentResponseContext:
         conversation_started: Optional timestamp when the conversation started
         has_situation_builder: Whether the room has a situation builder participant
         provider: AI provider to use ('claude' or 'codex')
+        model: Optional model override (e.g., 'claude-sonnet-4-6'). None = provider default.
     """
 
     system_prompt: str
@@ -123,3 +124,4 @@ class AgentResponseContext:
     conversation_started: Optional[str] = None
     has_situation_builder: bool = False
     provider: str = "claude"
+    model: Optional[str] = None

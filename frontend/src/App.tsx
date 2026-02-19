@@ -94,8 +94,8 @@ function AppContent() {
     localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
-  const handleSelectAgent = async (agentId: number, provider: 'claude' | 'codex') => {
-    await agentContext.selectAgent(agentId, provider);
+  const handleSelectAgent = async (agentId: number, provider: 'claude' | 'codex', model?: string) => {
+    await agentContext.selectAgent(agentId, provider, model);
   };
 
   const handleSelectRoom = (roomId: number) => {

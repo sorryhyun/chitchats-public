@@ -25,7 +25,8 @@
       "Bash(xargs:*)",
       "Bash(git grep:*)",
       "Bash(cat:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

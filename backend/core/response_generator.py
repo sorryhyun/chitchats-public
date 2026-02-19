@@ -75,8 +75,9 @@ class ResponseGenerator:
         # Fetch room to get created_at timestamp and provider (use cache for performance)
         room = await crud.get_room_cached(orch_context.db, orch_context.room_id)
 
-        # Get the provider for this room (defaults to claude)
+        # Get the provider and model for this room
         provider = room.default_provider if room else "claude"
+        model = room.default_model if room else None
 
         # Fetch only the messages since this agent's last response (cache for performance)
         room_messages = await crud.get_messages_after_agent_response_cached(
@@ -146,6 +147,7 @@ class ResponseGenerator:
             conversation_started=conversation_started,
             has_situation_builder=has_situation_builder,
             provider=provider,
+            model=model,
         )
 
         # Handle streaming response events with session recovery support

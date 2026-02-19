@@ -7,7 +7,7 @@ type Provider = 'claude' | 'codex';
 interface AgentListPanelProps {
   agents: Agent[];
   selectedAgentId: number | null;
-  onSelectAgent: (agentId: number, provider: Provider) => void;
+  onSelectAgent: (agentId: number, provider: Provider, model?: string) => void;
   onViewProfile: (agent: Agent) => void;
 }
 
@@ -79,28 +79,39 @@ export const AgentListPanel = ({
         {agent.name}
       </span>
       {/* Action buttons - always visible */}
-      <div className="flex gap-1 flex-shrink-0">
+      <div className="flex gap-0.5 flex-shrink-0">
         {/* Codex button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onSelectAgent(agent.id, 'codex');
           }}
-          className="p-2 hover:bg-green-100 active:bg-green-200 rounded text-green-600 hover:text-green-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation font-bold text-sm"
+          className="p-1.5 hover:bg-green-100 active:bg-green-200 rounded text-green-600 hover:text-green-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-xs"
           title="Chat with Codex"
         >
           x
         </button>
-        {/* Claude button */}
+        {/* Opus button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onSelectAgent(agent.id, 'claude');
+            onSelectAgent(agent.id, 'claude', 'claude-opus-4-6');
           }}
-          className="p-2 hover:bg-orange-100 active:bg-orange-200 rounded text-orange-600 hover:text-orange-700 min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation font-bold text-sm"
-          title="Chat with Claude Code"
+          className="p-1.5 hover:bg-orange-100 active:bg-orange-200 rounded text-orange-600 hover:text-orange-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-xs"
+          title="Chat with Opus"
         >
-          c
+          o
+        </button>
+        {/* Sonnet button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectAgent(agent.id, 'claude', 'claude-sonnet-4-6');
+          }}
+          className="p-1.5 hover:bg-blue-100 active:bg-blue-200 rounded text-blue-600 hover:text-blue-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-xs"
+          title="Chat with Sonnet"
+        >
+          s
         </button>
       </div>
     </div>

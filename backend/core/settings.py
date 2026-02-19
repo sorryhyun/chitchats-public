@@ -399,33 +399,3 @@ def reset_settings() -> None:
     """
     global _settings
     _settings = None
-
-
-# ============================================================================
-# Runtime Model Override
-# ============================================================================
-
-_use_sonnet_override: Optional[bool] = None
-
-
-def get_use_sonnet() -> bool:
-    """
-    Get the effective use_sonnet setting, respecting runtime override.
-
-    Returns:
-        True if Sonnet should be used, False for Opus (default)
-    """
-    if _use_sonnet_override is not None:
-        return _use_sonnet_override
-    return get_settings().use_sonnet
-
-
-def set_use_sonnet(value: bool) -> None:
-    """
-    Set the runtime override for use_sonnet (persists until process restart).
-
-    Args:
-        value: True to use Sonnet, False to use Opus
-    """
-    global _use_sonnet_override
-    _use_sonnet_override = value

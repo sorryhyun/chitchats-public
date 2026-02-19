@@ -15,7 +15,7 @@ type Provider = 'claude' | 'codex';
 
 interface MainSidebarProps {
   onSelectRoom: (roomId: number) => void;
-  onSelectAgent: (agentId: number, provider: Provider) => Promise<void>;
+  onSelectAgent: (agentId: number, provider: Provider, model?: string) => Promise<void>;
   onOpenDocs?: () => void;
   onOpenSettings?: () => void;
   onOpenExport?: () => void;
@@ -40,13 +40,13 @@ export const MainSidebar = ({
   const [newRoomName, setNewRoomName] = useState('');
   const { configs: availableConfigs, fetchConfigs } = useFetchAgentConfigs();
 
-  // Create a new room with the specified provider
-  const handleCreateRoom = async (provider: ProviderType) => {
+  // Create a new room with the specified provider and optional model
+  const handleCreateRoom = async (provider: ProviderType, model?: string) => {
     const trimmedName = newRoomName.trim();
     if (!trimmedName) return;
 
     try {
-      const room = await roomContext.createRoom(trimmedName, provider);
+      const room = await roomContext.createRoom(trimmedName, provider, model);
       setNewRoomName('');
       onSelectRoom(room.id);
     } catch (err) {
@@ -126,15 +126,23 @@ export const MainSidebar = ({
               <button
                 onClick={() => handleCreateRoom('claude')}
                 disabled={!newRoomName.trim()}
-                className="flex-1 px-3 py-2.5 bg-[#D97757] hover:bg-[#c96747] active:bg-[#b95737] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#D97757]"
+                className="flex-1 px-3 py-2.5 bg-[#D97757] hover:bg-[#c96747] active:bg-[#b95737] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#D97757]"
               >
                 <span className="text-lg">+</span>
-                Claude
+                Opus
+              </button>
+              <button
+                onClick={() => handleCreateRoom('claude', 'claude-sonnet-4-6')}
+                disabled={!newRoomName.trim()}
+                className="flex-1 px-3 py-2.5 bg-[#B8860B] hover:bg-[#a07509] active:bg-[#886407] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#B8860B]"
+              >
+                <span className="text-lg">+</span>
+                Sonnet
               </button>
               <button
                 onClick={() => handleCreateRoom('codex')}
                 disabled={!newRoomName.trim()}
-                className="flex-1 px-3 py-2.5 bg-[#10A37F] hover:bg-[#0d8a6a] active:bg-[#0a7155] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#10A37F]"
+                className="flex-1 px-3 py-2.5 bg-[#10A37F] hover:bg-[#0d8a6a] active:bg-[#0a7155] text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#10A37F]"
               >
                 <span className="text-lg">+</span>
                 Codex

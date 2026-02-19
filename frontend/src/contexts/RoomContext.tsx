@@ -10,7 +10,7 @@ interface RoomContextValue {
 
   // Room actions
   selectRoom: (roomId: number) => void;
-  createRoom: (name: string, provider?: ProviderType) => Promise<Room>;
+  createRoom: (name: string, provider?: ProviderType, model?: string) => Promise<Room>;
   deleteRoom: (roomId: number) => Promise<void>;
   renameRoom: (roomId: number, name: string) => Promise<Room>;
   refreshRooms: () => Promise<void>;
@@ -49,8 +49,8 @@ export function RoomProvider({ children }: RoomProviderProps) {
     setSelectedRoomId(roomId);
   }, []);
 
-  const createRoom = useCallback(async (name: string, provider?: ProviderType) => {
-    return await createRoomHook(name, provider);
+  const createRoom = useCallback(async (name: string, provider?: ProviderType, model?: string) => {
+    return await createRoomHook(name, provider, model);
   }, [createRoomHook]);
 
   const deleteRoom = useCallback(async (roomId: number) => {

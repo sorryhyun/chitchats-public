@@ -7,7 +7,7 @@ interface UseRoomsReturn {
   rooms: RoomSummary[];
   loading: boolean;
   error: string | null;
-  createRoom: (name: string, provider?: ProviderType) => Promise<Room>;
+  createRoom: (name: string, provider?: ProviderType, model?: string) => Promise<Room>;
   deleteRoom: (roomId: number) => Promise<void>;
   renameRoom: (roomId: number, name: string) => Promise<Room>;
   refreshRooms: () => Promise<void>;
@@ -40,9 +40,9 @@ export const useRooms = (): UseRoomsReturn => {
     hasChanges: roomChangeDetector,
   });
 
-  const createRoom = useCallback(async (name: string, provider?: ProviderType): Promise<Room> => {
+  const createRoom = useCallback(async (name: string, provider?: ProviderType, model?: string): Promise<Room> => {
     try {
-      const newRoom = await roomService.createRoom(name, provider);
+      const newRoom = await roomService.createRoom(name, provider, model);
       // Convert Room to RoomSummary for the rooms list
       const roomSummary: RoomSummary = {
         id: newRoom.id,
@@ -50,6 +50,7 @@ export const useRooms = (): UseRoomsReturn => {
         max_interactions: newRoom.max_interactions,
         is_paused: newRoom.is_paused,
         default_provider: newRoom.default_provider,
+        default_model: newRoom.default_model,
         created_at: newRoom.created_at,
         last_activity_at: newRoom.last_activity_at,
         last_read_at: newRoom.last_read_at,

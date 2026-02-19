@@ -13,7 +13,7 @@ interface AgentContextValue {
   loading: boolean;
 
   // Agent actions
-  selectAgent: (agentId: number, provider?: Provider) => Promise<void>;
+  selectAgent: (agentId: number, provider?: Provider, model?: string) => Promise<void>;
   createAgent: (agentData: AgentCreate) => Promise<Agent>;
   deleteAgent: (agentId: number) => Promise<void>;
   refreshAgents: () => void;
@@ -49,9 +49,9 @@ export function AgentProvider({ children, onAgentRoomSelected }: AgentProviderPr
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
 
-  const selectAgent = useCallback(async (agentId: number, provider: Provider = 'claude') => {
+  const selectAgent = useCallback(async (agentId: number, provider: Provider = 'claude', model?: string) => {
     try {
-      const room = await agentService.getAgentDirectRoom(agentId, provider);
+      const room = await agentService.getAgentDirectRoom(agentId, provider, model);
       setSelectedAgentId(agentId);
       onAgentRoomSelected?.(room.id);
     } catch (err) {
