@@ -291,7 +291,7 @@ debug:
 - `USER_NAME` - Display name for user messages in chat (default: "User")
 - `DEBUG_AGENTS` - Set to "true" for verbose agent logging
 - `RECALL_MEMORY_FILE` - Memory file for recall mode: `consolidated_memory` (default) or `long_term_memory`
-- `USE_HAIKU` - Set to "true" to use Haiku model instead of Opus (default: false)
+- `USE_SONNET` - Set to "true" to default to Sonnet instead of Opus (default: false). Can also be toggled at runtime via Settings UI.
 - `PRIORITY_AGENTS` - Comma-separated agent names for priority responding
 - `MAX_CONCURRENT_ROOMS` - Max rooms for background scheduler (default: 5)
 - `ENABLE_GUEST_LOGIN` - Enable/disable guest login (default: true)

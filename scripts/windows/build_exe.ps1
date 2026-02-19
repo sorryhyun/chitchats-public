@@ -326,21 +326,12 @@ function Complete-ExeBuild {
     return $true
 }
 
-# Build the main executable (Opus mode)
-Write-Step "Building ChitChats.exe (Opus mode) with PyInstaller..."
+# Build the executable
+Write-Step "Building ChitChats.exe with PyInstaller..."
 $exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ChitChats.spec --noconfirm"
 
 $exePath = Join-Path $repoRoot "dist/ChitChats.exe"
 if (-not (Complete-ExeBuild -ExePath $exePath -ExeName "ChitChats.exe")) {
-    exit 1
-}
-
-# Build the Haiku executable (Sonnet 4.6 mode)
-Write-Step "Building ChitChats-Haiku.exe (Sonnet 4.6 mode) with PyInstaller..."
-$exitCode = Invoke-BuildCommand -Command "uv run pyinstaller ChitChats-Haiku.spec --noconfirm"
-
-$haikuExePath = Join-Path $repoRoot "dist/ChitChats-Haiku.exe"
-if (-not (Complete-ExeBuild -ExePath $haikuExePath -ExeName "ChitChats-Haiku.exe")) {
     exit 1
 }
 
@@ -350,15 +341,14 @@ Write-Host "=" * 60 -ForegroundColor Cyan
 Write-Host "Build Summary" -ForegroundColor Cyan
 Write-Host "=" * 60 -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  ChitChats.exe       - Uses Claude Opus 4.6 (default)" -ForegroundColor Yellow
-Write-Host "  ChitChats-Haiku.exe - Uses Claude Sonnet 4.6 (USE_HAIKU=true)" -ForegroundColor Yellow
+Write-Host "  ChitChats.exe - Model selectable via Settings UI (Opus/Sonnet)" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "To run the application:" -ForegroundColor Cyan
-Write-Host "  1. Copy the desired .exe to your location"
+Write-Host "  1. Copy ChitChats.exe to your location"
 Write-Host "  2. Create a .env file with API_KEY_HASH and JWT_SECRET"
 Write-Host "  3. Run the .exe"
 Write-Host ""
 
 if (-not $Sign) {
-    Write-Host "Tip: Use -Sign to code sign the executables" -ForegroundColor DarkGray
+    Write-Host "Tip: Use -Sign to code sign the executable" -ForegroundColor DarkGray
 }

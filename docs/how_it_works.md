@@ -238,7 +238,7 @@ Configuration files:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `USE_HAIKU` | Use Haiku model instead of Opus | `false` |
+| `USE_SONNET` | Default to Sonnet instead of Opus (toggleable via Settings UI) | `false` |
 
 ---
 

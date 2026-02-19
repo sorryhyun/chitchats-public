@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -76,7 +76,10 @@ class Settings(BaseSettings):
     guidelines_file: str = "guidelines_3rd"
 
     # Model configuration
-    use_haiku: bool = False
+    use_sonnet: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("use_sonnet", "USE_SONNET", "use_haiku", "USE_HAIKU"),
+    )
 
     # Debug configuration
     debug_agents: bool = False
@@ -122,10 +125,10 @@ class Settings(BaseSettings):
             return v.lower() == "true"
         return True
 
-    @field_validator("use_haiku", mode="before")
+    @field_validator("use_sonnet", mode="before")
     @classmethod
-    def validate_use_haiku(cls, v: Optional[str]) -> bool:
-        """Parse use_haiku from string to bool."""
+    def validate_use_sonnet(cls, v: Optional[str]) -> bool:
+        """Parse use_sonnet from string to bool."""
         if isinstance(v, bool):
             return v
         if isinstance(v, str):
@@ -396,3 +399,33 @@ def reset_settings() -> None:
     """
     global _settings
     _settings = None
+
+
+# ============================================================================
+# Runtime Model Override
+# ============================================================================
+
+_use_sonnet_override: Optional[bool] = None
+
+
+def get_use_sonnet() -> bool:
+    """
+    Get the effective use_sonnet setting, respecting runtime override.
+
+    Returns:
+        True if Sonnet should be used, False for Opus (default)
+    """
+    if _use_sonnet_override is not None:
+        return _use_sonnet_override
+    return get_settings().use_sonnet
+
+
+def set_use_sonnet(value: bool) -> None:
+    """
+    Set the runtime override for use_sonnet (persists until process restart).
+
+    Args:
+        value: True to use Sonnet, False to use Opus
+    """
+    global _use_sonnet_override
+    _use_sonnet_override = value

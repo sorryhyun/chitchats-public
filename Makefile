@@ -17,7 +17,7 @@ help:
 	@echo "  make run-voice         - Run voice TTS server only (port 8002)"
 	@echo ""
 	@echo "Build:"
-	@echo "  make build-exe         - Build standalone Windows exe (Opus + Haiku)"
+	@echo "  make build-exe         - Build standalone Windows exe"
 	@echo "  make build-non-tauri   - Build standalone Windows exe (same as build-exe)"
 	@echo ""
 	@echo "Setup:"

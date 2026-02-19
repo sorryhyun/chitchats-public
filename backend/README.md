@@ -62,7 +62,7 @@ All endpoints except `/auth/*`, `/health`, `/docs` require `X-API-Key` header.
 
 **Optional:**
 - `DEBUG_AGENTS=true` - Verbose agent logging
-- `USE_HAIKU=true` - Use Haiku instead of Opus
+- `USE_SONNET=true` - Default to Sonnet instead of Opus (also toggleable via Settings UI)
 - `FRONTEND_URL` - CORS allowed origin
 
 See [../SETUP.md](../SETUP.md) for full configuration.

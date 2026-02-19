@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk.types import HookMatcher, PostToolUseHookInput, SyncHookJSONOutput
-from core import get_settings
+from core.settings import get_use_sonnet
 from domain.task_identifier import TaskIdentifier
 
 from providers.base import AIClientOptions, AIProvider, AIStreamParser, ProviderType
@@ -28,8 +28,6 @@ from .parser import ClaudeStreamParser
 
 logger = logging.getLogger("ClaudeProvider")
 
-# Get settings singleton
-_settings = get_settings()
 
 
 class ClaudeClientPool(BaseClientPool[ClaudeClient, ClaudeAgentOptions]):
@@ -185,7 +183,7 @@ class ClaudeProvider(AIProvider):
         # Determine model
         model = base_options.model
         if not model:
-            model = "claude-opus-4-6" if not _settings.use_haiku else "claude-sonnet-4-6"
+            model = "claude-sonnet-4-6" if get_use_sonnet() else "claude-opus-4-6"
 
         # Use static config for unchanging settings
         static = DEFAULT_CLAUDE_CONFIG
