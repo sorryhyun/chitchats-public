@@ -26,7 +26,10 @@
       "Bash(git grep:*)",
       "Bash(cat:*)",
       "Bash(git log:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(pip show:*)",
+      "Bash(uv pip show:*)",
+      "Bash(pip3 show:*)"
     ],
     "deny": [],
     "ask": []
