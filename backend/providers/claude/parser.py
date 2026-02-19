@@ -83,7 +83,9 @@ class ClaudeStreamParser(AIStreamParser):
 
         # Extract session_id from SystemMessage
         if isinstance(message, SystemMessage):
-            if isinstance(message.data, dict) and "session_id" in message.data:
+            if message.subtype == "rate_limit":
+                logger.warning(f"Rate limited by API (concurrent usage?): {message.data}")
+            elif isinstance(message.data, dict) and "session_id" in message.data:
                 new_session_id = message.data["session_id"]
                 logger.debug(f"Extracted session_id: {new_session_id}")
 
