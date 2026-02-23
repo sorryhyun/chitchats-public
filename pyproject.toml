@@ -46,6 +46,7 @@ dev = [
     "aiosqlite>=0.21.0",  # For in-memory test database
     "httpx>=0.27.0",      # For test client (AsyncClient)
     "pyinstaller>=6.0.0", # For building desktop app sidecar
+    "pystray>=0.19.0",    # System tray icon for standalone exe
 ]
 
 [tool.ruff]

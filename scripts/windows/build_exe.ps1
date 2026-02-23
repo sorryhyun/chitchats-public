@@ -248,9 +248,9 @@ if (-not $SkipFrontend) {
     }
 }
 
-# Install PyInstaller if needed
-Write-Step "Ensuring PyInstaller is installed..."
-$exitCode = Invoke-BuildCommand -Command "uv pip install pyinstaller --quiet"
+# Install build dependencies (PyInstaller + pystray for system tray)
+Write-Step "Ensuring build dependencies are installed..."
+$exitCode = Invoke-BuildCommand -Command "uv pip install pyinstaller pystray --quiet"
 
 # Helper function to finalize a built exe (checksum, sign, report)
 function Complete-ExeBuild {
@@ -341,12 +341,19 @@ Write-Host "=" * 60 -ForegroundColor Cyan
 Write-Host "Build Summary" -ForegroundColor Cyan
 Write-Host "=" * 60 -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  ChitChats.exe - Model selectable via Settings UI (Opus/Sonnet)" -ForegroundColor Yellow
+Write-Host "  ChitChats.exe - Standalone app with system tray" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Features:" -ForegroundColor Cyan
+Write-Host "  - No console window (runs in background)"
+Write-Host "  - System tray icon with right-click menu"
+Write-Host "  - Auto-opens browser on start"
+Write-Host "  - Log file: chitchats.log"
+Write-Host "  - Single instance protection"
 Write-Host ""
 Write-Host "To run the application:" -ForegroundColor Cyan
 Write-Host "  1. Copy ChitChats.exe to your location"
 Write-Host "  2. Create a .env file with API_KEY_HASH and JWT_SECRET"
-Write-Host "  3. Run the .exe"
+Write-Host "  3. Run the .exe (look for tray icon)"
 Write-Host ""
 
 if (-not $Sign) {

@@ -122,7 +122,51 @@ hiddenimports = [
     'PIL',
     'PIL.Image',
     'PIL.WebPImagePlugin',
+    # System tray (standalone mode)
+    'pystray',
+    'pystray._win32',
 ]
+
+# Windows version info
+version_info = None
+if os.name == 'nt' or True:  # Always generate (cross-compile friendly)
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo,
+        StringFileInfo,
+        StringStruct,
+        StringTable,
+        VarFileInfo,
+        VarStruct,
+        VSVersionInfo,
+    )
+    version_info = VSVersionInfo(
+        ffi=FixedFileInfo(
+            filevers=(1, 0, 0, 0),
+            prodvers=(1, 0, 0, 0),
+            mask=0x3f,
+            flags=0x0,
+            OS=0x40004,        # VOS_NT_WINDOWS32
+            fileType=0x1,      # VFT_APP
+            subtype=0x0,
+        ),
+        kids=[
+            StringFileInfo([
+                StringTable(
+                    '040904B0',  # lang=US English, charset=Unicode
+                    [
+                        StringStruct('CompanyName', 'ChitChats'),
+                        StringStruct('FileDescription', 'ChitChats - Multi-Agent Chat Room'),
+                        StringStruct('FileVersion', '1.0.0'),
+                        StringStruct('InternalName', 'ChitChats'),
+                        StringStruct('OriginalFilename', 'ChitChats.exe'),
+                        StringStruct('ProductName', 'ChitChats'),
+                        StringStruct('ProductVersion', '1.0.0'),
+                    ],
+                ),
+            ]),
+            VarFileInfo([VarStruct('Translation', [0x0409, 0x04B0])]),
+        ],
+    )
 
 a = Analysis(
     [str(backend_dir / 'launcher.py')],
@@ -160,11 +204,12 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # Console window for debugging
+    console=False,  # Windowed mode - no console window, uses system tray instead
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon=str(project_root / 'frontend' / 'public' / 'chitchats.ico'),
+    version=version_info,
 )
