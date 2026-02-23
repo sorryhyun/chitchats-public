@@ -6,6 +6,7 @@ This is the entry point for the PyInstaller bundle. It:
 2. Runs first-time setup wizard if needed (console mode only)
 3. Opens the default web browser automatically
 4. Starts the uvicorn server
+5. Shows a system tray icon in windowed mode (no console window)
 
 When run as a Tauri sidecar (legacy, archived):
 - Setup is handled by Tauri's GUI wizard
@@ -14,6 +15,7 @@ When run as a Tauri sidecar (legacy, archived):
 """
 
 import getpass
+import logging
 import os
 import secrets
 import signal
@@ -30,6 +32,9 @@ _browser_opened = False
 # Default and fallback ports
 DEFAULT_PORT = 8000
 FALLBACK_PORTS = [8001, 8080, 8888, 9000]
+
+# Log file path (set during setup_logging)
+_log_file_path = None
 
 
 def find_available_port(preferred_port: int = DEFAULT_PORT) -> int:
@@ -73,6 +78,104 @@ def get_work_dir() -> Path:
         return Path(sys.executable).parent
     else:
         return Path(__file__).parent.parent
+
+
+def is_windowed_mode() -> bool:
+    """Check if running in windowed mode (no console attached).
+
+    In windowed mode (PyInstaller with console=False), there is no console
+    window. We use a system tray icon and log file instead.
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    # sys.stderr is None when running in windowed mode (--noconsole)
+    return sys.stderr is None or not hasattr(sys.stderr, "write")
+
+
+def setup_log_file() -> str | None:
+    """Redirect stdout/stderr to a log file when running in windowed mode.
+
+    Returns the log file path, or None if not in windowed mode.
+    """
+    global _log_file_path
+
+    if not is_windowed_mode():
+        return None
+
+    work_dir = get_work_dir()
+    log_path = work_dir / "chitchats.log"
+    _log_file_path = str(log_path)
+
+    try:
+        # Open log file in append mode with UTF-8 encoding
+        log_file = open(log_path, "a", encoding="utf-8", buffering=1)
+
+        # Redirect stdout and stderr to log file
+        sys.stdout = log_file
+        sys.stderr = log_file
+
+        # Also configure Python's root logger to write to the file
+        logging.basicConfig(
+            stream=log_file,
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
+
+        return _log_file_path
+    except Exception:
+        # If we can't set up logging, continue without it
+        return None
+
+
+def check_single_instance() -> bool:
+    """Check if another instance is already running using a lock file.
+
+    Returns True if this is the only instance, False if another is running.
+    """
+    if not getattr(sys, "frozen", False):
+        return True  # Skip in development mode
+
+    work_dir = get_work_dir()
+    lock_file = work_dir / ".chitchats.lock"
+
+    try:
+        if lock_file.exists():
+            # Check if the PID in the lock file is still running
+            try:
+                pid = int(lock_file.read_text().strip())
+                # On Windows, check if process exists
+                if sys.platform == "win32":
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    handle = kernel32.OpenProcess(0x100000, False, pid)  # SYNCHRONIZE
+                    if handle:
+                        kernel32.CloseHandle(handle)
+                        return False  # Process is still running
+                else:
+                    os.kill(pid, 0)  # Signal 0 = check if process exists
+                    return False
+            except (ValueError, OSError, ProcessLookupError):
+                pass  # Stale lock file, remove it
+
+        # Write our PID
+        lock_file.write_text(str(os.getpid()))
+        return True
+    except Exception:
+        return True  # If we can't check, allow running
+
+
+def cleanup_lock_file():
+    """Remove the lock file on exit."""
+    if not getattr(sys, "frozen", False):
+        return
+
+    work_dir = get_work_dir()
+    lock_file = work_dir / ".chitchats.lock"
+    try:
+        if lock_file.exists():
+            lock_file.unlink()
+    except Exception:
+        pass
 
 
 def setup_paths():
@@ -315,13 +418,45 @@ def main():
     # Set up paths first
     setup_paths()
 
+    # Check for single instance (bundled mode only)
+    if not check_single_instance():
+        # Another instance is running - try to open the browser to the existing one
+        # and exit quietly
+        if is_windowed_mode():
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "ChitChats is already running.\nCheck the system tray icon.",
+                    "ChitChats",
+                    0x40,  # MB_ICONINFORMATION
+                )
+            except Exception:
+                pass
+        else:
+            print("ChitChats is already running.")
+        sys.exit(0)
+
+    # Set up log file for windowed mode (no console)
+    log_file = setup_log_file()
+
     # Set up signal handlers for graceful shutdown
     def signal_handler(signum, frame):
         print("\n서버를 종료합니다...")
+        cleanup_lock_file()
+        try:
+            from tray import stop_tray
+            stop_tray()
+        except Exception:
+            pass
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Register lock file cleanup at exit
+    import atexit
+    atexit.register(cleanup_lock_file)
 
     # Check if running as Tauri sidecar
     sidecar_mode = is_tauri_sidecar()
@@ -336,6 +471,7 @@ def main():
 
     # Find an available port
     port = find_available_port(DEFAULT_PORT)
+    server_url = f"http://localhost:{port}"
 
     print("=" * 60)
     print("ChitChats")
@@ -343,13 +479,22 @@ def main():
     print()
     if port != DEFAULT_PORT:
         print(f"포트 {DEFAULT_PORT}을(를) 사용할 수 없어 포트 {port}을(를) 사용합니다.")
-    print(f"서버 시작 중: http://localhost:{port}")
+    print(f"서버 시작 중: {server_url}")
     if not sidecar_mode:
         print("서버를 중지하려면 Ctrl+C를 누르세요")
         print()
         # Open browser automatically (standalone mode only)
-        open_browser_delayed(f"http://localhost:{port}")
+        open_browser_delayed(server_url)
         print("브라우저를 자동으로 엽니다...")
+
+        # Start system tray icon (windowed mode)
+        if is_windowed_mode():
+            try:
+                from tray import start_tray
+                start_tray(server_url, log_file)
+                print("시스템 트레이 아이콘이 활성화되었습니다.")
+            except Exception as e:
+                print(f"시스템 트레이 아이콘을 시작할 수 없습니다: {e}")
     print()
 
     # Import the app directly instead of using string path

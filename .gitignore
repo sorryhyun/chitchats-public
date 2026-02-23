@@ -42,6 +42,9 @@ Thumbs.db
 logs/
 debug.txt
 
+# Standalone app lock file
+.chitchats.lock
+
 # Simulation outputs
 chatroom_*.txt
 
