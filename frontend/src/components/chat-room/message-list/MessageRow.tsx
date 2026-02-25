@@ -178,7 +178,7 @@ export const MessageRow = memo(({
                     {/* Expanded thinking content */}
                     {expandedThinking.has(message.id) && (
                       <div className="pl-3 py-1 my-2 border-l-2 border-slate-300 text-slate-500 text-sm bg-slate-50/50 rounded-r-lg">
-                        <div className="whitespace-pre-wrap break-words leading-relaxed italic font-mono text-xs">
+                        <div className="whitespace-pre-wrap break-words leading-relaxed italic text-xs">
                           {message.thinking}
                         </div>
                       </div>

@@ -29,7 +29,8 @@
       "Bash(npx tsc:*)",
       "Bash(pip show:*)",
       "Bash(uv pip show:*)",
-      "Bash(pip3 show:*)"
+      "Bash(pip3 show:*)",
+      "Bash(/c/Users/stand/chitchats-public/.venv/Scripts/python:*)"
     ],
     "deny": [],
     "ask": []

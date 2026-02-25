@@ -66,9 +66,28 @@ def _get_icon_image():
 
 
 def _open_browser(icon=None, item=None):
-    """Open the application in the default browser."""
-    if _server_url:
-        webbrowser.open(_server_url)
+    """Open the application in app mode (standalone window) or default browser."""
+    if not _server_url:
+        return
+
+    # Try app mode for native-like window (Edge/Chrome --app flag)
+    if getattr(sys, "frozen", False):
+        try:
+            from launcher import _find_browser_for_app_mode
+            import subprocess as sp
+
+            browser_path = _find_browser_for_app_mode()
+            if browser_path:
+                sp.Popen(
+                    [browser_path, f"--app={_server_url}"],
+                    stdout=sp.DEVNULL,
+                    stderr=sp.DEVNULL,
+                )
+                return
+        except Exception:
+            pass
+
+    webbrowser.open(_server_url)
 
 
 def _open_log(icon=None, item=None):

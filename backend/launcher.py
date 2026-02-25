@@ -80,16 +80,29 @@ def get_work_dir() -> Path:
         return Path(__file__).parent.parent
 
 
+_windowed_mode: bool | None = None
+
+
 def is_windowed_mode() -> bool:
     """Check if running in windowed mode (no console attached).
 
     In windowed mode (PyInstaller with console=False), there is no console
     window. We use a system tray icon and log file instead.
+
+    The result is cached because setup_log_file() replaces sys.stderr with
+    a log file handle, which would cause subsequent checks to return False.
     """
+    global _windowed_mode
+    if _windowed_mode is not None:
+        return _windowed_mode
+
     if not getattr(sys, "frozen", False):
-        return False
-    # sys.stderr is None when running in windowed mode (--noconsole)
-    return sys.stderr is None or not hasattr(sys.stderr, "write")
+        _windowed_mode = False
+    else:
+        # sys.stderr is None when running in windowed mode (--noconsole)
+        _windowed_mode = sys.stderr is None or not hasattr(sys.stderr, "write")
+
+    return _windowed_mode
 
 
 def setup_log_file() -> str | None:
@@ -178,6 +191,28 @@ def cleanup_lock_file():
         pass
 
 
+def _patch_subprocess_no_window():
+    """Patch subprocess.Popen to hide console windows on Windows.
+
+    When running as a windowed exe (console=False), any subprocess spawned
+    without CREATE_NO_WINDOW will flash a visible console window. This patches
+    subprocess.Popen to automatically inject the flag for all subprocesses,
+    hiding the Claude CLI terminal that would otherwise appear.
+    """
+    import subprocess
+
+    CREATE_NO_WINDOW = 0x08000000
+    _original_popen_init = subprocess.Popen.__init__
+
+    def _patched_popen_init(self, *args, **kwargs):
+        # Inject CREATE_NO_WINDOW if no creationflags specified
+        if "creationflags" not in kwargs or kwargs["creationflags"] == 0:
+            kwargs["creationflags"] = CREATE_NO_WINDOW
+        _original_popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _patched_popen_init
+
+
 def setup_paths():
     """Set up Python paths for imports."""
     base_path = get_base_path()
@@ -248,8 +283,201 @@ def is_env_configured(env_file: Path) -> bool:
     return has_valid_hash and has_valid_jwt
 
 
+def run_first_time_setup_gui():
+    """Run first-time setup using a GUI dialog (for windowed mode without console).
+
+    Uses PowerShell Windows Forms to show a proper setup dialog.
+    Falls back to auto-generated credentials with a MessageBox notification.
+
+    Returns:
+        dict with password_hash, jwt_secret, user_name, or None if cancelled.
+    """
+    import bcrypt
+    import subprocess
+
+    ps_script = r'''
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "ChitChats - Setup"
+$form.Size = New-Object System.Drawing.Size(420, 320)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.TopMost = $true
+$form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+$y = 15
+
+$lblTitle = New-Object System.Windows.Forms.Label
+$lblTitle.Location = New-Object System.Drawing.Point(20, $y)
+$lblTitle.Size = New-Object System.Drawing.Size(360, 25)
+$lblTitle.Text = "Welcome! Please set up your password."
+$lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($lblTitle)
+$y += 35
+
+$lblPass = New-Object System.Windows.Forms.Label
+$lblPass.Location = New-Object System.Drawing.Point(20, $y)
+$lblPass.Size = New-Object System.Drawing.Size(360, 18)
+$lblPass.Text = "Password (min 4 characters):"
+$form.Controls.Add($lblPass)
+$y += 22
+
+$txtPass = New-Object System.Windows.Forms.TextBox
+$txtPass.Location = New-Object System.Drawing.Point(20, $y)
+$txtPass.Size = New-Object System.Drawing.Size(360, 25)
+$txtPass.UseSystemPasswordChar = $true
+$form.Controls.Add($txtPass)
+$y += 35
+
+$lblConfirm = New-Object System.Windows.Forms.Label
+$lblConfirm.Location = New-Object System.Drawing.Point(20, $y)
+$lblConfirm.Size = New-Object System.Drawing.Size(360, 18)
+$lblConfirm.Text = "Confirm Password:"
+$form.Controls.Add($lblConfirm)
+$y += 22
+
+$txtConfirm = New-Object System.Windows.Forms.TextBox
+$txtConfirm.Location = New-Object System.Drawing.Point(20, $y)
+$txtConfirm.Size = New-Object System.Drawing.Size(360, 25)
+$txtConfirm.UseSystemPasswordChar = $true
+$form.Controls.Add($txtConfirm)
+$y += 35
+
+$lblName = New-Object System.Windows.Forms.Label
+$lblName.Location = New-Object System.Drawing.Point(20, $y)
+$lblName.Size = New-Object System.Drawing.Size(360, 18)
+$lblName.Text = "Display Name (default: User):"
+$form.Controls.Add($lblName)
+$y += 22
+
+$txtName = New-Object System.Windows.Forms.TextBox
+$txtName.Location = New-Object System.Drawing.Point(20, $y)
+$txtName.Size = New-Object System.Drawing.Size(360, 25)
+$form.Controls.Add($txtName)
+$y += 40
+
+$lblError = New-Object System.Windows.Forms.Label
+$lblError.Location = New-Object System.Drawing.Point(20, $y)
+$lblError.Size = New-Object System.Drawing.Size(200, 20)
+$lblError.ForeColor = [System.Drawing.Color]::Red
+$form.Controls.Add($lblError)
+
+$btnOK = New-Object System.Windows.Forms.Button
+$btnOK.Location = New-Object System.Drawing.Point(220, $y)
+$btnOK.Size = New-Object System.Drawing.Size(75, 28)
+$btnOK.Text = "OK"
+$form.Controls.Add($btnOK)
+
+$btnCancel = New-Object System.Windows.Forms.Button
+$btnCancel.Location = New-Object System.Drawing.Point(305, $y)
+$btnCancel.Size = New-Object System.Drawing.Size(75, 28)
+$btnCancel.Text = "Cancel"
+$btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form.CancelButton = $btnCancel
+$form.Controls.Add($btnCancel)
+
+$btnOK.Add_Click({
+    if ($txtPass.Text.Length -lt 4) {
+        $lblError.Text = "Min 4 characters."
+        return
+    }
+    if ($txtPass.Text -ne $txtConfirm.Text) {
+        $lblError.Text = "Passwords do not match."
+        return
+    }
+    $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Close()
+})
+
+$form.AcceptButton = $btnOK
+$result = $form.ShowDialog()
+
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    # Use pipe separator to avoid issues with special chars in password
+    Write-Output ("OK|" + $txtPass.Text + "|" + $txtName.Text)
+} else {
+    Write-Output "CANCELLED"
+}
+'''
+
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 min timeout
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+
+        output = result.stdout.strip()
+        if output.startswith("OK|"):
+            # Split from the right: last field is username, everything between first and last | is password
+            # This handles passwords containing | characters
+            first_pipe = output.index("|")
+            last_pipe = output.rindex("|")
+            password = output[first_pipe + 1:last_pipe]
+            user_name = output[last_pipe + 1:] or "User"
+
+            salt = bcrypt.gensalt()
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+            return {
+                "password_hash": password_hash,
+                "jwt_secret": secrets.token_hex(32),
+                "user_name": user_name,
+            }
+        else:
+            # User cancelled
+            return None
+
+    except Exception as e:
+        print(f"GUI setup dialog failed: {e}")
+        # Fallback: auto-generate credentials and notify via MessageBox
+        return _auto_generate_setup()
+
+
+def _auto_generate_setup():
+    """Fallback: auto-generate credentials and show the password via MessageBox."""
+    import bcrypt
+    import string
+    import random
+
+    # Generate a readable random password
+    chars = string.ascii_letters + string.digits
+    password = "".join(random.choices(chars, k=12))
+
+    salt = bcrypt.gensalt()
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+    # Show the generated password to the user
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            f"ChitChats has been set up with an auto-generated password:\n\n"
+            f"    {password}\n\n"
+            f"Please save this password. You will need it to log in.\n"
+            f"To change it later, edit the .env file and run:\n"
+            f"    make generate-hash",
+            "ChitChats - Setup Complete",
+            0x40,  # MB_ICONINFORMATION
+        )
+    except Exception:
+        pass
+
+    return {
+        "password_hash": password_hash,
+        "jwt_secret": secrets.token_hex(32),
+        "user_name": "User",
+    }
+
+
 def run_first_time_setup():
-    """Run interactive first-time setup wizard."""
+    """Run interactive first-time setup wizard (console mode)."""
     import bcrypt
 
     print("=" * 60)
@@ -329,9 +557,16 @@ def setup_environment() -> bool:
     if is_env_configured(env_file):
         return False
 
-    # Run first-time setup
+    # Run first-time setup (GUI for windowed mode, console otherwise)
     try:
-        config = run_first_time_setup()
+        if is_windowed_mode():
+            config = run_first_time_setup_gui()
+            if config is None:
+                # User cancelled - exit
+                sys.exit(0)
+        else:
+            config = run_first_time_setup()
+
         create_env_file(env_file, config)
         print()
         print("=" * 60)
@@ -350,8 +585,43 @@ def is_tauri_sidecar() -> bool:
     return os.environ.get("TAURI_SIDECAR") == "1" or "--sidecar" in sys.argv
 
 
+def _find_browser_for_app_mode() -> str | None:
+    """Find a Chromium-based browser that supports --app mode.
+
+    Returns the executable path, or None if not found.
+    Checks Edge first (always on Windows 10/11), then Chrome.
+    """
+    import shutil
+
+    # Common paths on Windows
+    candidates = [
+        # Edge (pre-installed on Windows 10/11)
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        # Chrome
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ]
+
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+
+    # Try PATH lookup
+    for cmd in ["msedge", "chrome", "google-chrome"]:
+        found = shutil.which(cmd)
+        if found:
+            return found
+
+    return None
+
+
 def open_browser_delayed(url: str, delay: float = 1.5):
     """Open browser after a delay to allow server to start.
+
+    In bundled (exe) mode, tries to open in app mode (--app flag) using
+    Edge or Chrome for a standalone window without address bar or tabs.
+    Falls back to the default browser if no Chromium browser is found.
 
     Uses a global flag to prevent duplicate browser opens which can happen
     when Claude SDK or Codex subprocess triggers browser behavior on Windows.
@@ -364,8 +634,25 @@ def open_browser_delayed(url: str, delay: float = 1.5):
     _browser_opened = True
 
     def _open():
+        import subprocess as sp
+
         time.sleep(delay)
-        # Double-check flag in case of race condition
+
+        # In bundled mode, try app mode for a native-like window
+        if getattr(sys, "frozen", False):
+            browser_path = _find_browser_for_app_mode()
+            if browser_path:
+                try:
+                    sp.Popen(
+                        [browser_path, f"--app={url}"],
+                        stdout=sp.DEVNULL,
+                        stderr=sp.DEVNULL,
+                    )
+                    return
+                except Exception:
+                    pass
+
+        # Fallback: regular browser tab
         webbrowser.open(url)
 
     thread = threading.Thread(target=_open, daemon=True)
@@ -417,6 +704,13 @@ def main():
 
     # Set up paths first
     setup_paths()
+
+    # Patch subprocess creation to hide console windows in windowed mode.
+    # The Claude Agent SDK uses anyio.open_process() which internally calls
+    # asyncio.create_subprocess_exec(), which ultimately calls subprocess.Popen.
+    # Without CREATE_NO_WINDOW, each claude.exe subprocess spawns a visible console.
+    if is_windowed_mode() and sys.platform == "win32":
+        _patch_subprocess_no_window()
 
     # Check for single instance (bundled mode only)
     if not check_single_instance():
