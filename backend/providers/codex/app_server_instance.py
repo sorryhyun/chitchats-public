@@ -15,13 +15,16 @@ import asyncio
 import logging
 import os
 import shutil
+import signal
 import socket
+import subprocess
+import sys
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTurnConfig
 
-from .constants import AppServerMethod, RealtimeNotification, map_approval_policy, map_sandbox
+from .constants import AppServerMethod, RealtimeMethod, RealtimeNotification, map_approval_policy, map_sandbox, resolve_codex_path
 from .ws_transport import WsJsonRpcTransport
 
 logger = logging.getLogger("CodexAppServerInstance")
@@ -123,12 +126,9 @@ class CodexAppServerInstance:
         return None
 
     def kill(self) -> None:
-        """Forcefully kill the subprocess (sync, for emergency cleanup)."""
+        """Forcefully kill the subprocess and its children (sync, for emergency cleanup)."""
         if self._process:
-            try:
-                self._process.kill()
-            except ProcessLookupError:
-                pass
+            self._kill_process_tree(self._process)
 
     def touch(self) -> None:
         """Update last activity timestamp."""
@@ -158,9 +158,17 @@ class CodexAppServerInstance:
         and turn notifications to the turn queue.
         """
         method = message.get("method", "")
-        if method.startswith("thread/realtime/") and self._realtime_notification_queue is not None:
-            await self._realtime_notification_queue.put(message)
-        elif self._notification_queue is not None:
+
+        # Route to realtime queue when a realtime session is active:
+        # - thread/realtime/* notifications (started, outputAudio, closed, etc.)
+        # - Generic error notifications ("error", "codex/event/error") that
+        #   occur during a realtime session (e.g., "conversation is not running")
+        if self._realtime_notification_queue is not None:
+            if method.startswith("thread/realtime/") or method in ("error", "codex/event/error"):
+                await self._realtime_notification_queue.put(message)
+                return
+
+        if self._notification_queue is not None:
             await self._notification_queue.put(message)
 
     @staticmethod
@@ -181,26 +189,73 @@ class CodexAppServerInstance:
                     break
                 text = line.decode(errors="replace").rstrip()
                 if text:
-                    logger.debug(f"[Instance {self._instance_id}] stderr: {text}")
+                    # Show errors/warnings at INFO, routine messages at DEBUG
+                    if "ERROR" in text or "WARN" in text or "error" in text.lower():
+                        logger.info(f"[Instance {self._instance_id}] stderr: {text}")
+                    else:
+                        logger.debug(f"[Instance {self._instance_id}] stderr: {text}")
         except asyncio.CancelledError:
             pass
         except Exception as e:
             logger.debug(f"[Instance {self._instance_id}] stderr reader error: {e}")
 
+    @staticmethod
+    def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:
+        """Kill a process and all its children. Works on Windows and Unix."""
+        pid = proc.pid
+        if pid is None:
+            return
+        try:
+            if sys.platform == "win32":
+                # taskkill /F (force) /T (tree - kill children) /PID
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                # On Unix, kill the process group
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    try:
+                        proc.kill()
+                    except ProcessLookupError:
+                        pass
+        except ProcessLookupError:
+            pass
+        except Exception:
+            # Last resort: direct kill
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+
     async def _terminate_process(self) -> None:
-        """Terminate the subprocess: SIGTERM -> 5s wait -> SIGKILL."""
+        """Terminate the subprocess and its children: SIGTERM -> 5s wait -> force kill tree."""
         if not self._process:
             return
         try:
             if self._process.returncode is None:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
-            try:
-                self._process.kill()
-                await self._process.wait()
-            except ProcessLookupError:
-                pass
+                if sys.platform == "win32":
+                    # On Windows, always kill the entire process tree.
+                    # process.terminate() only kills the main process, leaving children orphaned.
+                    self._kill_process_tree(self._process)
+                    try:
+                        await self._process.wait()
+                    except ProcessLookupError:
+                        pass
+                else:
+                    # On Unix, try graceful SIGTERM first
+                    self._process.terminate()
+                    try:
+                        await asyncio.wait_for(self._process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        self._kill_process_tree(self._process)
+                        try:
+                            await self._process.wait()
+                        except ProcessLookupError:
+                            pass
         except ProcessLookupError:
             pass
         except Exception as e:
@@ -213,10 +268,11 @@ class CodexAppServerInstance:
         if self.is_started:
             return
 
-        # Codex supports native Windows — always resolve from PATH
-        codex_path = shutil.which("codex")
+        # Prefer bundled alpha Codex binary (supports audio), fall back to PATH
+        codex_path = resolve_codex_path()
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
+        logger.info(f"[Instance {self._instance_id}] Using Codex: {codex_path}")
 
         # Allocate a free port for WebSocket
         port = self._find_free_port()
@@ -232,12 +288,21 @@ class CodexAppServerInstance:
         subprocess_env = {**os.environ, "BROWSER": ""}
 
         # Spawn subprocess with stdin/stdout detached (communication is via WebSocket)
+        # On Windows, use CREATE_NEW_PROCESS_GROUP so taskkill /T can kill the tree.
+        # On Unix, use start_new_session so os.killpg can kill the group.
+        platform_kwargs: Dict[str, Any] = {}
+        if sys.platform == "win32":
+            platform_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            platform_kwargs["start_new_session"] = True
+
         self._process = await asyncio.create_subprocess_exec(
             *command,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
             env=subprocess_env,
+            **platform_kwargs,
         )
 
         logger.info(f"[Instance {self._instance_id}] Process started (PID: {self._process.pid})")
@@ -276,10 +341,13 @@ class CodexAppServerInstance:
                     "name": "chitchats",
                     "version": "1.0.0",
                 },
+                "capabilities": {
+                    "experimentalApi": True,
+                },
             },
         )
 
-        logger.debug(f"[Instance {self._instance_id}] Initialize response: {result}")
+        logger.info(f"[Instance {self._instance_id}] Initialize response: {result}")
 
         await self._transport.send_notification("initialized", {})
         logger.debug(f"[Instance {self._instance_id}] Sent initialized notification")
@@ -473,16 +541,25 @@ class CodexAppServerInstance:
         thread_id: str,
         prompt: str,
         session_id: Optional[str] = None,
+        start_timeout: float = 10.0,
     ) -> Dict[str, Any]:
         """Start a realtime voice session on a thread.
+
+        Sends the start request and waits for the thread/realtime/started
+        notification from the backend. If the notification doesn't arrive
+        within start_timeout seconds, raises RuntimeError.
 
         Args:
             thread_id: Thread ID to attach the session to
             prompt: System prompt for the realtime model
             session_id: Optional session ID to resume a prior session
+            start_timeout: Seconds to wait for the started notification
 
         Returns:
-            Response from the app-server
+            Started notification params (contains sessionId, etc.)
+
+        Raises:
+            RuntimeError: If the session fails to start or times out
         """
         if not self._transport:
             raise RuntimeError("Instance not started")
@@ -498,8 +575,63 @@ class CodexAppServerInstance:
         self.touch()
 
         logger.info(f"[Instance {self._instance_id}] Starting realtime session on thread {thread_id}")
-        result = await self._transport.send_request("thread.realtime.start", params)
-        return result
+        result = await self._transport.send_request(RealtimeMethod.START, params)
+        logger.info(f"[Instance {self._instance_id}] Realtime start RPC response: {result}")
+
+        # Wait for the thread/realtime/started notification (confirms backend connected)
+        logger.info(f"[Instance {self._instance_id}] Waiting for realtime started notification (timeout={start_timeout}s)...")
+        deadline = asyncio.get_event_loop().time() + start_timeout
+        errors_collected: List[str] = []
+
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                error_detail = "; ".join(errors_collected) if errors_collected else "no response from Codex"
+                self._realtime_notification_queue = None
+                raise RuntimeError(
+                    f"Realtime session failed to start within {start_timeout}s: {error_detail}"
+                )
+
+            try:
+                notification = await asyncio.wait_for(
+                    self._realtime_notification_queue.get(),
+                    timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                error_detail = "; ".join(errors_collected) if errors_collected else "no response from Codex"
+                self._realtime_notification_queue = None
+                raise RuntimeError(
+                    f"Realtime session failed to start within {start_timeout}s: {error_detail}"
+                )
+
+            method = notification.get("method", "")
+            notif_params = notification.get("params", {})
+
+            if method == RealtimeNotification.STARTED:
+                logger.info(
+                    f"[Instance {self._instance_id}] Realtime session confirmed started: "
+                    f"sessionId={notif_params.get('sessionId')}"
+                )
+                return notif_params
+
+            elif method == RealtimeNotification.CLOSED:
+                reason = notif_params.get("reason", "unknown")
+                self._realtime_notification_queue = None
+                raise RuntimeError(f"Realtime session closed before starting: {reason}")
+
+            elif method in ("error", "codex/event/error"):
+                # Collect error details
+                error_msg = notif_params.get("error", {}).get("message", "") or \
+                            notif_params.get("msg", {}).get("message", "")
+                if error_msg:
+                    errors_collected.append(error_msg)
+                    logger.warning(f"[Instance {self._instance_id}] Realtime start error: {error_msg}")
+                # First error is likely definitive — fail immediately
+                self._realtime_notification_queue = None
+                raise RuntimeError(f"Realtime session failed to start: {error_msg}")
+
+            else:
+                logger.debug(f"[Instance {self._instance_id}] Ignoring notification during start wait: {method}")
 
     async def append_audio(self, thread_id: str, audio_data: Dict[str, Any]) -> None:
         """Send audio data to the realtime session (fire-and-forget).
@@ -512,7 +644,7 @@ class CodexAppServerInstance:
             raise RuntimeError("Instance not started")
 
         await self._transport.send_request_no_wait(
-            "thread.realtime.appendAudio",
+            RealtimeMethod.APPEND_AUDIO,
             {"threadId": thread_id, "audio": audio_data},
         )
 
@@ -527,7 +659,7 @@ class CodexAppServerInstance:
             raise RuntimeError("Instance not started")
 
         await self._transport.send_request_no_wait(
-            "thread.realtime.appendText",
+            RealtimeMethod.APPEND_TEXT,
             {"threadId": thread_id, "text": text},
         )
 
@@ -542,7 +674,7 @@ class CodexAppServerInstance:
 
         logger.info(f"[Instance {self._instance_id}] Stopping realtime session on thread {thread_id}")
         try:
-            await self._transport.send_request("thread.realtime.stop", {"threadId": thread_id})
+            await self._transport.send_request(RealtimeMethod.STOP, {"threadId": thread_id})
         except Exception as e:
             logger.warning(f"[Instance {self._instance_id}] Error stopping realtime: {e}")
         finally:

@@ -10,8 +10,34 @@ This module provides:
 - Custom exceptions for session recovery
 """
 
+import os
 import re
+import shutil
+import sys
 from typing import Any, Dict, List, Optional, Tuple
+
+# =============================================================================
+# Bundled binary path
+# =============================================================================
+
+_BUNDLED_EXE_NAME = "codex-x86_64-pc-windows-msvc.exe"
+
+
+def _find_bundled_codex() -> Optional[str]:
+    """Look for bundled Codex binary next to the running app."""
+    # When frozen (PyInstaller exe), look next to the exe
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(sys.executable)
+    else:
+        # Dev mode: project root is 3 levels up from this file
+        base = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    path = os.path.join(base, "bundled", _BUNDLED_EXE_NAME)
+    return path if os.path.isfile(path) else None
+
+
+def resolve_codex_path() -> Optional[str]:
+    """Return the path to the Codex binary, preferring bundled alpha over PATH."""
+    return _find_bundled_codex() or shutil.which("codex")
 
 
 # =============================================================================
@@ -85,10 +111,10 @@ class AppServerMethod:
 class RealtimeMethod:
     """JSON-RPC method names for realtime voice sessions."""
 
-    START = "thread.realtime.start"
-    APPEND_AUDIO = "thread.realtime.appendAudio"
-    APPEND_TEXT = "thread.realtime.appendText"
-    STOP = "thread.realtime.stop"
+    START = "thread/realtime/start"
+    APPEND_AUDIO = "thread/realtime/appendAudio"
+    APPEND_TEXT = "thread/realtime/appendText"
+    STOP = "thread/realtime/stop"
 
 
 class RealtimeNotification:

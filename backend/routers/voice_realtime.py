@@ -117,18 +117,22 @@ async def voice_realtime_ws(websocket: WebSocket, room_id: int, token: str = "")
 
     # --- Bidirectional bridge ---
     session_active = True
+    realtime_stopped = False
 
     async def write_loop():
         """Forward realtime notifications from Codex → browser."""
         nonlocal session_active
+        notification_count = 0
         try:
             while session_active:
                 notification = await instance.drain_realtime_notifications(timeout=0.05)
                 if notification is None:
                     continue
 
+                notification_count += 1
                 method = notification.get("method", "")
                 params = notification.get("params", {})
+                logger.info(f"Realtime notification #{notification_count}: method={method}")
 
                 if method == RealtimeNotification.OUTPUT_AUDIO_DELTA:
                     audio = params.get("audio", {})
@@ -147,6 +151,15 @@ async def voice_realtime_ws(websocket: WebSocket, room_id: int, token: str = "")
                     await websocket.send_json({
                         "type": "error",
                         "message": params.get("message", "Unknown error"),
+                    })
+                elif method in ("error", "codex/event/error"):
+                    # Generic Codex errors routed during realtime session
+                    error_msg = params.get("error", {}).get("message", "") or \
+                                params.get("msg", {}).get("message", "Unknown error")
+                    logger.warning(f"Codex error during voice session: {error_msg}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": error_msg,
                     })
                 elif method == RealtimeNotification.CLOSED:
                     await websocket.send_json({
@@ -191,6 +204,7 @@ async def voice_realtime_ws(websocket: WebSocket, room_id: int, token: str = "")
                     await instance.append_text(thread_id, text)
             elif msg_type == "stop":
                 await instance.stop_realtime(thread_id)
+                realtime_stopped = True
                 session_active = False
                 break
 
@@ -206,10 +220,11 @@ async def voice_realtime_ws(websocket: WebSocket, room_id: int, token: str = "")
         except asyncio.CancelledError:
             pass
 
-        # Ensure realtime session is stopped
-        try:
-            await instance.stop_realtime(thread_id)
-        except Exception:
-            pass
+        # Ensure realtime session is stopped (skip if already stopped by "stop" msg)
+        if not realtime_stopped:
+            try:
+                await instance.stop_realtime(thread_id)
+            except Exception:
+                pass
 
         logger.info(f"Voice realtime session ended: room={room_id}, thread={thread_id}")

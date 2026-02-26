@@ -26,6 +26,19 @@ assistant audio, and driving the session lifecycle over JSON-RPC.
    active thread (conversation). Use the `thread/start` method to obtain a
    `threadId`.
 
+### Optional config overrides
+
+For development and testing you can override the websocket endpoint and the
+backend system prompt in `config.toml`:
+
+```toml
+# Custom websocket base URL (e.g., a local mock server)
+experimental_realtime_ws_base_url = "http://127.0.0.1:8011"
+
+# Override the backend system prompt sent to the realtime model
+experimental_realtime_ws_backend_prompt = "You are a pirate."
+```
+
 ## Session Lifecycle
 
 A realtime session follows this sequence:
@@ -33,18 +46,18 @@ A realtime session follows this sequence:
 ```
 Client                            App-Server                   Model Backend
   │                                   │                              │
-  │─── thread.realtime.start ────────>│                              │
+  │── thread/realtime/start ─────────>│                              │
   │                                   │── open websocket ───────────>│
   │<── thread/realtime/started ───────│<── session created ──────────│
   │                                   │                              │
-  │─── thread.realtime.appendAudio ──>│── audio frame ──────────────>│
-  │─── thread.realtime.appendText ───>│── text input ───────────────>│
+  │── thread/realtime/appendAudio ──>│── audio frame ──────────────>│
+  │── thread/realtime/appendText ───>│── text input ───────────────>│
   │                                   │                              │
   │<── thread/realtime/outputAudio/delta ─│<── audio response ───────│
   │<── thread/realtime/itemAdded ─────│<── transcript/item ──────────│
   │<── thread/realtime/error ─────────│<── error ────────────────────│
   │                                   │                              │
-  │─── thread.realtime.stop ─────────>│── close websocket ──────────>│
+  │── thread/realtime/stop ──────────>│── close websocket ──────────>│
   │<── thread/realtime/closed ────────│                              │
 ```
 
@@ -52,7 +65,7 @@ Client                            App-Server                   Model Backend
 
 All request params use **camelCase** field names.
 
-### `thread.realtime.start`
+### `thread/realtime/start`
 
 Opens a realtime session on an existing thread.
 
@@ -61,7 +74,7 @@ Opens a realtime session on an existing thread.
 {
   "jsonrpc": "2.0",
   "id": 1,
-  "method": "thread.realtime.start",
+  "method": "thread/realtime/start",
   "params": {
     "threadId": "019bc...",
     "prompt": "You are a helpful voice assistant.",
@@ -79,7 +92,7 @@ Opens a realtime session on an existing thread.
 | `prompt`    | `string`         | Backend/system prompt for the realtime model.  |
 | `sessionId` | `string \| null` | Optional session ID to resume a prior session. |
 
-### `thread.realtime.appendAudio`
+### `thread/realtime/appendAudio`
 
 Sends a chunk of audio input (e.g., from the user's microphone).
 
@@ -87,7 +100,7 @@ Sends a chunk of audio input (e.g., from the user's microphone).
 {
   "jsonrpc": "2.0",
   "id": 2,
-  "method": "thread.realtime.appendAudio",
+  "method": "thread/realtime/appendAudio",
   "params": {
     "threadId": "019bc...",
     "audio": {
@@ -107,7 +120,7 @@ Sends a chunk of audio input (e.g., from the user's microphone).
 | `audio.numChannels`         | `number`         | Number of channels (typically 1)           |
 | `audio.samplesPerChannel`   | `number \| null` | Samples per channel in this chunk          |
 
-### `thread.realtime.appendText`
+### `thread/realtime/appendText`
 
 Sends text input into the realtime session (useful for typed messages during
 a voice conversation).
@@ -116,7 +129,7 @@ a voice conversation).
 {
   "jsonrpc": "2.0",
   "id": 3,
-  "method": "thread.realtime.appendText",
+  "method": "thread/realtime/appendText",
   "params": {
     "threadId": "019bc...",
     "text": "What's the weather like?"
@@ -124,7 +137,7 @@ a voice conversation).
 }
 ```
 
-### `thread.realtime.stop`
+### `thread/realtime/stop`
 
 Closes the realtime session.
 
@@ -132,7 +145,7 @@ Closes the realtime session.
 {
   "jsonrpc": "2.0",
   "id": 4,
-  "method": "thread.realtime.stop",
+  "method": "thread/realtime/stop",
   "params": {
     "threadId": "019bc..."
   }
@@ -275,7 +288,7 @@ exchanged. Assume the client has already created a thread and holds a
 ```jsonc
 // 1. Start realtime session
 // -> Client sends:
-{"jsonrpc":"2.0","id":1,"method":"thread.realtime.start","params":{"threadId":"t1","prompt":"You are a helpful assistant."}}
+{"jsonrpc":"2.0","id":1,"method":"thread/realtime/start","params":{"threadId":"t1","prompt":"You are a helpful assistant."}}
 
 // <- Server responds:
 {"jsonrpc":"2.0","id":1,"result":{}}
@@ -285,8 +298,8 @@ exchanged. Assume the client has already created a thread and holds a
 
 // 2. Stream microphone audio (repeat for each chunk)
 // -> Client sends:
-{"jsonrpc":"2.0","id":2,"method":"thread.realtime.appendAudio","params":{"threadId":"t1","audio":{"data":"BQYH...","sampleRate":24000,"numChannels":1,"samplesPerChannel":480}}}
-{"jsonrpc":"2.0","id":3,"method":"thread.realtime.appendAudio","params":{"threadId":"t1","audio":{"data":"CwkN...","sampleRate":24000,"numChannels":1,"samplesPerChannel":480}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/realtime/appendAudio","params":{"threadId":"t1","audio":{"data":"BQYH...","sampleRate":24000,"numChannels":1,"samplesPerChannel":480}}}
+{"jsonrpc":"2.0","id":3,"method":"thread/realtime/appendAudio","params":{"threadId":"t1","audio":{"data":"CwkN...","sampleRate":24000,"numChannels":1,"samplesPerChannel":480}}}
 
 // 3. Server streams back assistant audio + transcripts
 // <- Server notifies:
@@ -295,11 +308,11 @@ exchanged. Assume the client has already created a thread and holds a
 
 // 4. Optionally send text during voice conversation
 // -> Client sends:
-{"jsonrpc":"2.0","id":4,"method":"thread.realtime.appendText","params":{"threadId":"t1","text":"Never mind, thanks."}}
+{"jsonrpc":"2.0","id":4,"method":"thread/realtime/appendText","params":{"threadId":"t1","text":"Never mind, thanks."}}
 
 // 5. End session
 // -> Client sends:
-{"jsonrpc":"2.0","id":5,"method":"thread.realtime.stop","params":{"threadId":"t1"}}
+{"jsonrpc":"2.0","id":5,"method":"thread/realtime/stop","params":{"threadId":"t1"}}
 
 // <- Server notifies:
 {"jsonrpc":"2.0","method":"thread/realtime/closed","params":{"threadId":"t1","reason":"requested"}}
@@ -334,7 +347,7 @@ For the authoritative type definitions, see:
 | File | Contents |
 |------|----------|
 | `codex-rs/app-server-protocol/src/protocol/v2.rs` | V2 wire types (`ThreadRealtime*`) |
-| `codex-rs/app-server-protocol/src/protocol/common.rs` | `ServerNotification` enum with method names |
+| `codex-rs/app-server-protocol/src/protocol/common.rs` | `ClientRequest` / `ServerNotification` enums with method names |
 | `codex-rs/protocol/src/protocol.rs` | Core `Op` / `EventMsg` / `RealtimeAudioFrame` |
 | `codex-rs/core/src/realtime_conversation.rs` | `RealtimeConversationManager` |
 | `codex-rs/app-server/src/bespoke_event_handling.rs` | Core event -> v2 notification mapping |

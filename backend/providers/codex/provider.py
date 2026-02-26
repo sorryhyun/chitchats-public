@@ -22,6 +22,7 @@ from providers.configs import CodexStartupConfig
 from providers.mcp_config import MCPConfigBuilder, MCPServerEnv
 
 from .app_server_client import CodexAppServerClient, CodexAppServerOptions
+from .constants import resolve_codex_path
 from .parser import CodexStreamParser
 
 logger = logging.getLogger("CodexProvider")
@@ -190,16 +191,16 @@ class CodexProvider(AIProvider):
         Returns:
             True if Codex CLI is installed and authenticated
         """
-        # Check if codex is installed via npm
-        codex_path = shutil.which("codex")
+        # Check if codex is installed (bundled or PATH)
+        codex_path = resolve_codex_path()
         if not codex_path:
-            logger.warning("Codex CLI not found in PATH")
+            logger.warning("Codex CLI not found")
             return False
 
         # Check if authenticated using "codex login status"
         try:
             process = await asyncio.create_subprocess_exec(
-                "codex",
+                codex_path,
                 "login",
                 "status",
                 stdout=asyncio.subprocess.PIPE,

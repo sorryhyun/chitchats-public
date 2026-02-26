@@ -162,6 +162,9 @@ class WsJsonRpcTransport:
 
                 try:
                     message = json.loads(raw)
+                    # Log all received messages for debugging (truncate large payloads)
+                    raw_preview = raw[:300] if len(raw) > 300 else raw
+                    logger.debug(f"[WsTransport {self._instance_id}] ← Received: {raw_preview}")
                     await self._handle_message(message)
                 except json.JSONDecodeError as e:
                     logger.warning(f"[WsTransport {self._instance_id}] Invalid JSON: {e}")
@@ -195,16 +198,22 @@ class WsJsonRpcTransport:
                     future.set_exception(RuntimeError(f"RPC error: {error}"))
                 else:
                     future.set_result(message.get("result", {}))
+            elif "error" in message:
+                # Log errors for fire-and-forget requests (e.g., appendAudio)
+                logger.warning(f"[WsTransport {self._instance_id}] Error response for request {msg_id} (no waiter): {message['error']}")
             return
 
-        # Server-initiated request (unexpected)
+        # Server-initiated request (unexpected but might contain important notifications)
         if msg_id is not None and "method" in message:
-            logger.debug(f"[WsTransport {self._instance_id}] Server request (ignored): {message.get('method')}")
+            logger.warning(f"[WsTransport {self._instance_id}] Server request (has id+method, routing as notification): {message.get('method')}")
+            await self._on_notification(message)
             return
 
         # Notification
         if "method" in message or "type" in message:
             await self._on_notification(message)
+        else:
+            logger.warning(f"[WsTransport {self._instance_id}] Unhandled message (no method/type): {message}")
 
     async def shutdown(self) -> None:
         """Gracefully shutdown the WebSocket transport."""
