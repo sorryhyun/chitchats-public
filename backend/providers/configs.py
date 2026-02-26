@@ -107,7 +107,7 @@ class CodexStartupConfig:
             "features.apply_patch_freeform": False,  # Disables: apply_patch
             "features.collab": False,  # Disables: spawn_agent, send_input, wait, close_agent
             "features.child_agents_md": False,  # Disables child agents markdown
-            "features.realtime_conversation": True,  # Enable realtime voice mode
+            "features.voice_transcription": True,  # Enable realtime voice mode
             # Tool settings
             "tools.view_image": False,  # Agents receive images directly
             "web_search": "disabled",
