@@ -345,6 +345,8 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
             isConnected={isConnected}
             onSendMessage={handleSendMessage}
             roomAgents={roomData?.agents ?? []}
+            provider={roomData?.default_provider}
+            roomId={roomId}
           />
         </div>
       </div>

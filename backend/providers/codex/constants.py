@@ -82,6 +82,25 @@ class AppServerMethod:
     EXEC_ERROR = "item/execError"
 
 
+class RealtimeMethod:
+    """JSON-RPC method names for realtime voice sessions."""
+
+    START = "thread.realtime.start"
+    APPEND_AUDIO = "thread.realtime.appendAudio"
+    APPEND_TEXT = "thread.realtime.appendText"
+    STOP = "thread.realtime.stop"
+
+
+class RealtimeNotification:
+    """JSON-RPC notification methods for realtime voice sessions."""
+
+    STARTED = "thread/realtime/started"
+    OUTPUT_AUDIO_DELTA = "thread/realtime/outputAudio/delta"
+    ITEM_ADDED = "thread/realtime/itemAdded"
+    ERROR = "thread/realtime/error"
+    CLOSED = "thread/realtime/closed"
+
+
 class TurnStatus:
     """Turn completion status values."""
 

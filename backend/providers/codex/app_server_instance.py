@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTurnConfig
 
-from .constants import AppServerMethod, map_approval_policy, map_sandbox
+from .constants import AppServerMethod, RealtimeNotification, map_approval_policy, map_sandbox
 from .ws_transport import WsJsonRpcTransport
 
 logger = logging.getLogger("CodexAppServerInstance")
@@ -65,6 +65,7 @@ class CodexAppServerInstance:
         self._active_threads: Set[str] = set()
         self._current_turn_id: Optional[str] = None
         self._notification_queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
+        self._realtime_notification_queue: Optional[asyncio.Queue[Dict[str, Any]]] = None
 
         # Track last activity time for idle timeout
         self._last_activity: float = time.monotonic()
@@ -153,9 +154,13 @@ class CodexAppServerInstance:
     async def _handle_notification(self, message: Dict[str, Any]) -> None:
         """Handle notifications from the transport.
 
-        Routes notifications to the active turn's queue.
+        Routes realtime notifications to the realtime queue,
+        and turn notifications to the turn queue.
         """
-        if self._notification_queue is not None:
+        method = message.get("method", "")
+        if method.startswith("thread/realtime/") and self._realtime_notification_queue is not None:
+            await self._realtime_notification_queue.put(message)
+        elif self._notification_queue is not None:
             await self._notification_queue.put(message)
 
     @staticmethod
@@ -459,6 +464,107 @@ class CodexAppServerInstance:
             logger.error(f"[Instance {self._instance_id}] Interrupt failed: {e}")
             return False
 
+    # =========================================================================
+    # Realtime voice session methods
+    # =========================================================================
+
+    async def start_realtime(
+        self,
+        thread_id: str,
+        prompt: str,
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Start a realtime voice session on a thread.
+
+        Args:
+            thread_id: Thread ID to attach the session to
+            prompt: System prompt for the realtime model
+            session_id: Optional session ID to resume a prior session
+
+        Returns:
+            Response from the app-server
+        """
+        if not self._transport:
+            raise RuntimeError("Instance not started")
+
+        params: Dict[str, Any] = {
+            "threadId": thread_id,
+            "prompt": prompt,
+        }
+        if session_id:
+            params["sessionId"] = session_id
+
+        self._realtime_notification_queue = asyncio.Queue()
+        self.touch()
+
+        logger.info(f"[Instance {self._instance_id}] Starting realtime session on thread {thread_id}")
+        result = await self._transport.send_request("thread.realtime.start", params)
+        return result
+
+    async def append_audio(self, thread_id: str, audio_data: Dict[str, Any]) -> None:
+        """Send audio data to the realtime session (fire-and-forget).
+
+        Args:
+            thread_id: Thread ID
+            audio_data: Audio dict with data (base64), sampleRate, numChannels, samplesPerChannel
+        """
+        if not self._transport:
+            raise RuntimeError("Instance not started")
+
+        await self._transport.send_request_no_wait(
+            "thread.realtime.appendAudio",
+            {"threadId": thread_id, "audio": audio_data},
+        )
+
+    async def append_text(self, thread_id: str, text: str) -> None:
+        """Send text input to the realtime session.
+
+        Args:
+            thread_id: Thread ID
+            text: Text to send
+        """
+        if not self._transport:
+            raise RuntimeError("Instance not started")
+
+        await self._transport.send_request_no_wait(
+            "thread.realtime.appendText",
+            {"threadId": thread_id, "text": text},
+        )
+
+    async def stop_realtime(self, thread_id: str) -> None:
+        """Stop a realtime voice session.
+
+        Args:
+            thread_id: Thread ID
+        """
+        if not self._transport:
+            return
+
+        logger.info(f"[Instance {self._instance_id}] Stopping realtime session on thread {thread_id}")
+        try:
+            await self._transport.send_request("thread.realtime.stop", {"threadId": thread_id})
+        except Exception as e:
+            logger.warning(f"[Instance {self._instance_id}] Error stopping realtime: {e}")
+        finally:
+            self._realtime_notification_queue = None
+            self.touch()
+
+    async def drain_realtime_notifications(self, timeout: float = 0.1) -> Optional[Dict[str, Any]]:
+        """Get the next realtime notification, or None if the queue is empty/closed.
+
+        Args:
+            timeout: How long to wait for a notification
+
+        Returns:
+            Notification dict, or None on timeout / queue closed
+        """
+        if self._realtime_notification_queue is None:
+            return None
+        try:
+            return await asyncio.wait_for(self._realtime_notification_queue.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+
     async def restart(self) -> None:
         """Restart the app server after a failure."""
         logger.info(f"[Instance {self._instance_id}] Restarting Codex App Server...")
@@ -487,6 +593,7 @@ class CodexAppServerInstance:
         await self._terminate_process()
 
         self._notification_queue = None
+        self._realtime_notification_queue = None
         self._active_threads.clear()
 
         logger.info(f"[Instance {self._instance_id}] Shutdown complete")

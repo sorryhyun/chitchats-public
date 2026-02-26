@@ -1,12 +1,14 @@
 import { useState, useCallback, memo, FormEvent, KeyboardEvent, ClipboardEvent, useRef, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Agent, ParticipantType, ImageItem } from '../../types';
+import type { Agent, ParticipantType, ImageItem, ProviderType } from '../../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useMention } from '../../hooks/useMention';
 import { useImageDrop } from '../../hooks/useImageDrop';
+import { useVoiceRealtime } from '../../hooks/useVoiceRealtime';
 import { MentionDropdown } from './MentionDropdown';
+import { VoiceRecordButton } from './VoiceRecordButton';
 
 interface ImageData {
   data: string;  // Base64 encoded (without data URL prefix)
@@ -18,6 +20,8 @@ interface MessageInputProps {
   isConnected: boolean;
   onSendMessage: (message: string, participantType: ParticipantType, characterName?: string, images?: ImageItem[], mentionedAgentIds?: number[]) => void;
   roomAgents?: Agent[];
+  provider?: ProviderType;
+  roomId?: number | null;
 }
 
 export interface MessageInputHandle {
@@ -29,12 +33,16 @@ const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
 const MAX_IMAGES = 5;  // Maximum number of images per message
 
-export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProps>(({ isConnected, onSendMessage, roomAgents = [] }, ref) => {
+export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProps>(({ isConnected, onSendMessage, roomAgents = [], provider, roomId }, ref) => {
   const { t } = useTranslation('chat');
   const [inputMessage, setInputMessage] = useState('');
   const [participantType, setParticipantType] = useState<ParticipantType>('user');
   const [characterName, setCharacterName] = useState('');
   const [attachedImages, setAttachedImages] = useState<ImageData[]>([]);
+
+  // Voice mode (only for Codex rooms)
+  const voice = useVoiceRealtime(provider === 'codex' ? (roomId ?? null) : null);
+  const showVoiceButton = provider === 'codex';
 
   // State to toggle the persona menu
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
@@ -403,6 +411,17 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
         </button>
+
+        {/* Voice Record Button (Codex rooms only) */}
+        {showVoiceButton && (
+          <VoiceRecordButton
+            status={voice.status}
+            onStart={voice.start}
+            onStop={voice.stop}
+            errorMessage={voice.errorMessage}
+            disabled={!isConnected}
+          />
+        )}
 
         {/* Streamlined Input Field with Mention Dropdown */}
         <div className="relative flex-1 min-w-0">

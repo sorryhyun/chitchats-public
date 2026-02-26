@@ -47,6 +47,7 @@ def create_app() -> FastAPI:
         tools_api,
         user,
         voice,
+        voice_realtime,
     )
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.errors import RateLimitExceeded
@@ -310,6 +311,7 @@ def create_app() -> FastAPI:
     app.include_router(providers.router, tags=["Providers"])
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])
     app.include_router(voice.router, prefix="/voice", tags=["Voice"])
+    app.include_router(voice_realtime.router, tags=["Voice Realtime"])
     app.include_router(user.router, prefix="/user", tags=["User"])
     app.include_router(tools_api.router, tags=["Tools"])
     app.include_router(serve_mcp.router, tags=["MCP Tools"])
