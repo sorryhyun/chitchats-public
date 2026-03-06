@@ -121,7 +121,7 @@ The App Server emits JSON-RPC notifications during a turn:
 |----------|---------|-------------|
 | `CODEX_POOL_SIZE` | 3 | Number of server instances |
 | `CODEX_SELECTION_STRATEGY` | round_robin | Instance selection: `round_robin` or `least_busy` |
-| `CODEX_MODEL` | gpt-5.2 | Default model for Codex provider |
+| `CODEX_MODEL` | gpt-5.4 | Default model for Codex provider |
 
 ## Advantages
 

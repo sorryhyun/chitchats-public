@@ -765,7 +765,7 @@ App Server uses a simplified JSON-RPC 2.0 format (no `jsonrpc` field required):
   "params": {
     "config": {
       "cwd": "/tmp/empty",
-      "model": "gpt-5.2",
+      "model": "gpt-5.4",
       "baseInstructions": "You are a helpful assistant",
       "sandbox": "danger-full-access",
       "approvalPolicy": "never",
@@ -1065,7 +1065,7 @@ async fn send_message(
     if thread_guard.is_none() {
         let config = ThreadConfig {
             cwd: "/tmp/empty".to_string(),
-            model: "gpt-5.2".to_string(),
+            model: "gpt-5.4".to_string(),
             base_instructions: "You are a helpful assistant".to_string(),
             sandbox: "danger-full-access".to_string(),
             approval_policy: "never".to_string(),
