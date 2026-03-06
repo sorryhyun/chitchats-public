@@ -100,11 +100,18 @@ def _open_log(icon=None, item=None):
 
 
 def _quit_app(icon=None, item=None):
-    """Quit the application."""
+    """Quit the application and all child processes."""
     global _tray_icon
     if _tray_icon:
         _tray_icon.stop()
-    # Force exit the entire process (uvicorn may keep running otherwise)
+    # Clean up lock file (os._exit bypasses atexit handlers)
+    try:
+        from launcher import cleanup_lock_file
+        cleanup_lock_file()
+    except Exception:
+        pass
+    # Force exit the entire process. The Windows Job Object created at startup
+    # (with KILL_ON_JOB_CLOSE) ensures all child processes are also terminated.
     os._exit(0)
 
 
