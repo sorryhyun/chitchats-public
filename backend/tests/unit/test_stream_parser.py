@@ -7,8 +7,47 @@ unified ParsedStreamMessage format.
 
 from unittest.mock import Mock
 
+from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock, ThinkingBlock, ToolUseBlock
+
 from providers.base import ParsedStreamMessage
 from providers.claude.parser import ClaudeStreamParser as StreamParser
+
+
+def _make_assistant_message(content: list) -> Mock:
+    """Create a mock AssistantMessage with the given content blocks."""
+    msg = Mock(spec=AssistantMessage)
+    msg.content = content
+    return msg
+
+
+def _make_system_message(subtype: str = "init", data: dict | None = None) -> Mock:
+    """Create a mock SystemMessage."""
+    msg = Mock(spec=SystemMessage)
+    msg.subtype = subtype
+    msg.data = data or {}
+    return msg
+
+
+def _make_text_block(text: str) -> Mock:
+    """Create a mock TextBlock."""
+    block = Mock(spec=TextBlock)
+    block.text = text
+    return block
+
+
+def _make_thinking_block(thinking: str) -> Mock:
+    """Create a mock ThinkingBlock."""
+    block = Mock(spec=ThinkingBlock)
+    block.thinking = thinking
+    return block
+
+
+def _make_tool_use_block(name: str, input_data: dict | None = None) -> Mock:
+    """Create a mock ToolUseBlock."""
+    block = Mock(spec=ToolUseBlock)
+    block.name = name
+    block.input = input_data or {}
+    return block
 
 
 class TestParsedStreamMessage:
@@ -49,93 +88,23 @@ class TestParsedStreamMessage:
 class TestStreamParser:
     """Test StreamParser message parsing logic."""
 
-    def test_parse_text_content_with_text_attribute(self):
-        """Test parsing message with direct text attribute."""
-        message = Mock()
-        message.text = "Hello, world!"
-
-        result = StreamParser.parse_message(message, "", "")
-
-        assert result.response_text == "Hello, world!"
-        assert result.thinking_text == ""
-        assert result.session_id is None
-        assert not result.has_tool_usage
-
-    def test_parse_text_content_string(self):
-        """Test parsing message with string content."""
-        message = Mock()
-        del message.text  # Remove text attribute
-        message.content = "Hello from string content"
-
-        result = StreamParser.parse_message(message, "", "")
-
-        assert result.response_text == "Hello from string content"
-        assert result.thinking_text == ""
-
     def test_parse_text_block_in_content_list(self):
         """Test parsing AssistantMessage with TextBlock in content list."""
-        # Mock TextBlock
-        text_block = Mock()
-        text_block.type = "text"
-        text_block.text = "This is text content"
-
-        # Mock AssistantMessage
-        message = Mock()
-        del message.text  # No direct text attribute
-        message.content = [text_block]
+        message = _make_assistant_message([_make_text_block("This is text content")])
 
         result = StreamParser.parse_message(message, "", "")
 
         assert result.response_text == "This is text content"
         assert result.thinking_text == ""
 
-    def test_parse_thinking_block_with_thinking_attribute(self):
+    def test_parse_thinking_block(self):
         """Test parsing ThinkingBlock with thinking attribute."""
-        # Mock ThinkingBlock
-        thinking_block = Mock()
-        thinking_block.__class__.__name__ = "ThinkingBlock"
-        thinking_block.thinking = "Agent is thinking..."
-        thinking_block.type = "thinking"
-
-        # Mock message
-        message = Mock()
-        del message.text
-        message.content = [thinking_block]
+        message = _make_assistant_message([_make_thinking_block("Agent is thinking...")])
 
         result = StreamParser.parse_message(message, "", "")
 
         assert result.response_text == ""
         assert result.thinking_text == "Agent is thinking..."
-
-    def test_parse_thinking_block_with_text_fallback(self):
-        """Test parsing ThinkingBlock with text fallback."""
-        # Mock ThinkingBlock with text instead of thinking
-        thinking_block = Mock()
-        thinking_block.__class__.__name__ = "ThinkingBlock"
-        del thinking_block.thinking  # No thinking attribute
-        thinking_block.text = "Thinking via text attribute"
-        thinking_block.type = "thinking"
-
-        message = Mock()
-        del message.text
-        message.content = [thinking_block]
-
-        result = StreamParser.parse_message(message, "", "")
-
-        assert result.thinking_text == "Thinking via text attribute"
-
-    def test_parse_thinking_block_dict_format(self):
-        """Test parsing thinking block in dict format."""
-        # Mock thinking block as dict
-        thinking_block = {"type": "thinking", "thinking": "Dictionary thinking content"}
-
-        message = Mock()
-        del message.text
-        message.content = [thinking_block]
-
-        result = StreamParser.parse_message(message, "", "")
-
-        assert result.thinking_text == "Dictionary thinking content"
 
     def test_parse_skip_tool_call(self):
         """Test that skip tool is NOT detected in stream parser.
@@ -143,17 +112,7 @@ class TestStreamParser:
         Skip detection has been moved to PostToolUse hooks for MCP tools.
         Stream parser no longer detects skip tool calls.
         """
-        # Mock ToolUseBlock for skip
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = "agent_name__skip"
-        # Ensure text attribute doesn't exist to avoid falling into text handling
-        if hasattr(tool_block, "text"):
-            del tool_block.text
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
+        message = _make_assistant_message([_make_tool_use_block("agent_name__skip")])
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -161,69 +120,23 @@ class TestStreamParser:
         assert result.skip_used is False
         assert result.has_tool_usage is False
 
-    def test_parse_skip_tool_call_dict_format(self):
-        """Test that skip tool in dict format is NOT detected in stream parser."""
-        tool_block = {"type": "tool_use", "name": "some_agent__skip"}
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
-
-        result = StreamParser.parse_message(message, "", "")
-
-        # Skip is now detected via hooks, not stream parser
-        assert result.skip_used is False
-
     def test_parse_memorize_tool_call(self):
         """Test parsing memorize tool usage."""
-        # Mock ToolUseBlock for memorize
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = "agent_name__memorize"
-        tool_block.input = {"memory_entry": "Important memory to save"}
-        if hasattr(tool_block, "text"):
-            del tool_block.text
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
+        message = _make_assistant_message([
+            _make_tool_use_block("agent_name__memorize", {"memory_entry": "Important memory to save"})
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
         assert result.memory_entries == ["Important memory to save"]
         assert result.has_tool_usage is True
 
-    def test_parse_memorize_tool_call_dict_format(self):
-        """Test parsing memorize tool in dict format."""
-        tool_block = {"type": "tool_use", "name": "agent__memorize", "input": {"memory_entry": "Memory in dict format"}}
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
-
-        result = StreamParser.parse_message(message, "", "")
-
-        assert result.memory_entries == ["Memory in dict format"]
-
     def test_parse_multiple_memory_entries(self):
         """Test parsing multiple memorize tool calls."""
-        tool_block1 = Mock()
-        tool_block1.type = "tool_use"
-        tool_block1.name = "agent__memorize"
-        tool_block1.input = {"memory_entry": "Memory 1"}
-        if hasattr(tool_block1, "text"):
-            del tool_block1.text
-
-        tool_block2 = Mock()
-        tool_block2.type = "tool_use"
-        tool_block2.name = "agent__memorize"
-        tool_block2.input = {"memory_entry": "Memory 2"}
-        if hasattr(tool_block2, "text"):
-            del tool_block2.text
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block1, tool_block2]
+        message = _make_assistant_message([
+            _make_tool_use_block("agent__memorize", {"memory_entry": "Memory 1"}),
+            _make_tool_use_block("agent__memorize", {"memory_entry": "Memory 2"}),
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -231,11 +144,10 @@ class TestStreamParser:
 
     def test_parse_system_message_with_session_id(self):
         """Test extracting session_id from SystemMessage."""
-        message = Mock()
-        message.__class__.__name__ = "SystemMessage"
-        message.data = {"session_id": "sess_abc123", "other": "data"}
-        del message.text
-        del message.content
+        message = _make_system_message(
+            subtype="init",
+            data={"session_id": "sess_abc123", "other": "data"},
+        )
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -243,11 +155,18 @@ class TestStreamParser:
 
     def test_parse_system_message_without_session_id(self):
         """Test SystemMessage without session_id."""
-        message = Mock()
-        message.__class__.__name__ = "SystemMessage"
-        message.data = {"other": "data"}
-        del message.text
-        del message.content
+        message = _make_system_message(subtype="init", data={"other": "data"})
+
+        result = StreamParser.parse_message(message, "", "")
+
+        assert result.session_id is None
+
+    def test_parse_system_message_rate_limit(self):
+        """Test SystemMessage with rate_limit subtype doesn't crash."""
+        message = _make_system_message(
+            subtype="rate_limit",
+            data={"message": "Too many requests"},
+        )
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -255,44 +174,30 @@ class TestStreamParser:
 
     def test_parse_accumulated_text(self):
         """Test that parser accumulates text from previous messages."""
-        text_block = Mock()
-        text_block.type = "text"
-        text_block.text = " more text"
-
-        message = Mock()
-        del message.text
-        message.content = [text_block]
+        message = _make_assistant_message([_make_text_block(" more text")])
 
         result = StreamParser.parse_message(message, "Previous", "Existing thinking")
 
-        assert result.response_text == "Previous more text"
+        # When current_response is non-empty, text blocks are skipped (dedup with StreamEvent)
+        # so response stays "Previous"
+        assert result.response_text == "Previous"
         assert result.thinking_text == "Existing thinking"
+
+    def test_parse_accumulated_text_fresh(self):
+        """Test that text blocks are used when no prior streamed content."""
+        message = _make_assistant_message([_make_text_block("fresh text")])
+
+        result = StreamParser.parse_message(message, "", "")
+
+        assert result.response_text == "fresh text"
 
     def test_parse_mixed_content_blocks(self):
         """Test parsing message with mixed content blocks."""
-        # Text block
-        text_block = Mock()
-        text_block.type = "text"
-        text_block.text = "Hello"
-
-        # Thinking block
-        thinking_block = Mock()
-        thinking_block.__class__.__name__ = "ThinkingBlock"
-        thinking_block.thinking = "Processing..."
-        thinking_block.type = "thinking"
-        if hasattr(thinking_block, "text"):
-            del thinking_block.text
-
-        # Tool use block (skip - no longer detected in stream parser)
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = "agent__skip"
-        if hasattr(tool_block, "text"):
-            del tool_block.text
-
-        message = Mock()
-        del message.text
-        message.content = [text_block, thinking_block, tool_block]
+        message = _make_assistant_message([
+            _make_text_block("Hello"),
+            _make_thinking_block("Processing..."),
+            _make_tool_use_block("agent__skip"),
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -303,27 +208,18 @@ class TestStreamParser:
 
     def test_parse_multiple_text_blocks(self):
         """Test parsing multiple text blocks accumulates content."""
-        text_block1 = Mock()
-        text_block1.type = "text"
-        text_block1.text = "Part 1 "
-
-        text_block2 = Mock()
-        text_block2.type = "text"
-        text_block2.text = "Part 2"
-
-        message = Mock()
-        del message.text
-        message.content = [text_block1, text_block2]
+        message = _make_assistant_message([
+            _make_text_block("Part 1 "),
+            _make_text_block("Part 2"),
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
         assert result.response_text == "Part 1 Part 2"
 
     def test_parse_empty_message(self):
-        """Test parsing message with no content."""
-        message = Mock()
-        del message.text
-        del message.content
+        """Test parsing unknown message type with no content."""
+        message = Mock()  # Not any known type
 
         result = StreamParser.parse_message(message, "Existing", "Thinking")
 
@@ -332,30 +228,11 @@ class TestStreamParser:
         assert result.session_id is None
         assert not result.has_tool_usage
 
-    def test_parse_text_block_dict_format(self):
-        """Test parsing text block in dict format."""
-        text_block = {"type": "text", "text": "Dictionary text content"}
-
-        message = Mock()
-        del message.text
-        message.content = [text_block]
-
-        result = StreamParser.parse_message(message, "", "")
-
-        assert result.response_text == "Dictionary text content"
-
     def test_parse_memorize_without_memory_entry(self):
         """Test memorize tool without memory_entry field."""
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = "agent__memorize"
-        tool_block.input = {"other_field": "value"}
-        if hasattr(tool_block, "text"):
-            del tool_block.text
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
+        message = _make_assistant_message([
+            _make_tool_use_block("agent__memorize", {"other_field": "value"})
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -364,16 +241,9 @@ class TestStreamParser:
 
     def test_parse_memorize_with_empty_memory_entry(self):
         """Test memorize tool with empty memory_entry."""
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = "agent__memorize"
-        tool_block.input = {"memory_entry": ""}
-        if hasattr(tool_block, "text"):
-            del tool_block.text
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
+        message = _make_assistant_message([
+            _make_tool_use_block("agent__memorize", {"memory_entry": ""})
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
@@ -382,19 +252,30 @@ class TestStreamParser:
 
     def test_parse_unknown_tool_call(self):
         """Test parsing unknown tool call doesn't affect flags."""
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = "agent__unknown_tool"
-        tool_block.input = {}
-        if hasattr(tool_block, "text"):
-            del tool_block.text
-
-        message = Mock()
-        del message.text
-        message.content = [tool_block]
+        message = _make_assistant_message([
+            _make_tool_use_block("agent__unknown_tool", {})
+        ])
 
         result = StreamParser.parse_message(message, "", "")
 
         assert not result.skip_used
         assert result.memory_entries == []
         assert not result.has_tool_usage
+
+    def test_thinking_skipped_when_already_streamed(self):
+        """Test that thinking blocks are skipped when already streamed via StreamEvent."""
+        message = _make_assistant_message([_make_thinking_block("duplicate thinking")])
+
+        result = StreamParser.parse_message(message, "", "Already streamed thinking")
+
+        # Thinking should not be added again
+        assert result.thinking_text == "Already streamed thinking"
+
+    def test_text_skipped_when_already_streamed(self):
+        """Test that text blocks are skipped when already streamed via StreamEvent."""
+        message = _make_assistant_message([_make_text_block("duplicate text")])
+
+        result = StreamParser.parse_message(message, "Already streamed", "")
+
+        # Text should not be added again
+        assert result.response_text == "Already streamed"

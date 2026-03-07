@@ -55,11 +55,24 @@ class ClaudeStreamParser(AIStreamParser):
         # Handle StreamEvent for partial message updates (real-time streaming)
         if isinstance(message, StreamEvent):
             event = message.event
+            tool_use_started = None
+            input_json_delta_str = None
+            content_block_stopped_index = None
+
             if isinstance(event, dict):
                 event_type = event.get("type", "")
 
-                # Handle content_block_delta events (text streaming)
-                if event_type == "content_block_delta":
+                # Handle content_block_start events (tool_use block begins)
+                if event_type == "content_block_start":
+                    content_block = event.get("content_block", {})
+                    if content_block.get("type") == "tool_use":
+                        tool_use_started = {
+                            "index": event.get("index", 0),
+                            "name": content_block.get("name", ""),
+                        }
+
+                # Handle content_block_delta events (text/thinking/tool input streaming)
+                elif event_type == "content_block_delta":
                     delta = event.get("delta", {})
                     delta_type = delta.get("type", "")
 
@@ -67,6 +80,12 @@ class ClaudeStreamParser(AIStreamParser):
                         content_delta = delta.get("text", "")
                     elif delta_type == "thinking_delta":
                         thinking_delta = delta.get("thinking", "")
+                    elif delta_type == "input_json_delta":
+                        input_json_delta_str = delta.get("partial_json", "")
+
+                # Handle content_block_stop events (block finalized)
+                elif event_type == "content_block_stop":
+                    content_block_stopped_index = event.get("index")
 
             # Extract session_id from StreamEvent
             if message.session_id:
@@ -79,6 +98,9 @@ class ClaudeStreamParser(AIStreamParser):
                 skip_used=False,
                 memory_entries=memory_entries,
                 anthropic_calls=[],
+                tool_use_started=tool_use_started,
+                input_json_delta=input_json_delta_str,
+                content_block_stopped_index=content_block_stopped_index,
             )
 
         # Extract session_id from SystemMessage

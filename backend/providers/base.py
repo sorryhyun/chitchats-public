@@ -87,6 +87,11 @@ class ParsedStreamMessage:
     anthropic_calls: List[str] = field(default_factory=list)
     excuse_reasons: List[str] = field(default_factory=list)
 
+    # Tool streaming fields (for input_json_delta support)
+    tool_use_started: Optional[Dict[str, Any]] = None  # {"index": int, "name": str}
+    input_json_delta: Optional[str] = None  # partial JSON from input_json_delta
+    content_block_stopped_index: Optional[int] = None  # index of stopped content block
+
     @property
     def has_tool_usage(self) -> bool:
         """Check if any tools were used in this message."""

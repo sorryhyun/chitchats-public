@@ -281,25 +281,8 @@ class ClaudeProvider(AIProvider):
 
             hook_matchers.append(HookMatcher(matcher="mcp__action__skip", hooks=[capture_skip_tool]))
 
-        # Hook for excuse tool calls
-        if excuse_reasons_capture is not None:
-
-            async def capture_excuse_tool(
-                input_data: PostToolUseHookInput,
-                _tool_use_id: Optional[str],
-                _ctx: dict,
-            ) -> SyncHookJSONOutput:
-                """Hook to capture excuse tool calls."""
-                tool_name = input_data.get("tool_name", "")
-                if tool_name.endswith("__excuse"):
-                    tool_input = input_data.get("tool_input", {})
-                    reason = tool_input.get("reason", "")
-                    if reason:
-                        excuse_reasons_capture.append(reason)
-                        logger.info(f"Captured excuse tool call: {reason[:100]}...")
-                return {"continue_": True}
-
-            hook_matchers.append(HookMatcher(matcher="mcp__action__excuse", hooks=[capture_excuse_tool]))
+        # Excuse tool calls are now captured via input_json_delta streaming
+        # in ResponseAccumulator instead of PostToolUse hooks
 
         if not hook_matchers:
             return None

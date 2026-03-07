@@ -5,11 +5,15 @@ This module provides typed event classes and a ResponseAccumulator
 for managing state during agent response streaming.
 """
 
+import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
 # Import ParsedStreamMessage for type hints
 from providers.base import ParsedStreamMessage
+
+logger = logging.getLogger("streaming")
 
 
 @dataclass
@@ -111,6 +115,9 @@ class ResponseAccumulator:
     excuse_reasons: list[str] = field(default_factory=list)
     # Hook capture lists - these get mutated by PostToolUse hooks
     skip_tool_capture: list[bool] = field(default_factory=list)
+    # Streaming tool input accumulation (for input_json_delta support)
+    _streaming_tool_blocks: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+    # index -> (tool_name, [partial_json_chunks])
 
     def update_from_parsed(
         self,
@@ -143,6 +150,25 @@ class ResponseAccumulator:
         # Collect memory entries
         self.memory_entries.extend(parsed.memory_entries)
 
+        # Handle streaming tool input accumulation
+        if parsed.tool_use_started is not None:
+            idx = parsed.tool_use_started["index"]
+            name = parsed.tool_use_started["name"]
+            self._streaming_tool_blocks[idx] = (name, [])
+
+        if parsed.input_json_delta is not None:
+            # Find the active tool block to append to
+            # input_json_delta events correspond to the most recently started tool block
+            for idx in sorted(self._streaming_tool_blocks.keys(), reverse=True):
+                name, chunks = self._streaming_tool_blocks[idx]
+                chunks.append(parsed.input_json_delta)
+                break
+
+        if parsed.content_block_stopped_index is not None:
+            idx = parsed.content_block_stopped_index
+            if idx in self._streaming_tool_blocks:
+                self._finalize_tool_block(idx)
+
         # Update accumulated text
         self.response_text = parsed.response_text
         self.thinking_text = parsed.thinking_text
@@ -157,6 +183,26 @@ class ResponseAccumulator:
             events.append(ThinkingDeltaEvent(temp_id=temp_id, delta=thinking_delta))
 
         return events
+
+    def _finalize_tool_block(self, index: int) -> None:
+        """Parse accumulated JSON for a completed tool block and extract data."""
+        name, chunks = self._streaming_tool_blocks.pop(index)
+        if not chunks:
+            return
+
+        json_str = "".join(chunks)
+        try:
+            tool_input = json.loads(json_str)
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse tool input JSON for {name}: {json_str[:100]}")
+            return
+
+        # Extract excuse reasons
+        if name.endswith("__excuse"):
+            reason = tool_input.get("reason", "")
+            if reason:
+                self.excuse_reasons.append(reason)
+                logger.info(f"Captured excuse via streaming: {reason[:100]}...")
 
     def get_streaming_state(self) -> dict[str, Any]:
         """Get the current streaming state for external access.
