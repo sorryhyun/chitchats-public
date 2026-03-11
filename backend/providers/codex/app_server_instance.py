@@ -194,6 +194,20 @@ class CodexAppServerInstance:
         def _start_sync():
             client = AppServerClient(sdk_config)
             client.start()
+
+            # Fix encoding on Windows: the SDK uses Popen(text=True) without
+            # specifying encoding, defaulting to the system codepage (e.g. cp949
+            # on Korean Windows). This causes UnicodeDecodeError when the codex
+            # subprocess outputs UTF-8 text. Reconfigure streams to use UTF-8.
+            proc = client._proc
+            if proc is not None:
+                if proc.stdout and hasattr(proc.stdout, "reconfigure"):
+                    proc.stdout.reconfigure(encoding="utf-8")
+                if proc.stderr and hasattr(proc.stderr, "reconfigure"):
+                    proc.stderr.reconfigure(encoding="utf-8")
+                if proc.stdin and hasattr(proc.stdin, "reconfigure"):
+                    proc.stdin.reconfigure(encoding="utf-8")
+
             client.initialize()
             return client
 

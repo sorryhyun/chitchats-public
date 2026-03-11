@@ -135,7 +135,11 @@ class MCPConfigBuilder:
         if prefer_venv:
             venv_path = os.environ.get("VIRTUAL_ENV")
             if venv_path:
-                return str(Path(venv_path) / "bin" / "python")
+                venv_root = Path(venv_path)
+                # Windows uses Scripts/, Unix uses bin/
+                if os.name == "nt":
+                    return str(venv_root / "Scripts" / "python.exe")
+                return str(venv_root / "bin" / "python")
         return sys.executable
 
     @staticmethod

@@ -318,6 +318,8 @@ class CodexStreamParser(AIStreamParser):
         new_session_id = None
         skip_tool_called = False
         memory_entries: list[str] = []
+        anthropic_calls: list[str] = []
+        excuse_reasons: list[str] = []
 
         if event_type == EventType.CONTENT_DELTA:
             # Streaming content delta
@@ -378,6 +380,18 @@ class CodexStreamParser(AIStreamParser):
                         memory_entries.append(memory_entry)
                         logger.info(f"[CodexParser] memorize: {memory_entry[:50]}...")
 
+                elif tool_name == "excuse":
+                    reason = tool_args.get("reason", "")
+                    if reason:
+                        excuse_reasons.append(reason)
+                        logger.info(f"[CodexParser] excuse: {reason[:50]}...")
+
+                elif tool_name == "openai":
+                    situation = tool_args.get("situation", "")
+                    if situation:
+                        anthropic_calls.append(situation)
+                        logger.info(f"[CodexParser] openai guideline: {situation[:50]}...")
+
         elif event_type == EventType.ERROR:
             # Error event
             error_msg = data.get("message", str(data))
@@ -390,4 +404,6 @@ class CodexStreamParser(AIStreamParser):
             session_id=new_session_id,
             skip_used=skip_tool_called,
             memory_entries=memory_entries,
+            anthropic_calls=anthropic_calls,
+            excuse_reasons=excuse_reasons,
         )

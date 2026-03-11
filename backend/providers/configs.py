@@ -109,6 +109,7 @@ class CodexStartupConfig:
             "features.child_agents_md": False,  # Disables child agents markdown
             # Tool settings
             "tools.view_image": False,  # Agents receive images directly
+            "tools_view_image": False,
             "web_search": "disabled",
             # "project_doc_max_bytes": 0,
             "show_raw_agent_reasoning": True,
