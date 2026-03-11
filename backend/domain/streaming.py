@@ -147,8 +147,16 @@ class ResponseAccumulator:
         if self.skip_tool_capture and not self.skip_tool_called:
             self.skip_tool_called = True
 
-        # Collect memory entries
+        # Collect memory entries, excuse reasons, and anthropic calls from parser
         self.memory_entries.extend(parsed.memory_entries)
+        if parsed.excuse_reasons:
+            self.excuse_reasons.extend(parsed.excuse_reasons)
+        if parsed.anthropic_calls:
+            self.anthropic_calls.extend(parsed.anthropic_calls)
+
+        # Check skip flag from parser (Codex provider sets this via parsing)
+        if parsed.skip_used and not self.skip_tool_called:
+            self.skip_tool_called = True
 
         # Handle streaming tool input accumulation
         if parsed.tool_use_started is not None:
