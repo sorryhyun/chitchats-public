@@ -20,6 +20,7 @@ dependencies = [
     "mcp>=1.0.0",
     "fastapi-mcp>=0.3.0",
     "websockets>=13.0",
+    "codex-app-server-sdk @ git+https://github.com/openai/codex.git@main#subdirectory=sdk/python",
 
     # Auth
     "bcrypt>=4.2.0",

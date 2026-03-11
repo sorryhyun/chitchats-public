@@ -20,8 +20,6 @@ from .constants import (
     EventType,
     ItemType,
     TurnStatus,
-    map_approval_policy,
-    map_sandbox,
 )
 from .parser import (
     AppServerStreamAccumulator,
@@ -52,7 +50,4 @@ __all__ = [
     "CodexTurnConfig",
     # Thread management
     "ThreadSessionManager",
-    # Format mappers
-    "map_sandbox",
-    "map_approval_policy",
 ]

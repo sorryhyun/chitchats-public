@@ -187,8 +187,8 @@ class TestHandleUserMessage:
         saved_message = Mock(id=1, content="Hello agents!", role="user", timestamp=Mock())
 
         with (
-            patch("orchestration.orchestrator.crud.create_message", return_value=saved_message) as mock_create,
-            patch("orchestration.orchestrator.crud.get_agents", return_value=[]) as mock_get_agents,
+            patch("chatroom_orchestration.orchestrator.crud.create_message", return_value=saved_message) as mock_create,
+            patch("chatroom_orchestration.orchestrator.crud.get_agents", return_value=[]) as mock_get_agents,
             patch.object(orchestrator, "interrupt_room_processing", new=AsyncMock()),
         ):
             await orchestrator.handle_user_message(
@@ -217,8 +217,8 @@ class TestHandleUserMessage:
         message_data = {"content": "Hello"}
 
         with (
-            patch("orchestration.orchestrator.crud.create_message") as mock_create,
-            patch("orchestration.orchestrator.crud.get_agents", return_value=[]),
+            patch("chatroom_orchestration.orchestrator.crud.create_message") as mock_create,
+            patch("chatroom_orchestration.orchestrator.crud.get_agents", return_value=[]),
             patch.object(orchestrator, "interrupt_room_processing", new=AsyncMock()),
         ):
             await orchestrator.handle_user_message(
@@ -245,8 +245,8 @@ class TestHandleUserMessage:
         saved_message = Mock(id=1, content="New message", role="user", timestamp=Mock())
 
         with (
-            patch("orchestration.orchestrator.crud.create_message", return_value=saved_message),
-            patch("orchestration.orchestrator.crud.get_agents", return_value=[]),
+            patch("chatroom_orchestration.orchestrator.crud.create_message", return_value=saved_message),
+            patch("chatroom_orchestration.orchestrator.crud.get_agents", return_value=[]),
             patch.object(orchestrator, "interrupt_room_processing", new=AsyncMock()) as mock_interrupt,
         ):
             await orchestrator.handle_user_message(
@@ -272,8 +272,8 @@ class TestHandleUserMessage:
         saved_message = Mock(id=1, content="Hello", role="user", timestamp=Mock())
 
         with (
-            patch("orchestration.orchestrator.crud.create_message", return_value=saved_message),
-            patch("orchestration.orchestrator.crud.get_agents", return_value=[]),
+            patch("chatroom_orchestration.orchestrator.crud.create_message", return_value=saved_message),
+            patch("chatroom_orchestration.orchestrator.crud.get_agents", return_value=[]),
             patch.object(orchestrator, "interrupt_room_processing", new=AsyncMock()),
         ):
             await orchestrator.handle_user_message(
@@ -314,8 +314,8 @@ class TestProcessAgentResponses:
         )
 
         with (
-            patch("orchestration.orchestrator.TapeGenerator") as mock_generator_class,
-            patch("orchestration.orchestrator.TapeExecutor") as mock_executor_class,
+            patch("chatroom_orchestration.orchestrator.TapeGenerator") as mock_generator_class,
+            patch("chatroom_orchestration.orchestrator.TapeExecutor") as mock_executor_class,
         ):
             mock_generator = Mock()
             mock_tape = Mock()
@@ -365,8 +365,8 @@ class TestProcessAgentResponses:
         )
 
         with (
-            patch("orchestration.orchestrator.TapeGenerator") as mock_generator_class,
-            patch("orchestration.orchestrator.TapeExecutor") as mock_executor_class,
+            patch("chatroom_orchestration.orchestrator.TapeGenerator") as mock_generator_class,
+            patch("chatroom_orchestration.orchestrator.TapeExecutor") as mock_executor_class,
         ):
             mock_generator = Mock()
             mock_tape = Mock()
@@ -410,9 +410,9 @@ class TestProcessAgentResponses:
         )
 
         with (
-            patch("orchestration.orchestrator.TapeGenerator") as mock_generator_class,
-            patch("orchestration.orchestrator.TapeExecutor") as mock_executor_class,
-            patch("orchestration.orchestrator.process_critic_feedback", new=AsyncMock()) as mock_critics,
+            patch("chatroom_orchestration.orchestrator.TapeGenerator") as mock_generator_class,
+            patch("chatroom_orchestration.orchestrator.TapeExecutor") as mock_executor_class,
+            patch("chatroom_orchestration.orchestrator.process_critic_feedback", new=AsyncMock()) as mock_critics,
         ):
             mock_generator = Mock()
             mock_tape = Mock()

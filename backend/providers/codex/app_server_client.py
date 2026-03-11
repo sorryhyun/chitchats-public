@@ -21,11 +21,8 @@ from .app_server_pool import CodexAppServerPool
 from .constants import (
     AppServerMethod,
     SessionRecoveryError,
-    agent_message,
     error,
-    reasoning,
     thread_started,
-    tool_call,
 )
 from .parser import AppServerStreamAccumulator
 
@@ -243,43 +240,31 @@ class CodexAppServerClient(AIClient):
             # Use accumulator to collect streaming events
             accumulator = AppServerStreamAccumulator()
 
-            # Stream turn events
+            # Stream turn events from instance
+            # The instance converts SDK notifications to internal event format:
+            # - Content events: {"type": "item.completed", "item": {...}} (agent_message, reasoning, tool_call)
+            # - Error events: {"type": "error", "data": {"message": ...}}
+            # - Turn lifecycle: {"method": "turn/started"|"turn/completed", "params": {...}}
             async for event in self._instance.start_turn(thread_id, input_items, config):
                 if self._interrupt_requested:
                     await self._instance.interrupt_turn(thread_id)
                     break
 
-                # Check for JSON-RPC format (method field)
                 method = event.get("method", "")
                 if method:
-                    # Handle JSON-RPC format
-                    params = event.get("params", {})
+                    # Turn lifecycle events
                     if method == AppServerMethod.TURN_STARTED:
                         pass
-                    elif method == AppServerMethod.AGENT_MESSAGE_DELTA:
-                        delta = params.get("delta", "")
-                        if delta:
-                            yield agent_message(delta)  # Stream immediately
-                    elif method == AppServerMethod.REASONING_DELTA:
-                        delta = params.get("delta", "")
-                        if delta:
-                            yield reasoning(delta)  # Stream immediately
-                    elif method == AppServerMethod.ITEM_COMPLETED:
-                        item = params.get("item", {})
-                        item_type = item.get("type", "")
-                        if item_type == "mcpToolCall":
-                            tool_name = item.get("name", "")
-                            tool_args = item.get("arguments", {})
-                            yield tool_call(tool_name, tool_args)
                     elif method == AppServerMethod.TURN_COMPLETED:
                         accumulator.mark_completed()
+                        params = event.get("params", {})
                         status = params.get("status", "")
                         if status == "failed":
-                            error_info = params.get("codexErrorInfo", {})
-                            error_msg = error_info.get("message", "Turn failed")
-                            yield error(error_msg)
+                            yield error(f"Turn failed: {params.get('turnId', '')}")
+                else:
+                    # Content events (already in internal format from instance)
+                    yield event
 
-                # Check if completed
                 if accumulator.is_completed:
                     break
 

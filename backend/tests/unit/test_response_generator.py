@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, mock_open, patch
 
 import pytest
 from domain.contexts import OrchestrationContext
+from domain.streaming import ContentDeltaEvent, StreamEndEvent, StreamStartEvent
 from chatroom_orchestration.critic import save_critic_report
 from core.response_generator import ResponseGenerator
 
@@ -61,8 +62,9 @@ class TestGenerateResponse:
         generator = ResponseGenerator({})
 
         mock_db = AsyncMock()
-        mock_agent_manager = Mock()  # Use Mock instead of AsyncMock for generate_sdk_response
-        mock_agent = Mock(id=1, name="Alice", system_prompt="You are Alice", profile_pic=None)
+        mock_agent_manager = Mock(event_broadcaster=None)
+        mock_agent = Mock(id=1, system_prompt="You are Alice", profile_pic=None)
+        mock_agent.name = "Alice"
         mock_agent.get_config_data.return_value = Mock(in_a_nutshell="Brief", long_term_memory_index=None)
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)
@@ -71,18 +73,19 @@ class TestGenerateResponse:
         mock_room = Mock(created_at=datetime.utcnow(), agents=[mock_agent], is_paused=False)
         mock_messages = []
 
-        # Mock streaming response - define as async generator
+        # Mock streaming response using proper domain events
         async def mock_stream_response():
-            yield {"type": "stream_start", "temp_id": "temp_123"}
-            yield {"type": "content_delta", "delta": "Hello"}
-            yield {
-                "type": "stream_end",
-                "response_text": "Hello",
-                "thinking_text": "",
-                "session_id": "session_123",
-                "memory_entries": [],
-                "skipped": False,
-            }
+            yield StreamStartEvent(temp_id="temp_123")
+            yield ContentDeltaEvent(temp_id="temp_123", delta="Hello")
+            yield StreamEndEvent(
+                temp_id="temp_123",
+                response_text="Hello",
+                thinking_text="",
+                session_id="session_123",
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=False,
+            )
 
         # Configure mock to return async generator when called
         mock_agent_manager.generate_sdk_response = Mock(side_effect=lambda ctx: mock_stream_response())
@@ -118,23 +121,25 @@ class TestGenerateResponse:
         generator = ResponseGenerator({})
 
         mock_db = AsyncMock()
-        mock_agent_manager = Mock()
-        mock_agent = Mock(id=1, name="Alice", system_prompt="Prompt", profile_pic=None)
+        mock_agent_manager = Mock(event_broadcaster=None)
+        mock_agent = Mock(id=1, system_prompt="Prompt", profile_pic=None)
+        mock_agent.name = "Alice"
         mock_agent.get_config_data.return_value = Mock(long_term_memory_index=None)
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)
 
-        # Mock skip response
+        # Mock skip response using proper domain events
         async def mock_stream_skip():
-            yield {"type": "stream_start", "temp_id": "temp_123"}
-            yield {
-                "type": "stream_end",
-                "response_text": None,
-                "thinking_text": "",
-                "session_id": "session_123",
-                "memory_entries": [],
-                "skipped": True,
-            }
+            yield StreamStartEvent(temp_id="temp_123")
+            yield StreamEndEvent(
+                temp_id="temp_123",
+                response_text=None,
+                thinking_text="",
+                session_id="session_123",
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=True,
+            )
 
         mock_agent_manager.generate_sdk_response = Mock(side_effect=lambda ctx: mock_stream_skip())
 
@@ -171,24 +176,26 @@ class TestGenerateResponse:
         generator = ResponseGenerator({})
 
         mock_db = AsyncMock()
-        mock_agent_manager = Mock()
+        mock_agent_manager = Mock(event_broadcaster=None)
         mock_agent = Mock(id=1, system_prompt="Prompt", profile_pic=None)
         mock_agent.name = "Critic"  # Set name explicitly to avoid Mock object
         mock_agent.get_config_data.return_value = Mock(long_term_memory_index=None)
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)
 
-        # Mock critic response
+        # Mock critic response using proper domain events
         async def mock_stream_critic():
-            yield {"type": "stream_start", "temp_id": "temp_123"}
-            yield {
-                "type": "stream_end",
-                "response_text": "Diagnostic report",
-                "thinking_text": "Analysis",
-                "session_id": "session_123",
-                "memory_entries": [],
-                "skipped": False,
-            }
+            yield StreamStartEvent(temp_id="temp_123")
+            yield ContentDeltaEvent(temp_id="temp_123", delta="Diagnostic report")
+            yield StreamEndEvent(
+                temp_id="temp_123",
+                response_text="Diagnostic report",
+                thinking_text="Analysis",
+                session_id="session_123",
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=False,
+            )
 
         mock_agent_manager.generate_sdk_response = Mock(side_effect=lambda ctx: mock_stream_critic())
 
@@ -229,23 +236,26 @@ class TestGenerateResponse:
         generator = ResponseGenerator({1: time.time() + 1000})  # Future time = interrupted
 
         mock_db = AsyncMock()
-        mock_agent_manager = Mock()
-        mock_agent = Mock(id=1, name="Alice", system_prompt="Prompt", profile_pic=None)
+        mock_agent_manager = Mock(event_broadcaster=None)
+        mock_agent = Mock(id=1, system_prompt="Prompt", profile_pic=None)
+        mock_agent.name = "Alice"
         mock_agent.get_config_data.return_value = Mock(long_term_memory_index=None)
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)
 
-        # Mock response
+        # Mock response using proper domain events
         async def mock_stream():
-            yield {"type": "stream_start", "temp_id": "temp_123"}
-            yield {
-                "type": "stream_end",
-                "response_text": "Response",
-                "thinking_text": "",
-                "session_id": "session_123",
-                "memory_entries": [],
-                "skipped": False,
-            }
+            yield StreamStartEvent(temp_id="temp_123")
+            yield ContentDeltaEvent(temp_id="temp_123", delta="Response")
+            yield StreamEndEvent(
+                temp_id="temp_123",
+                response_text="Response",
+                thinking_text="",
+                session_id="session_123",
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=False,
+            )
 
         mock_agent_manager.generate_sdk_response = Mock(side_effect=lambda ctx: mock_stream())
 
@@ -278,23 +288,26 @@ class TestGenerateResponse:
         generator = ResponseGenerator({})
 
         mock_db = AsyncMock()
-        mock_agent_manager = Mock()
-        mock_agent = Mock(id=1, name="Alice", system_prompt="Prompt", profile_pic=None)
+        mock_agent_manager = Mock(event_broadcaster=None)
+        mock_agent = Mock(id=1, system_prompt="Prompt", profile_pic=None)
+        mock_agent.name = "Alice"
         mock_agent.get_config_data.return_value = Mock(long_term_memory_index=None)
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)
 
-        # Mock response
+        # Mock response using proper domain events
         async def mock_stream():
-            yield {"type": "stream_start", "temp_id": "temp_123"}
-            yield {
-                "type": "stream_end",
-                "response_text": "Response",
-                "thinking_text": "",
-                "session_id": "session_123",
-                "memory_entries": [],
-                "skipped": False,
-            }
+            yield StreamStartEvent(temp_id="temp_123")
+            yield ContentDeltaEvent(temp_id="temp_123", delta="Response")
+            yield StreamEndEvent(
+                temp_id="temp_123",
+                response_text="Response",
+                thinking_text="",
+                session_id="session_123",
+                memory_entries=[],
+                anthropic_calls=[],
+                skipped=False,
+            )
 
         mock_agent_manager.generate_sdk_response = Mock(side_effect=lambda ctx: mock_stream())
 
@@ -328,7 +341,8 @@ class TestGenerateResponse:
 
         mock_db = AsyncMock()
         mock_agent_manager = AsyncMock()
-        mock_agent = Mock(id=1, name="Alice")
+        mock_agent = Mock(id=1)
+        mock_agent.name = "Alice"
         mock_agent.get_config_data.return_value = Mock()
 
         orch_context = OrchestrationContext(db=mock_db, room_id=1, agent_manager=mock_agent_manager)

@@ -103,7 +103,7 @@ class TestRoleBasedAccess:
 
         # Guests can create rooms - they just can't delete them
         assert response.status_code == 200
-        assert response.json()["name"] == "guest_room"
+        assert response.json()["name"] == "guest: guest_room"
 
     @pytest.mark.integration
     @pytest.mark.api

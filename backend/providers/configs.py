@@ -114,6 +114,10 @@ class CodexStartupConfig:
             "show_raw_agent_reasoning": True,
             "model_verbosity": "medium",
             "model_reasoning_summary": "detailed",
+            "features.personality" : False,
+            "personality": "none",
+            "features.enable_request_compression" : False,
+            "features.skill_mcp_dependency_install" : False,
         }
     )
 
