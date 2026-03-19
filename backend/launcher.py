@@ -726,15 +726,19 @@ def open_browser_delayed(url: str, delay: float = 1.5):
         time.sleep(delay)
 
         # In bundled mode, try app mode for a native-like window
+        # and monitor the browser process to terminate server on window close
         if getattr(sys, "frozen", False):
             browser_path = _find_browser_for_app_mode()
             if browser_path:
                 try:
-                    sp.Popen(
+                    proc = sp.Popen(
                         [browser_path, f"--app={url}"],
                         stdout=sp.DEVNULL,
                         stderr=sp.DEVNULL,
                     )
+                    # Monitor browser process - terminate server when window closes
+                    if is_windowed_mode():
+                        _monitor_browser_process(proc)
                     return
                 except Exception:
                     pass
@@ -744,6 +748,22 @@ def open_browser_delayed(url: str, delay: float = 1.5):
 
     thread = threading.Thread(target=_open, daemon=True)
     thread.start()
+
+
+def _monitor_browser_process(proc):
+    """Monitor a browser process and terminate the server when it exits.
+
+    Used in windowed (exe) mode to quit the server when the user closes
+    the browser app window, instead of requiring a tray icon quit action.
+    """
+    def _wait_and_exit():
+        proc.wait()
+        print("\n브라우저 창이 닫혔습니다. 서버를 종료합니다...")
+        cleanup_lock_file()
+        os._exit(0)
+
+    t = threading.Thread(target=_wait_and_exit, daemon=True)
+    t.start()
 
 
 def run_mcp_server(server_type: str) -> None:
@@ -829,11 +849,6 @@ def main():
     def signal_handler(signum, frame):
         print("\n서버를 종료합니다...")
         cleanup_lock_file()
-        try:
-            from tray import stop_tray
-            stop_tray()
-        except Exception:
-            pass
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, signal_handler)
@@ -872,14 +887,6 @@ def main():
         open_browser_delayed(server_url)
         print("브라우저를 자동으로 엽니다...")
 
-        # Start system tray icon (windowed mode)
-        if is_windowed_mode():
-            try:
-                from tray import start_tray
-                start_tray(server_url, log_file)
-                print("시스템 트레이 아이콘이 활성화되었습니다.")
-            except Exception as e:
-                print(f"시스템 트레이 아이콘을 시작할 수 없습니다: {e}")
     print()
 
     # Import the app directly instead of using string path

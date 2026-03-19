@@ -122,9 +122,6 @@ hiddenimports = [
     'PIL',
     'PIL.Image',
     'PIL.WebPImagePlugin',
-    # System tray (standalone mode)
-    'pystray',
-    'pystray._win32',
 ]
 
 # Windows version info
@@ -204,7 +201,7 @@ exe = EXE(
     upx=True,
     upx_exclude=['python*.dll', 'vcruntime*.dll', 'ucrtbase.dll'],
     runtime_tmpdir=None,
-    console=False,  # Windowed mode - no console window, uses system tray instead
+    console=False,  # Windowed mode - no console window, terminates when browser closes
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
