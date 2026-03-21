@@ -236,7 +236,12 @@ class CodexAppServerInstance:
 
         logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
 
-        result = await asyncio.to_thread(self._client.thread_start, params)
+        try:
+            result = await asyncio.to_thread(self._client.thread_start, params)
+        except Exception as e:
+            if "validation error" in str(e).lower():
+                raise RuntimeError("코덱스 업데이트해주세요!") from e
+            raise
 
         thread_id = result.thread.id
         if not thread_id:

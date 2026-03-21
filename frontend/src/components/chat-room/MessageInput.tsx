@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useMention } from '../../hooks/useMention';
 import { useImageDrop } from '../../hooks/useImageDrop';
+import { useCtrlEnterPreference } from '../../hooks/useCtrlEnterPreference';
 import { MentionDropdown } from './MentionDropdown';
 
 interface ImageData {
@@ -45,6 +46,9 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
 
   // Mention hook
   const mention = useMention(roomAgents);
+
+  // Ctrl+Enter preference
+  const { ctrlEnterToSend } = useCtrlEnterPreference();
 
   // Expose handleFileSelect to parent via ref
   useImperativeHandle(ref, () => ({
@@ -230,8 +234,13 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
       }
     }
 
-    // Submit on Ctrl+Enter
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    // Determine if this keypress should submit
+    const isEnter = e.key === 'Enter';
+    const hasModifier = e.ctrlKey || e.metaKey;
+    const shouldSubmit = isEnter && (ctrlEnterToSend ? hasModifier : !hasModifier && !e.shiftKey);
+    const shouldNewline = isEnter && (ctrlEnterToSend ? !hasModifier : (hasModifier || e.shiftKey));
+
+    if (shouldSubmit) {
       e.preventDefault();
       if ((inputMessage.trim() || attachedImages.length > 0) && isConnected) {
         // Extract mentions and get clean content
@@ -252,8 +261,9 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
         setInputMessage('');
         setAttachedImages([]);
       }
+    } else if (shouldNewline && !ctrlEnterToSend) {
+      // When Enter sends: Shift+Enter or Ctrl+Enter inserts newline (default textarea behavior)
     }
-    // Allow Enter to create line breaks (default behavior)
   };
 
   // Helper to get the current icon

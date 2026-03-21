@@ -676,18 +676,18 @@ def _find_browser_for_app_mode() -> str | None:
     """Find a Chromium-based browser that supports --app mode.
 
     Returns the executable path, or None if not found.
-    Checks Edge first (always on Windows 10/11), then Chrome.
+    Checks Chrome first, then Edge as fallback.
     """
     import shutil
 
     # Common paths on Windows
     candidates = [
-        # Edge (pre-installed on Windows 10/11)
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-        # Chrome
+        # Chrome (preferred)
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        # Edge (fallback, pre-installed on Windows 10/11)
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
     ]
 
     for path in candidates:
@@ -695,7 +695,7 @@ def _find_browser_for_app_mode() -> str | None:
             return path
 
     # Try PATH lookup
-    for cmd in ["msedge", "chrome", "google-chrome"]:
+    for cmd in ["chrome", "google-chrome", "msedge"]:
         found = shutil.which(cmd)
         if found:
             return found
@@ -757,7 +757,13 @@ def _monitor_browser_process(proc):
     the browser app window, instead of requiring a tray icon quit action.
     """
     def _wait_and_exit():
+        start = time.monotonic()
         proc.wait()
+        elapsed = time.monotonic() - start
+        # If process exited within 3 seconds, the browser was already running
+        # and delegated to the existing instance — don't kill the server
+        if elapsed < 3:
+            return
         print("\n브라우저 창이 닫혔습니다. 서버를 종료합니다...")
         cleanup_lock_file()
         os._exit(0)
