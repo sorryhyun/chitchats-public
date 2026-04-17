@@ -36,10 +36,19 @@ async def create_message(
 
         raise RoomNotFoundError(room_id)
 
-    # Convert images list to JSON string for storage
+    # Convert images list to JSON string for storage.
+    # Each entry keeps only the populated identifier (data XOR url) alongside media_type.
     images_json = None
     if message.images:
-        images_json = json.dumps([{"data": img.data, "media_type": img.media_type} for img in message.images])
+        serialized = []
+        for img in message.images:
+            entry: dict = {"media_type": img.media_type}
+            if img.data:
+                entry["data"] = img.data
+            if img.url:
+                entry["url"] = img.url
+            serialized.append(entry)
+        images_json = json.dumps(serialized)
 
     db_message = models.Message(
         room_id=room_id,

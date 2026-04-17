@@ -41,7 +41,8 @@ export interface AgentConfig {
 }
 
 export interface ImageItem {
-  data: string;  // Base64-encoded image data
+  data?: string;  // Base64-encoded image data (for user uploads)
+  url?: string;   // Path or remote URL (for AI-generated images)
   media_type: string;  // MIME type (e.g., 'image/png', 'image/webp')
 }
 

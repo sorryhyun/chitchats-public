@@ -74,6 +74,9 @@ class StreamEndEvent:
     anthropic_calls: list[str]
     skipped: bool
     excuse_reasons: list[str] = field(default_factory=list)
+    # Images produced by the provider during this response, each
+    # {"url": str, "media_type": str, "prompt": Optional[str]}
+    generated_images: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dict for backward compatibility with existing consumers."""
@@ -87,6 +90,7 @@ class StreamEndEvent:
             "anthropic_calls": self.anthropic_calls,
             "skipped": self.skipped,
             "excuse_reasons": self.excuse_reasons,
+            "generated_images": self.generated_images,
         }
 
 
@@ -113,6 +117,7 @@ class ResponseAccumulator:
     memory_entries: list[str] = field(default_factory=list)
     anthropic_calls: list[str] = field(default_factory=list)
     excuse_reasons: list[str] = field(default_factory=list)
+    generated_images: list[dict] = field(default_factory=list)
     # Hook capture lists - these get mutated by PostToolUse hooks
     skip_tool_capture: list[bool] = field(default_factory=list)
     # Streaming tool input accumulation (for input_json_delta support)
@@ -153,6 +158,8 @@ class ResponseAccumulator:
             self.excuse_reasons.extend(parsed.excuse_reasons)
         if parsed.anthropic_calls:
             self.anthropic_calls.extend(parsed.anthropic_calls)
+        if parsed.generated_images:
+            self.generated_images.extend(parsed.generated_images)
 
         # Check skip flag from parser (Codex provider sets this via parsing)
         if parsed.skip_used and not self.skip_tool_called:
@@ -265,6 +272,7 @@ class ResponseAccumulator:
             anthropic_calls=self.anthropic_calls,
             skipped=skipped,
             excuse_reasons=self.excuse_reasons,
+            generated_images=self.generated_images,
         )
 
     def create_interrupted_end_event(

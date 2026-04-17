@@ -31,7 +31,13 @@ class TimestampSerializerMixin:
 
 
 class ImageItem(BaseModel):
-    """Single image in a message."""
+    """Single image in a message.
 
-    data: str  # Base64-encoded image data
+    Either `data` (inline base64) or `url` (served from /generated_images or remote)
+    must be provided. `data` is used for user-uploaded images; `url` is used for
+    AI-generated images persisted to disk.
+    """
+
+    data: Optional[str] = None  # Base64-encoded image data (for inline images)
+    url: Optional[str] = None  # URL or path (for disk-persisted / remote images)
     media_type: str  # MIME type (e.g., 'image/png', 'image/webp')

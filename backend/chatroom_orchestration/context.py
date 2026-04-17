@@ -220,14 +220,19 @@ def build_conversation_context(
             if hasattr(msg, "image_media_type") and msg.image_media_type:
                 images = [{"data": msg.image_data, "media_type": msg.image_media_type}]
 
-        if images:
+        # Only images with inline base64 data can be sent back to the model as
+        # native image blocks. URL-only entries (AI-generated images persisted
+        # to disk) are skipped here — the agent doesn't re-ingest its own outputs.
+        renderable_images = [img for img in images if img.get("data")]
+
+        if renderable_images:
             # Add accumulated text as a block, then images inline
             current_text += f"{speaker}:\n"
             if current_text.strip():
                 content_blocks.append({"type": "text", "text": current_text})
 
             # Add native image blocks for each image
-            for img in images:
+            for img in renderable_images:
                 content_blocks.append(
                     {
                         "type": "image",

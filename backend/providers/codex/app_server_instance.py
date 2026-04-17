@@ -28,6 +28,7 @@ from codex_app_server import AppServerClient, AppServerConfig
 from codex_app_server.errors import AppServerError, TransportClosedError
 from codex_app_server.generated.v2_all import (
     AgentMessageDeltaNotification,
+    ImageGenerationThreadItem,
     ItemCompletedNotification,
     McpToolCallThreadItem,
     ReasoningSummaryTextDeltaNotification,
@@ -43,6 +44,7 @@ from .constants import (
     AppServerMethod,
     agent_message,
     error,
+    generated_image,
     reasoning,
     tool_call,
 )
@@ -418,6 +420,20 @@ class CodexAppServerInstance:
                     except (json.JSONDecodeError, TypeError):
                         args = {}
                 return tool_call(item.tool, args if isinstance(args, dict) else {})
+
+            if isinstance(item, ImageGenerationThreadItem):
+                # Codex generated an image. Persist to disk and emit an event.
+                from infrastructure.generated_images import save_generated_image
+
+                saved = save_generated_image(item.result or "", media_type="image/png")
+                if saved is None:
+                    logger.warning(
+                        f"[Instance {self._instance_id}] Failed to persist generated image "
+                        f"(id={item.id}, status={item.status})"
+                    )
+                    return None
+                url, media_type = saved
+                return generated_image(url, media_type, item.revised_prompt or "")
 
         # Turn completed
         if method == "turn/completed":

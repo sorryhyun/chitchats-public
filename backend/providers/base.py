@@ -86,6 +86,9 @@ class ParsedStreamMessage:
     memory_entries: List[str] = field(default_factory=list)
     anthropic_calls: List[str] = field(default_factory=list)
     excuse_reasons: List[str] = field(default_factory=list)
+    # Images produced by the provider during this message (e.g. Codex image_generation).
+    # Each entry is a dict: {"url": str, "media_type": str, "prompt": Optional[str]}
+    generated_images: List[Dict[str, Any]] = field(default_factory=list)
 
     # Tool streaming fields (for input_json_delta support)
     tool_use_started: Optional[Dict[str, Any]] = None  # {"index": int, "name": str}

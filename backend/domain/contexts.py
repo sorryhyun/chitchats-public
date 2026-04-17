@@ -44,12 +44,15 @@ class AgentMessageData:
         content: The message content
         thinking: Optional thinking text from the agent
         anthropic_calls: Optional list of anthropic tool call situations
+        generated_images: Images the agent generated this turn.
+            Each entry: {"url": str, "media_type": str, "prompt": Optional[str]}
     """
 
     content: str
     thinking: Optional[str] = None
     anthropic_calls: Optional[list[str]] = None
     excuse_reasons: Optional[list[str]] = None
+    generated_images: Optional[list[dict]] = None
 
 
 @dataclass

@@ -314,6 +314,12 @@ def create_app() -> FastAPI:
     app.include_router(tools_api.router, tags=["Tools"])
     app.include_router(serve_mcp.router, tags=["MCP Tools"])
 
+    # Mount AI-generated image storage as static files (accessible via /generated_images/*)
+    from fastapi.staticfiles import StaticFiles
+    from infrastructure.generated_images import get_storage_dir
+
+    app.mount("/generated_images", StaticFiles(directory=str(get_storage_dir())), name="generated_images")
+
     # Mount MCP server - exposes simplified tools for easy LLM integration
     # Only expose "MCP Tools" tag with clean, semantic tool names
     mcp = FastApiMCP(

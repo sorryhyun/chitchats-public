@@ -320,6 +320,7 @@ class CodexStreamParser(AIStreamParser):
         memory_entries: list[str] = []
         anthropic_calls: list[str] = []
         excuse_reasons: list[str] = []
+        generated_images: list[dict[str, Any]] = []
 
         if event_type == EventType.CONTENT_DELTA:
             # Streaming content delta
@@ -365,6 +366,18 @@ class CodexStreamParser(AIStreamParser):
                     thinking_delta = text
                     logger.debug(f"[CodexParser] Extracted reasoning: {len(text)} chars")
 
+            elif item_type == ItemType.GENERATED_IMAGE:
+                url = item.get("url", "")
+                media_type = item.get("media_type", "image/png")
+                prompt = item.get("prompt", "")
+                if url:
+                    generated_images.append({
+                        "url": url,
+                        "media_type": media_type,
+                        "prompt": prompt,
+                    })
+                    logger.info(f"[CodexParser] generated_image: {url}")
+
             elif item_type == ItemType.MCP_TOOL_CALL:
                 # Handle MCP tool calls
                 tool_name = item.get("tool", "")
@@ -406,4 +419,5 @@ class CodexStreamParser(AIStreamParser):
             memory_entries=memory_entries,
             anthropic_calls=anthropic_calls,
             excuse_reasons=excuse_reasons,
+            generated_images=generated_images,
         )

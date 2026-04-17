@@ -25,6 +25,17 @@ async def save_agent_message(context: MessageContext, message_data: AgentMessage
     Returns:
         The saved message database ID
     """
+    images = None
+    if message_data.generated_images:
+        images = [
+            schemas.ImageItem(
+                url=img.get("url"),
+                media_type=img.get("media_type", "image/png"),
+            )
+            for img in message_data.generated_images
+            if img.get("url")
+        ] or None
+
     agent_message = schemas.MessageCreate(
         content=message_data.content,
         role="assistant",
@@ -32,6 +43,7 @@ async def save_agent_message(context: MessageContext, message_data: AgentMessage
         thinking=message_data.thinking if message_data.thinking else None,
         anthropic_calls=message_data.anthropic_calls if message_data.anthropic_calls else None,
         excuse_reasons=message_data.excuse_reasons if message_data.excuse_reasons else None,
+        images=images,
     )
     # Update room activity for agent messages so unread notifications appear
     saved_msg = await crud.create_message(context.db, context.room_id, agent_message, update_room_activity=True)

@@ -338,6 +338,7 @@ class AuthMiddleware:
         "/mcp",  # MCP endpoint (handles its own auth via MCP protocol)
         "/assets",  # Static assets (JS, CSS, images) for bundled mode
         "/.well-known",  # OAuth/OpenID discovery (for MCP clients)
+        "/generated_images",  # AI-generated images, served to <img> tags
     )
 
     # API path prefixes (routes that require authentication)

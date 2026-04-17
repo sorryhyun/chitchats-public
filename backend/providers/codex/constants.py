@@ -51,6 +51,7 @@ class ItemType:
     AGENT_MESSAGE = "agent_message"
     REASONING = "reasoning"
     MCP_TOOL_CALL = "mcp_tool_call"
+    GENERATED_IMAGE = "generated_image"
 
 
 class AppServerMethod:
@@ -131,6 +132,19 @@ def tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             "type": ItemType.MCP_TOOL_CALL,
             "tool": name,
             "arguments": arguments,
+        },
+    }
+
+
+def generated_image(url: str, media_type: str, prompt: str = "") -> Dict[str, Any]:
+    """Create an item.completed event with generated_image type."""
+    return {
+        "type": EventType.ITEM_COMPLETED,
+        "item": {
+            "type": ItemType.GENERATED_IMAGE,
+            "url": url,
+            "media_type": media_type,
+            "prompt": prompt,
         },
     }
 

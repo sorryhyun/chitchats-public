@@ -10,6 +10,12 @@ interface ImageAttachmentProps {
   isUserMessage: boolean;
 }
 
+const imageSrc = (img: ImageItem): string => {
+  if (img.url) return img.url;
+  if (img.data) return `data:${img.media_type};base64,${img.data}`;
+  return '';
+};
+
 export const ImageAttachment = memo(({ images, imageData, imageMediaType, isUserMessage }: ImageAttachmentProps) => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
@@ -45,7 +51,7 @@ export const ImageAttachment = memo(({ images, imageData, imageMediaType, isUser
         {imageList.length === 1 ? (
           // Single image - larger display
           <img
-            src={`data:${imageList[0].media_type};base64,${imageList[0].data}`}
+            src={imageSrc(imageList[0])}
             alt="Attached"
             className="max-w-xs max-h-64 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
             loading="lazy"
@@ -63,7 +69,7 @@ export const ImageAttachment = memo(({ images, imageData, imageMediaType, isUser
             {imageList.map((img, index) => (
               <img
                 key={index}
-                src={`data:${img.media_type};base64,${img.data}`}
+                src={imageSrc(img)}
                 alt={`Attached ${index + 1}`}
                 className={`w-full object-cover rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:opacity-90 transition-opacity ${
                   imageList.length <= 2 ? 'h-32' :
@@ -129,7 +135,7 @@ export const ImageAttachment = memo(({ images, imageData, imageMediaType, isUser
 
           {/* Main image */}
           <img
-            src={`data:${imageList[lightboxIndex].media_type};base64,${imageList[lightboxIndex].data}`}
+            src={imageSrc(imageList[lightboxIndex])}
             alt="Full size"
             className="max-w-full max-h-full object-contain"
             onClick={(e) => e.stopPropagation()}
