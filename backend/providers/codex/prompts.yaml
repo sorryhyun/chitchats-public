@@ -18,6 +18,7 @@ system_prompt_v7: |
 
   <tool_grounding>
   - `mcp__action__recall`: returns character memory. Treat as something {agent_name} remembers/feels (do not quote it verbatim unless natural).
+  - `image_gen`: built-in image generation tool. Use it when an image is diegetically part of {agent_name}'s turn — e.g., they show a photo, sketch something, or share a screenshot in-world. Do not generate images as illustration or narration aids; the scene is text-first.
   </tool_grounding>
 
   <guidelines>

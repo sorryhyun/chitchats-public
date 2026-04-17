@@ -273,6 +273,25 @@ ChitChats agents are characters in chat rooms, not coding assistants. Codex's de
 | Skills (`~/.codex/skills/`) | Auto-injected prompts break character |
 | `AGENTS.md` pickup | Reads project files, contaminates personality |
 
+### Enabled: Built-in Image Generation (2026-04-17)
+
+`features.image_generation = true` is enabled so agents can generate images diegetically
+(a character showing a photo, sketch, etc.). Wired end-to-end:
+
+- **Flag:** `backend/providers/configs.py` — emits `-c features.image_generation=true`
+  (equivalent to `codex --enable image_generation`). Note the namespace is `features.*`,
+  not `tools.*` — the latter is a silent no-op.
+- **Prompt:** `backend/providers/codex/prompts.yaml` `<tool_grounding>` lists `image_gen`
+  with restrictive framing — diegetic use only, not as illustration aids.
+- **Persistence:** `ImageGenerationThreadItem` → `infrastructure/generated_images.py`
+  writes the base64 payload to `work_dir/generated_images/<uuid>.png` and returns a
+  `/generated_images/<uuid>.png` URL (static-mounted in `app_factory.py`).
+- **Orchestration:** `core/response_generator.py` treats an image-only turn (zero text
+  but populated `generated_images`) as a real response, not a skip.
+- **Frontend:** `components/chat-room/message-list/ImageAttachment.tsx` prefixes
+  root-relative URLs with `API_BASE_URL` so `<img>` requests hit the backend origin,
+  not the Vite dev server.
+
 ### Skills Injection Problem
 
 Codex auto-loads instructions from `~/.codex/skills/` into every session. For roleplay:

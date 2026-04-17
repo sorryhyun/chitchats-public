@@ -11,6 +11,7 @@ backend/.env
 test_*.txt
 .python-version
 example.md
+generated_images/
 
 # Node
 frontend/node_modules/

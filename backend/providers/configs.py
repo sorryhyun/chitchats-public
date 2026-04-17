@@ -110,7 +110,7 @@ class CodexStartupConfig:
             # Tool settings
             "tools.view_image": False,  # Agents receive images directly
             "tools_view_image": False,
-            "tools.image_generation": True,  # Enable built-in image generation
+            "features.image_generation": True,  # Enable built-in image generation (equivalent to --enable image_generation)
             "web_search": "disabled",
             # "project_doc_max_bytes": 0,
             "show_raw_agent_reasoning": True,

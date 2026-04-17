@@ -1,5 +1,6 @@
 import { useState, memo } from 'react';
 import type { ImageItem } from '../../../types';
+import { API_BASE_URL } from '../../../services/apiClient';
 
 interface ImageAttachmentProps {
   // New multi-image prop
@@ -11,7 +12,12 @@ interface ImageAttachmentProps {
 }
 
 const imageSrc = (img: ImageItem): string => {
-  if (img.url) return img.url;
+  if (img.url) {
+    // Backend-relative paths (e.g. "/generated_images/xxx.png") need the API origin
+    // prefixed so the browser doesn't resolve them against the Vite dev server.
+    if (img.url.startsWith('/')) return `${API_BASE_URL}${img.url}`;
+    return img.url;
+  }
   if (img.data) return `data:${img.media_type};base64,${img.data}`;
   return '';
 };

@@ -296,8 +296,9 @@ class ResponseGenerator:
                 orch_context.room_id, sse_end
             )
 
-        # Skip if agent chose not to respond - don't persist anything
-        if skipped or not response_text:
+        # Skip if agent chose not to respond - don't persist anything.
+        # An image-only turn (no text) still counts as a response.
+        if skipped or (not response_text and not generated_images):
             logger.info(f"⏭️ Agent {agent.name} skipped | skipped={skipped} | response_text_len={len(response_text) if response_text else 0}")
             await broadcast_stream_end(is_skipped=True)
             return False
