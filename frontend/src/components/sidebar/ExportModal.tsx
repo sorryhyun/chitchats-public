@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
-import { API_BASE_URL, getFetchOptions } from '../../services/apiClient';
+import { API_BASE_URL, apiGet, getFetchOptions } from '../../services/apiClient';
 
 interface ConversationFile {
   id: string;
@@ -46,14 +46,7 @@ export const ExportModal = ({ isOpen, onClose }: ExportModalProps) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/exports/conversations`,
-        getFetchOptions()
-      );
-      if (!response.ok) {
-        throw new Error('Failed to fetch conversations');
-      }
-      const data = await response.json();
+      const data = await apiGet<{ conversations: ConversationFile[] }>('/exports/conversations');
       setConversations(data.conversations);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');

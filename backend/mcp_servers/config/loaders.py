@@ -39,19 +39,9 @@ def get_provider_prompts(provider: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing system_prompt and conversation_context
     """
-    if provider == "claude":
-        from providers.claude.prompts import _get_prompts_config
+    from providers.prompt_builder import load_provider_prompts
 
-        return _get_prompts_config()
-    elif provider == "codex":
-        from providers.codex.prompts import _get_prompts_config
-
-        return _get_prompts_config()
-    else:
-        logger.warning(f"Unknown provider '{provider}', falling back to claude")
-        from providers.claude.prompts import _get_prompts_config
-
-        return _get_prompts_config()
+    return load_provider_prompts(provider)
 
 
 def get_shared_prompts_config() -> Dict[str, Any]:
@@ -114,9 +104,9 @@ def get_system_prompt_config() -> Dict[str, Any]:
         Dictionary containing system prompt templates (claude format for backwards compat)
     """
     logger.debug("get_system_prompt_config is deprecated, use get_provider_prompts() instead")
-    from providers.claude.prompts import _get_prompts_config
+    from providers.prompt_builder import load_provider_prompts
 
-    config = _get_prompts_config()
+    config = load_provider_prompts("claude")
 
     # Convert to old format for backwards compatibility
     active_key = config.get("active_system_prompt", "system_prompt_v7")

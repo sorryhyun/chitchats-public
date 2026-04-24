@@ -13,7 +13,7 @@ from infrastructure.database import models
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from .helpers import merge_agent_configs, save_base64_profile_pic
+from .helpers import invalidate_agent_cache, merge_agent_configs, save_base64_profile_pic
 
 logger = logging.getLogger("CRUD")
 
@@ -157,14 +157,7 @@ async def update_agent(db: AsyncSession, agent_id: int, agent_update: schemas.Ag
 
     await db.commit()
     await db.refresh(agent)
-
-    # Invalidate agent config cache
-    from infrastructure.cache import agent_config_key, agent_object_key, get_cache
-
-    cache = get_cache()
-    cache.invalidate(agent_config_key(agent_id))
-    cache.invalidate(agent_object_key(agent_id))
-
+    invalidate_agent_cache(agent_id)
     return agent
 
 
@@ -236,14 +229,7 @@ async def reload_agent_from_config(db: AsyncSession, agent_id: int) -> Optional[
 
     await db.commit()
     await db.refresh(agent)
-
-    # Invalidate agent config cache
-    from infrastructure.cache import agent_config_key, agent_object_key, get_cache
-
-    cache = get_cache()
-    cache.invalidate(agent_config_key(agent_id))
-    cache.invalidate(agent_object_key(agent_id))
-
+    invalidate_agent_cache(agent_id)
     return agent
 
 
@@ -277,11 +263,7 @@ async def append_agent_memory(db: AsyncSession, agent_id: int, memory_entry: str
             config_file=agent.config_file, memory_entry=memory_entry, timestamp=timestamp
         )
         if success:
-            # Invalidate agent config cache since recent_events changed
-            from infrastructure.cache import agent_config_key, get_cache
-
-            cache = get_cache()
-            cache.invalidate(agent_config_key(agent_id))
+            invalidate_agent_cache(agent_id, include_object=False)
         else:
             logger.warning(f"Failed to append memory to {agent.config_file}")
     else:

@@ -1,12 +1,13 @@
 """
 Prompt builder service for constructing agent system prompts.
 
-This module provides centralized prompt building logic to avoid duplication
-across CRUD operations. It dispatches to provider-specific prompt builders.
+Centralizes provider-prompt loading and assembly so per-provider modules
+don't have to duplicate identical YAML-loading code.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict
 
 from i18n.korean import format_with_particles
 
@@ -15,18 +16,30 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_PROVIDERS_DIR = Path(__file__).parent
+_PROVIDER_PROMPT_PATHS: Dict[str, Path] = {
+    "claude": _PROVIDERS_DIR / "claude" / "prompts.yaml",
+    "codex": _PROVIDERS_DIR / "codex" / "prompts.yaml",
+}
+_DEFAULT_PROVIDER = "claude"
+
+
+def _resolve_provider(provider: str) -> str:
+    if provider in _PROVIDER_PROMPT_PATHS:
+        return provider
+    logger.warning(f"Unknown provider '{provider}', falling back to '{_DEFAULT_PROVIDER}'")
+    return _DEFAULT_PROVIDER
+
+
+def load_provider_prompts(provider: str = _DEFAULT_PROVIDER) -> Dict[str, Any]:
+    """Load the raw prompts YAML for a given provider."""
+    from infrastructure.yaml_cache import get_cached_config
+
+    return get_cached_config(_PROVIDER_PROMPT_PATHS[_resolve_provider(provider)])
+
 
 def config_to_markdown(config_data: "AgentConfigData", agent_name: str) -> str:
-    """
-    Convert agent configuration to markdown format for system prompt injection.
-
-    Args:
-        config_data: Agent configuration data
-        agent_name: The name of the agent
-
-    Returns:
-        Markdown-formatted configuration string with ## headings
-    """
+    """Convert agent configuration to markdown for system prompt injection."""
     sections = []
 
     if config_data.in_a_nutshell:
@@ -38,54 +51,33 @@ def config_to_markdown(config_data: "AgentConfigData", agent_name: str) -> str:
     if config_data.recent_events:
         sections.append(f"## Recent events\n\n{config_data.recent_events}")
 
-    # Note: Memory subtitles are no longer added to system prompt.
-    # They are shown in the recall tool description with thoughts previews.
-
     if sections:
         return "\n\n" + "\n\n".join(sections)
     return ""
 
 
-def get_base_system_prompt(provider: str = "claude") -> str:
-    """
-    Get the base system prompt for a provider.
+def get_base_system_prompt(provider: str = _DEFAULT_PROVIDER) -> str:
+    """Get the active base system prompt for a provider."""
+    from core.settings import DEFAULT_FALLBACK_PROMPT
 
-    Args:
-        provider: The AI provider ("claude" or "codex")
-
-    Returns:
-        The system prompt template with {agent_name} placeholder
-    """
-    if provider == "codex":
-        from providers.codex.prompts import get_base_system_prompt as codex_prompt
-
-        return codex_prompt()
-    else:
-        from providers.claude.prompts import get_base_system_prompt as claude_prompt
-
-        return claude_prompt()
+    try:
+        config = load_provider_prompts(provider)
+        active_key = config.get("active_system_prompt", "system_prompt_v7")
+        prompt = config.get(active_key)
+        if prompt and isinstance(prompt, str):
+            return prompt.strip()
+        logger.warning(f"System prompt '{active_key}' not found for provider '{provider}', using fallback")
+        return DEFAULT_FALLBACK_PROMPT
+    except Exception as e:
+        logger.error(f"Error loading system prompt for provider '{provider}': {e}")
+        return DEFAULT_FALLBACK_PROMPT
 
 
-def build_system_prompt(agent_name: str, config_data: "AgentConfigData", provider: str = "claude") -> str:
-    """
-    Build a complete system prompt for an agent.
-
-    This function combines the base system prompt with agent-specific
-    configuration markdown, applying Korean particle formatting.
-
-    Args:
-        agent_name: The name of the agent
-        config_data: Agent configuration data
-        provider: The AI provider ("claude" or "codex")
-
-    Returns:
-        Complete system prompt string with markdown formatting
-    """
-    # Get provider-specific base system prompt and apply Korean particle formatting
+def build_system_prompt(agent_name: str, config_data: "AgentConfigData", provider: str = _DEFAULT_PROVIDER) -> str:
+    """Build a complete system prompt for an agent."""
     base_prompt = get_base_system_prompt(provider)
     system_prompt = format_with_particles(base_prompt, agent_name=agent_name)
 
-    # Append character configuration with markdown headings
     config_markdown = config_to_markdown(config_data, agent_name)
     if config_markdown:
         system_prompt += config_markdown
@@ -97,4 +89,5 @@ __all__ = [
     "build_system_prompt",
     "config_to_markdown",
     "get_base_system_prompt",
+    "load_provider_prompts",
 ]

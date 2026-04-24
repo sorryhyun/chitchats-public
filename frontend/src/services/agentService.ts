@@ -1,5 +1,5 @@
 import type { Agent, AgentCreate, AgentUpdate, AgentConfig, Room } from '../types';
-import { API_BASE_URL, getFetchOptions } from './apiClient';
+import { API_BASE_URL, apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 
 /**
  * Generate the URL for an agent's profile picture.
@@ -22,78 +22,45 @@ export function getAgentProfilePicUrl(
 }
 
 export const agentService = {
-  async getAllAgents(): Promise<Agent[]> {
-    const response = await fetch(`${API_BASE_URL}/agents`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch agents');
-    return response.json();
+  getAllAgents(): Promise<Agent[]> {
+    return apiGet('/agents');
   },
 
-  async getAgent(agentId: number): Promise<Agent> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch agent');
-    return response.json();
+  getAgent(agentId: number): Promise<Agent> {
+    return apiGet(`/agents/${agentId}`);
   },
 
-  async getRoomAgents(roomId: number): Promise<Agent[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch room agents');
-    return response.json();
+  getRoomAgents(roomId: number): Promise<Agent[]> {
+    return apiGet(`/rooms/${roomId}/agents`);
   },
 
-  async createAgent(agentData: AgentCreate): Promise<Agent> {
-    const response = await fetch(`${API_BASE_URL}/agents`, getFetchOptions({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(agentData),
-    }));
-    if (!response.ok) throw new Error('Failed to create agent');
-    return response.json();
+  createAgent(agentData: AgentCreate): Promise<Agent> {
+    return apiPost('/agents', agentData);
   },
 
-  async deleteAgent(agentId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}`, getFetchOptions({
-      method: 'DELETE',
-    }));
-    if (!response.ok) throw new Error('Failed to delete agent');
-    return response.json();
+  deleteAgent(agentId: number): Promise<void> {
+    return apiDelete(`/agents/${agentId}`);
   },
 
-  async updateAgent(agentId: number, agentData: AgentUpdate): Promise<Agent> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}`, getFetchOptions({
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(agentData),
-    }));
-    if (!response.ok) throw new Error('Failed to update agent');
-    return response.json();
+  updateAgent(agentId: number, agentData: AgentUpdate): Promise<Agent> {
+    return apiPatch(`/agents/${agentId}`, agentData);
   },
 
-  async getAgentConfigs(): Promise<{ configs: AgentConfig }> {
-    const response = await fetch(`${API_BASE_URL}/agents/configs`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch agent configs');
-    return response.json();
+  getAgentConfigs(): Promise<{ configs: AgentConfig }> {
+    return apiGet('/agents/configs');
   },
 
-  async getAgentDirectRoom(agentId: number, provider: 'claude' | 'codex' = 'claude', model?: string): Promise<Room> {
+  getAgentDirectRoom(agentId: number, provider: 'claude' | 'codex' = 'claude', model?: string): Promise<Room> {
     const params = new URLSearchParams({ provider });
     if (model) params.set('model', model);
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}/direct-room?${params}`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to get agent direct room');
-    return response.json();
+    return apiGet(`/agents/${agentId}/direct-room?${params}`);
   },
 
-  async addAgentToRoom(roomId: number, agentId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents/${agentId}`, getFetchOptions({
-      method: 'POST',
-    }));
-    if (!response.ok) throw new Error('Failed to add agent to room');
+  addAgentToRoom(roomId: number, agentId: number): Promise<void> {
+    return apiPost(`/rooms/${roomId}/agents/${agentId}`);
   },
 
-  async removeAgentFromRoom(roomId: number, agentId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/agents/${agentId}`, getFetchOptions({
-      method: 'DELETE',
-    }));
-    if (!response.ok) throw new Error('Failed to remove agent from room');
-    return response.json();
+  removeAgentFromRoom(roomId: number, agentId: number): Promise<void> {
+    return apiDelete(`/rooms/${roomId}/agents/${agentId}`);
   },
 };

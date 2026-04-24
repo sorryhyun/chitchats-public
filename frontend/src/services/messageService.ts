@@ -1,5 +1,5 @@
 import type { Message, ImageItem } from '../types';
-import { API_BASE_URL, getFetchOptions } from './apiClient';
+import { apiDelete, apiGet, apiPost } from './apiClient';
 
 export interface ChattingAgent {
   id: number;
@@ -10,22 +10,18 @@ export interface ChattingAgent {
 }
 
 export const messageService = {
-  async getMessages(roomId: number, signal?: AbortSignal): Promise<Message[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions({ signal }));
-    if (!response.ok) throw new Error('Failed to fetch messages');
-    return response.json();
+  getMessages(roomId: number, signal?: AbortSignal): Promise<Message[]> {
+    return apiGet(`/rooms/${roomId}/messages`, { signal });
   },
 
-  async pollMessages(roomId: number, sinceId?: number, signal?: AbortSignal): Promise<Message[]> {
-    const url = sinceId && sinceId > 0
-      ? `${API_BASE_URL}/rooms/${roomId}/messages/poll?since_id=${sinceId}`
-      : `${API_BASE_URL}/rooms/${roomId}/messages/poll`;
-    const response = await fetch(url, getFetchOptions({ signal }));
-    if (!response.ok) throw new Error('Failed to poll messages');
-    return response.json();
+  pollMessages(roomId: number, sinceId?: number, signal?: AbortSignal): Promise<Message[]> {
+    const endpoint = sinceId && sinceId > 0
+      ? `/rooms/${roomId}/messages/poll?since_id=${sinceId}`
+      : `/rooms/${roomId}/messages/poll`;
+    return apiGet(endpoint, { signal });
   },
 
-  async sendMessage(roomId: number, data: {
+  sendMessage(roomId: number, data: {
     content: string;
     participant_type?: string;
     participant_name?: string;
@@ -37,25 +33,14 @@ export const messageService = {
     if (data.participant_name) body.participant_name = data.participant_name;
     if (data.images && data.images.length > 0) body.images = data.images;
     if (data.mentioned_agent_ids && data.mentioned_agent_ids.length > 0) body.mentioned_agent_ids = data.mentioned_agent_ids;
-
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages/send`, getFetchOptions({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }));
-    if (!response.ok) throw new Error('Failed to send message');
+    return apiPost(`/rooms/${roomId}/messages/send`, body);
   },
 
-  async getChattingAgents(roomId: number): Promise<{ chatting_agents: ChattingAgent[] }> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/chatting-agents`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch chatting agents');
-    return response.json();
+  getChattingAgents(roomId: number): Promise<{ chatting_agents: ChattingAgent[] }> {
+    return apiGet(`/rooms/${roomId}/chatting-agents`);
   },
 
-  async clearRoomMessages(roomId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/messages`, getFetchOptions({
-      method: 'DELETE',
-    }));
-    if (!response.ok) throw new Error('Failed to clear messages');
+  clearRoomMessages(roomId: number): Promise<void> {
+    return apiDelete(`/rooms/${roomId}/messages`);
   },
 };

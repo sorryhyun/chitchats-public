@@ -1,23 +1,11 @@
 import { useState } from 'react';
-import type { Room } from '../../../types';
 import { useToast } from '../../../contexts/ToastContext';
+import { useChatRoomControls } from '../../../contexts/ChatRoomControlsContext';
 
-interface RoomControlsProps {
-  roomData: Room | null;
-  isRefreshing: boolean;
-  onRefreshMessages: () => Promise<void>;
-  onPauseToggle: () => void;
-  onLimitUpdate: (limit: number | null) => void;
-}
-
-export const RoomControls = ({
-  roomData,
-  isRefreshing,
-  onRefreshMessages,
-  onPauseToggle,
-  onLimitUpdate,
-}: RoomControlsProps) => {
+export const RoomControls = () => {
   const { addToast } = useToast();
+  const { roomData, isRefreshing, onRefreshMessages, onPauseToggle, onLimitUpdate } =
+    useChatRoomControls();
   const [isEditingLimit, setIsEditingLimit] = useState(false);
   const [limitInput, setLimitInput] = useState('');
 

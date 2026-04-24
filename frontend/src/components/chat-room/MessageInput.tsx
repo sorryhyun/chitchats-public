@@ -1,4 +1,4 @@
-import { useState, useCallback, memo, FormEvent, KeyboardEvent, ClipboardEvent, useRef, ChangeEvent, forwardRef, useImperativeHandle } from 'react';
+import { useState, useCallback, memo, FormEvent, KeyboardEvent, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Agent, ParticipantType, ImageItem } from '../../types';
 import { Button } from '@/components/ui/button';
@@ -7,13 +7,8 @@ import { cn } from '@/lib/utils';
 import { useMention } from '../../hooks/useMention';
 import { useImageDrop } from '../../hooks/useImageDrop';
 import { useCtrlEnterPreference } from '../../hooks/useCtrlEnterPreference';
+import { useImageUpload, MAX_IMAGES } from '../../hooks/useImageUpload';
 import { MentionDropdown } from './MentionDropdown';
-
-interface ImageData {
-  data: string;  // Base64 encoded (without data URL prefix)
-  mediaType: string;  // MIME type
-  preview: string;  // Full data URL for preview
-}
 
 interface MessageInputProps {
   isConnected: boolean;
@@ -25,191 +20,54 @@ export interface MessageInputHandle {
   handleFileSelect: (file: File) => Promise<void>;
 }
 
-// Allowed image types
-const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB max
-const MAX_IMAGES = 5;  // Maximum number of images per message
-
 export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProps>(({ isConnected, onSendMessage, roomAgents = [] }, ref) => {
   const { t } = useTranslation('chat');
   const [inputMessage, setInputMessage] = useState('');
   const [participantType, setParticipantType] = useState<ParticipantType>('user');
   const [characterName, setCharacterName] = useState('');
-  const [attachedImages, setAttachedImages] = useState<ImageData[]>([]);
-
-  // State to toggle the persona menu
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
 
-  // File input ref
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Mention hook
   const mention = useMention(roomAgents);
-
-  // Ctrl+Enter preference
   const { ctrlEnterToSend } = useCtrlEnterPreference();
 
-  // Expose handleFileSelect to parent via ref
-  useImperativeHandle(ref, () => ({
-    handleFileSelect,
-  }));
+  const {
+    images: attachedImages,
+    addOne: handleFileSelect,
+    handleFiles: handleDroppedFiles,
+    handleInputChange: handleFileInputChange,
+    handlePaste,
+    remove: removeImage,
+    clear: clearAllImages,
+  } = useImageUpload();
 
-  // Convert file to base64
-  const fileToBase64 = (file: File): Promise<ImageData> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Extract base64 data without the data URL prefix
-        const base64Data = result.split(',')[1];
-        resolve({
-          data: base64Data,
-          mediaType: file.type,
-          preview: result,
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
+  useImperativeHandle(ref, () => ({ handleFileSelect }));
 
-  // Handle file selection (adds to existing images, respects MAX_IMAGES limit)
-  const handleFileSelect = async (file: File) => {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      alert('Please select a valid image file (PNG, JPEG, GIF, or WebP)');
-      return;
-    }
-    if (file.size > MAX_IMAGE_SIZE) {
-      alert('Image size must be less than 10MB');
-      return;
-    }
-    if (attachedImages.length >= MAX_IMAGES) {
-      alert(`Maximum ${MAX_IMAGES} images allowed`);
-      return;
-    }
-    try {
-      const imageData = await fileToBase64(file);
-      setAttachedImages(prev => [...prev, imageData].slice(0, MAX_IMAGES));
-    } catch (error) {
-      console.error('Error converting image:', error);
-      alert('Failed to process image');
-    }
-  };
-
-  // Handle multiple file selection
-  const handleMultipleFileSelect = async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
-    const remainingSlots = MAX_IMAGES - attachedImages.length;
-
-    if (remainingSlots <= 0) {
-      alert(`Maximum ${MAX_IMAGES} images allowed`);
-      return;
-    }
-
-    const filesToProcess = fileArray.slice(0, remainingSlots);
-    const validFiles = filesToProcess.filter(file => {
-      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-        console.warn(`Skipping invalid file type: ${file.type}`);
-        return false;
-      }
-      if (file.size > MAX_IMAGE_SIZE) {
-        console.warn(`Skipping file too large: ${file.name}`);
-        return false;
-      }
-      return true;
-    });
-
-    try {
-      const newImages = await Promise.all(validFiles.map(file => fileToBase64(file)));
-      setAttachedImages(prev => [...prev, ...newImages].slice(0, MAX_IMAGES));
-    } catch (error) {
-      console.error('Error converting images:', error);
-      alert('Failed to process some images');
-    }
-  };
-
-  // Handle file input change (supports multiple files)
-  const handleFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      if (files.length === 1) {
-        handleFileSelect(files[0]);
-      } else {
-        handleMultipleFileSelect(files);
-      }
-    }
-    // Reset input so same file can be selected again
-    e.target.value = '';
-  };
-
-  // Drag-and-drop via shared hook
-  const handleDroppedFiles = useCallback((files: File[]) => {
-    if (files.length === 1) {
-      handleFileSelect(files[0]);
-    } else if (files.length > 1) {
-      handleMultipleFileSelect(files);
-    }
-  }, []);
   const { isDragging, dragHandlers } = useImageDrop({ onFiles: handleDroppedFiles });
 
-  // Handle paste from clipboard (Ctrl+V) - supports multiple images
-  const handlePaste = (e: ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    const imageFiles: File[] = [];
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          imageFiles.push(file);
-        }
-      }
-    }
-
-    if (imageFiles.length > 0) {
-      e.preventDefault();
-      if (imageFiles.length === 1) {
-        handleFileSelect(imageFiles[0]);
-      } else {
-        handleMultipleFileSelect(imageFiles);
-      }
-    }
-    // If no image, allow default paste behavior for text
-  };
-
-  // Remove attached image by index
-  const removeImage = (index: number) => {
-    setAttachedImages(prev => prev.filter((_, i) => i !== index));
-  };
-
-  // Clear all images
-  const clearAllImages = () => {
-    setAttachedImages([]);
-  };
+  const submit = useCallback(() => {
+    if (!isConnected) return;
+    if (!inputMessage.trim() && attachedImages.length === 0) return;
+    const { cleanContent, mentionedAgentIds } = mention.extractMentionsAndClean(inputMessage);
+    const images = attachedImages.length > 0
+      ? attachedImages.map(img => ({ data: img.data, media_type: img.mediaType }))
+      : undefined;
+    onSendMessage(
+      cleanContent || inputMessage,
+      participantType,
+      participantType === 'character' ? characterName : undefined,
+      images,
+      mentionedAgentIds.length > 0 ? mentionedAgentIds : undefined
+    );
+    setInputMessage('');
+    clearAllImages();
+  }, [isConnected, inputMessage, attachedImages, mention, participantType, characterName, onSendMessage, clearAllImages]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if ((inputMessage.trim() || attachedImages.length > 0) && isConnected) {
-      // Extract mentions and get clean content
-      const { cleanContent, mentionedAgentIds } = mention.extractMentionsAndClean(inputMessage);
-
-      // Convert to ImageItem format for API
-      const images = attachedImages.length > 0
-        ? attachedImages.map(img => ({ data: img.data, media_type: img.mediaType }))
-        : undefined;
-
-      onSendMessage(
-        cleanContent || inputMessage, // Use clean content if mentions were found
-        participantType,
-        participantType === 'character' ? characterName : undefined,
-        images,
-        mentionedAgentIds.length > 0 ? mentionedAgentIds : undefined
-      );
-      setInputMessage('');
-      setAttachedImages([]);
-    }
+    submit();
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -242,25 +100,7 @@ export const MessageInput = memo(forwardRef<MessageInputHandle, MessageInputProp
 
     if (shouldSubmit) {
       e.preventDefault();
-      if ((inputMessage.trim() || attachedImages.length > 0) && isConnected) {
-        // Extract mentions and get clean content
-        const { cleanContent, mentionedAgentIds } = mention.extractMentionsAndClean(inputMessage);
-
-        // Convert to ImageItem format for API
-        const images = attachedImages.length > 0
-          ? attachedImages.map(img => ({ data: img.data, media_type: img.mediaType }))
-          : undefined;
-
-        onSendMessage(
-          cleanContent || inputMessage,
-          participantType,
-          participantType === 'character' ? characterName : undefined,
-          images,
-          mentionedAgentIds.length > 0 ? mentionedAgentIds : undefined
-        );
-        setInputMessage('');
-        setAttachedImages([]);
-      }
+      submit();
     } else if (shouldNewline && !ctrlEnterToSend) {
       // When Enter sends: Shift+Enter or Ctrl+Enter inserts newline (default textarea behavior)
     }

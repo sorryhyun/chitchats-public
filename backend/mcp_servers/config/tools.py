@@ -24,6 +24,19 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
+def _non_empty_string(field_name: str, label: str):
+    """Reusable validator: strip whitespace and reject empty values."""
+
+    @field_validator(field_name)
+    @classmethod
+    def _validate(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError(f"{label} cannot be empty or whitespace")
+        return v.strip()
+
+    return _validate
+
+
 class SkipInput(BaseModel):
     """Input model for skip tool - takes no arguments."""
 
@@ -34,28 +47,14 @@ class MemorizeInput(BaseModel):
     """Input model for memorize tool."""
 
     memory_entry: str = Field(..., min_length=1, description="The memory entry to record")
-
-    @field_validator("memory_entry")
-    @classmethod
-    def validate_memory_entry(cls, v: str) -> str:
-        """Ensure memory entry is not just whitespace."""
-        if not v.strip():
-            raise ValueError("Memory entry cannot be empty or whitespace")
-        return v.strip()
+    _validate_memory_entry = _non_empty_string("memory_entry", "Memory entry")
 
 
 class RecallInput(BaseModel):
     """Input model for recall tool."""
 
     subtitle: str = Field(..., min_length=1, description="The memory subtitle to retrieve")
-
-    @field_validator("subtitle")
-    @classmethod
-    def validate_subtitle(cls, v: str) -> str:
-        """Ensure subtitle is not just whitespace."""
-        if not v.strip():
-            raise ValueError("Subtitle cannot be empty or whitespace")
-        return v.strip()
+    _validate_subtitle = _non_empty_string("subtitle", "Subtitle")
 
 
 class ExcuseInput(BaseModel):
@@ -66,14 +65,7 @@ class ExcuseInput(BaseModel):
         min_length=1,
         description="The agent's authentic inner reaction — raw feelings before composing outward behavior",
     )
-
-    @field_validator("reason")
-    @classmethod
-    def validate_reason(cls, v: str) -> str:
-        """Ensure reason is not just whitespace."""
-        if not v.strip():
-            raise ValueError("Reason cannot be empty or whitespace")
-        return v.strip()
+    _validate_reason = _non_empty_string("reason", "Reason")
 
 
 class GuidelinesReadInput(BaseModel):
@@ -90,14 +82,7 @@ class GuidelinesAnthropicInput(BaseModel):
         min_length=1,
         description="Brief description of the situation (e.g., 'Characters discussing sensitive topics')",
     )
-
-    @field_validator("situation")
-    @classmethod
-    def validate_situation(cls, v: str) -> str:
-        """Ensure situation is not just whitespace."""
-        if not v.strip():
-            raise ValueError("Situation description cannot be empty or whitespace")
-        return v.strip()
+    _validate_situation = _non_empty_string("situation", "Situation description")
 
 
 class CurrentTimeInput(BaseModel):

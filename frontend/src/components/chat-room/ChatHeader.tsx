@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import type { Room, Message } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { useChatRoomControls } from '../../contexts/ChatRoomControlsContext';
 import { RoomTitleEditor } from './header/RoomTitleEditor';
 import { ConversationCopyButton } from './header/ConversationCopyButton';
 import { ConnectionStatus } from './header/ConnectionStatus';
@@ -11,40 +11,25 @@ import { VoiceStatusIndicator } from './header/VoiceStatusIndicator';
 
 interface ChatHeaderProps {
   roomName: string;
-  roomData: Room | null;
-  isConnected: boolean;
-  messages: Message[];
-  onRefreshMessages: () => Promise<void>;
-  isRefreshing: boolean;
-  onPauseToggle: () => void;
-  onLimitUpdate: (limit: number | null) => void;
-  onClearMessages: () => void;
-  onRenameRoom: (name: string) => Promise<void>;
-  onShowAgentManager: () => void;
-  isAgentManagerCollapsed: boolean;
-  onToggleAgentManagerCollapse: () => void;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
 }
 
 export const ChatHeader = memo(({
   roomName,
-  roomData,
-  isConnected,
-  messages,
-  onRefreshMessages,
-  isRefreshing,
-  onPauseToggle,
-  onLimitUpdate,
-  onClearMessages,
-  onRenameRoom,
-  onShowAgentManager,
-  isAgentManagerCollapsed,
-  onToggleAgentManagerCollapse,
   isSidebarCollapsed,
   onToggleSidebar: _onToggleSidebar,
 }: ChatHeaderProps) => {
   const { isAdmin } = useAuth();
+  const {
+    roomData,
+    messages,
+    isConnected,
+    onClearMessages,
+    onRenameRoom,
+    onShowAgentManager,
+    onPauseToggle,
+  } = useChatRoomControls();
 
   // Add left padding on desktop when sidebar is collapsed to avoid hamburger overlap
   // Use ! modifier to override header-padding-mobile which sets pl-4 at lg breakpoint
@@ -115,19 +100,8 @@ export const ChatHeader = memo(({
 
           {/* Desktop: Show all controls in columns */}
           <div className="hidden sm:flex flex-col items-end gap-1">
-            <AgentPanelToggle
-              isAgentManagerCollapsed={isAgentManagerCollapsed}
-              onShowAgentManager={onShowAgentManager}
-              onToggleAgentManagerCollapse={onToggleAgentManagerCollapse}
-              onClearMessages={onClearMessages}
-            />
-            <RoomControls
-              roomData={roomData}
-              isRefreshing={isRefreshing}
-              onRefreshMessages={onRefreshMessages}
-              onPauseToggle={onPauseToggle}
-              onLimitUpdate={onLimitUpdate}
-            />
+            <AgentPanelToggle />
+            <RoomControls />
           </div>
         </div>
       </div>

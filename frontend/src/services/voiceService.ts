@@ -1,4 +1,4 @@
-import { API_BASE_URL, getFetchOptions } from './apiClient';
+import { API_BASE_URL, apiGet, apiPost } from './apiClient';
 
 export interface VoiceStatus {
   enabled: boolean;
@@ -22,52 +22,22 @@ export const voiceService = {
   /**
    * Check voice server status and availability.
    */
-  async getStatus(): Promise<VoiceStatus> {
-    const response = await fetch(
-      `${API_BASE_URL}/voice/status`,
-      getFetchOptions()
-    );
-    if (!response.ok) {
-      throw new Error('Failed to get voice status');
-    }
-    return response.json();
+  getStatus(): Promise<VoiceStatus> {
+    return apiGet('/voice/status');
   },
 
   /**
    * Generate voice audio for a message.
    */
-  async generate(messageId: number, roomId: number): Promise<VoiceGenerateResult> {
-    const response = await fetch(
-      `${API_BASE_URL}/voice/generate`,
-      getFetchOptions({
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message_id: messageId,
-          room_id: roomId,
-        }),
-      })
-    );
-    if (!response.ok) {
-      throw new Error('Failed to generate voice');
-    }
-    return response.json();
+  generate(messageId: number, roomId: number): Promise<VoiceGenerateResult> {
+    return apiPost('/voice/generate', { message_id: messageId, room_id: roomId });
   },
 
   /**
    * Check if voice audio exists for a message.
    */
-  async exists(messageId: number): Promise<VoiceExistsResult> {
-    const response = await fetch(
-      `${API_BASE_URL}/voice/exists/${messageId}`,
-      getFetchOptions()
-    );
-    if (!response.ok) {
-      throw new Error('Failed to check voice exists');
-    }
-    return response.json();
+  exists(messageId: number): Promise<VoiceExistsResult> {
+    return apiGet(`/voice/exists/${messageId}`);
   },
 
   /**

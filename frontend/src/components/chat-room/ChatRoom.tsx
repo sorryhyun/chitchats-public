@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { usePolling } from '../../hooks/usePolling';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { useImageDrop } from '../../hooks/useImageDrop';
+import { useMarkRoomAsRead } from '../../hooks/useMarkRoomAsRead';
+import { usePersistentBoolean } from '../../hooks/usePersistentBoolean';
 import { MessageList } from './message-list/MessageList';
 import { AgentManager } from '../AgentManager';
 import { ChatHeader } from './ChatHeader';
@@ -11,6 +13,7 @@ import { roomService } from '../../services/roomService';
 import { messageService } from '../../services/messageService';
 import type { Room, ParticipantType, ImageItem } from '../../types';
 import { useToast } from '../../contexts/ToastContext';
+import { ChatRoomControlsProvider, type ChatRoomControls } from '../../contexts/ChatRoomControlsContext';
 
 interface ChatRoomProps {
   roomId: number | null;
@@ -30,11 +33,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   const { addToast } = useToast();
-  // Desktop collapse state with localStorage persistence
-  const [isAgentManagerCollapsed, setIsAgentManagerCollapsed] = useState(() => {
-    const saved = localStorage.getItem('agentManagerCollapsed');
-    return saved === 'true';
-  });
+  const [isAgentManagerCollapsed, setIsAgentManagerCollapsed] = usePersistentBoolean('agentManagerCollapsed', false);
   const { messages, sendMessage, isConnected, setMessages, resetMessages } = usePolling(roomId);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const messageInputRef = useRef<MessageInputHandle>(null);
@@ -50,62 +49,11 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
   // Focus trap for agent manager drawer
   const agentManagerRef = useFocusTrap<HTMLDivElement>(showAgentManager);
 
-  // Track the last room we marked as read to avoid duplicate calls
-  const lastMarkedRoomRef = useRef<number | null>(null);
-  // Keep stable references to callbacks
-  const onRoomReadRef = useRef(onRoomRead);
-  const onMarkRoomAsReadRef = useRef(onMarkRoomAsRead);
-  useEffect(() => {
-    onRoomReadRef.current = onRoomRead;
-    onMarkRoomAsReadRef.current = onMarkRoomAsRead;
-  }, [onRoomRead, onMarkRoomAsRead]);
-
-  // Track the last message count to detect new messages
-  const lastMessageCountRef = useRef<number>(0);
+  const { markOnClick } = useMarkRoomAsRead(roomId, messages.length, onMarkRoomAsRead, onRoomRead);
 
   useEffect(() => {
-    if (roomId) {
-      fetchRoomDetails();
-
-      // Mark as read when switching rooms
-      if (lastMarkedRoomRef.current !== roomId) {
-        lastMarkedRoomRef.current = roomId;
-        lastMessageCountRef.current = messages.length;
-
-        // Optimistically update UI immediately
-        onMarkRoomAsReadRef.current?.(roomId);
-
-        // Then make the API call in the background
-        roomService.markRoomAsRead(roomId)
-          .catch(err => {
-            console.error('Failed to mark room as read:', err);
-            // On error, refresh to get the actual state from backend
-            onRoomReadRef.current?.();
-          });
-      }
-    }
+    if (roomId) fetchRoomDetails();
   }, [roomId]);
-
-  // Mark as read when new messages arrive while viewing the room
-  useEffect(() => {
-    if (roomId && messages.length > lastMessageCountRef.current) {
-      lastMessageCountRef.current = messages.length;
-
-      // Optimistically update UI immediately
-      onMarkRoomAsReadRef.current?.(roomId);
-
-      // Then make the API call in the background
-      roomService.markRoomAsRead(roomId)
-        .catch(err => {
-          console.error('Failed to mark room as read:', err);
-        });
-    }
-  }, [roomId, messages.length]);
-
-  // Persist collapse state to localStorage
-  useEffect(() => {
-    localStorage.setItem('agentManagerCollapsed', String(isAgentManagerCollapsed));
-  }, [isAgentManagerCollapsed]);
 
   // Combined keyboard listener for Escape, Enter (confirm reset), and F5 (open reset)
   useEffect(() => {
@@ -230,23 +178,7 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
   const handleToggleAgentManager = useCallback(() => setShowAgentManager(prev => !prev), []);
   const handleToggleAgentManagerCollapse = useCallback(() => setIsAgentManagerCollapsed(prev => !prev), []);
 
-  // Track last mark-as-read call to throttle
-  const lastMarkAsReadRef = useRef<number>(0);
-
-  // Mark room as read when user clicks anywhere in the chatroom
-  const handleChatRoomClick = () => {
-    if (roomId) {
-      const now = Date.now();
-      // Throttle API calls to once per second
-      if (now - lastMarkAsReadRef.current > 1000) {
-        lastMarkAsReadRef.current = now;
-        onMarkRoomAsReadRef.current?.(roomId);
-        roomService.markRoomAsRead(roomId).catch(err => {
-          console.error('Failed to mark room as read:', err);
-        });
-      }
-    }
-  };
+  const handleChatRoomClick = markOnClick;
 
   if (!roomId) {
     return (
@@ -296,25 +228,29 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
     );
   }
 
+  const chatRoomControls: ChatRoomControls = {
+    roomData,
+    messages,
+    isConnected,
+    isRefreshing,
+    isAgentManagerCollapsed,
+    onRefreshMessages: handleRefreshMessages,
+    onPauseToggle: handlePauseToggle,
+    onLimitUpdate: handleLimitUpdate,
+    onClearMessages: handleOpenClearConfirm,
+    onRenameRoom: handleRenameRoom,
+    onShowAgentManager: handleToggleAgentManager,
+    onToggleAgentManagerCollapse: handleToggleAgentManagerCollapse,
+  };
+
   return (
+    <ChatRoomControlsProvider value={chatRoomControls}>
     <div className="flex-1 flex bg-white relative overflow-hidden min-w-0" onClick={handleChatRoomClick}>
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <ChatHeader
           roomName={roomName}
-          roomData={roomData}
-          isConnected={isConnected}
-          messages={messages}
-          onRefreshMessages={handleRefreshMessages}
-          isRefreshing={isRefreshing}
-          onPauseToggle={handlePauseToggle}
-          onLimitUpdate={handleLimitUpdate}
-          onClearMessages={handleOpenClearConfirm}
-          onRenameRoom={handleRenameRoom}
-          onShowAgentManager={handleToggleAgentManager}
-          isAgentManagerCollapsed={isAgentManagerCollapsed}
-          onToggleAgentManagerCollapse={handleToggleAgentManagerCollapse}
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={onToggleSidebar}
         />
@@ -435,5 +371,6 @@ export const ChatRoom = ({ roomId, onRoomRead, onMarkRoomAsRead, onRenameRoom, i
         </div>
       )}
     </div>
+    </ChatRoomControlsProvider>
   );
 };

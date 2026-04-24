@@ -37,8 +37,10 @@ from providers.codex.constants import SessionRecoveryError
 if TYPE_CHECKING:
     from core.sse import EventBroadcaster
 
-# Configure from settings
-DEBUG_MODE = get_debug_config().get("debug", {}).get("enabled", False)
+def _debug_mode() -> bool:
+    """Resolve debug-mode flag lazily — reading debug config at module import
+    time would cycle through core.get_settings during package init."""
+    return get_debug_config().get("debug", {}).get("enabled", False)
 
 # Suppress apscheduler debug/info logs
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
@@ -469,7 +471,7 @@ class AgentManager:
                         await self.event_broadcaster.broadcast(task_id.room_id, sse_event)
 
                 # Debug log each message received from the SDK
-                if DEBUG_MODE:
+                if _debug_mode():
                     config = get_debug_config()
                     streaming_config = config.get("debug", {}).get("logging", {}).get("streaming", {})
 
@@ -579,7 +581,7 @@ class AgentManager:
             # Clean up and remove from pool on error to ensure fresh client next time
             await self._cleanup_response_state(task_id, pool, remove_from_pool=True)
 
-            logger.error(f"❌ Error generating response: {str(e)}", exc_info=DEBUG_MODE)
+            logger.error(f"❌ Error generating response: {str(e)}", exc_info=_debug_mode())
 
             # Yield error as stream_end
             end_event = StreamEndEvent(

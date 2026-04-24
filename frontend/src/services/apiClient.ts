@@ -108,6 +108,7 @@ export function getFetchOptions(options: RequestInit = {}): RequestInit {
 /**
  * Generic API request helper that handles common patterns.
  * Use this for simple fetch operations that don't need streaming.
+ * Returns `undefined` for 204 / empty bodies so callers typed as `void` work.
  */
 export async function apiRequest<T>(
   endpoint: string,
@@ -117,9 +118,39 @@ export async function apiRequest<T>(
   const response = await fetch(url, getFetchOptions(options));
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+    const errorData = await response.json().catch(() => ({ detail: `Request failed: ${response.statusText}` }));
     throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
   }
 
-  return response.json();
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+interface RequestOpts {
+  signal?: AbortSignal;
+}
+
+function jsonBodyInit(body: unknown): Pick<RequestInit, 'headers' | 'body'> {
+  if (body === undefined) return {};
+  return {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
+export function apiGet<T>(endpoint: string, opts: RequestOpts = {}): Promise<T> {
+  return apiRequest<T>(endpoint, { signal: opts.signal });
+}
+
+export function apiPost<T>(endpoint: string, body?: unknown, opts: RequestOpts = {}): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'POST', ...jsonBodyInit(body), signal: opts.signal });
+}
+
+export function apiPatch<T>(endpoint: string, body: unknown): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'PATCH', ...jsonBodyInit(body) });
+}
+
+export function apiDelete<T = void>(endpoint: string): Promise<T> {
+  return apiRequest<T>(endpoint, { method: 'DELETE' });
 }

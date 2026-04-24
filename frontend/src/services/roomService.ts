@@ -1,84 +1,43 @@
 import type { ProviderType, ProvidersResponse, Room, RoomSummary, RoomUpdate } from '../types';
-import { API_BASE_URL, getFetchOptions } from './apiClient';
+import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 
 export const roomService = {
-  async getRooms(): Promise<RoomSummary[]> {
-    const response = await fetch(`${API_BASE_URL}/rooms`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch rooms');
-    return response.json();
+  getRooms(): Promise<RoomSummary[]> {
+    return apiGet('/rooms');
   },
 
-  async getRoom(roomId: number): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch room');
-    return response.json();
+  getRoom(roomId: number): Promise<Room> {
+    return apiGet(`/rooms/${roomId}`);
   },
 
-  async getProviders(): Promise<ProvidersResponse> {
-    const response = await fetch(`${API_BASE_URL}/providers`, getFetchOptions());
-    if (!response.ok) throw new Error('Failed to fetch providers');
-    return response.json();
+  getProviders(): Promise<ProvidersResponse> {
+    return apiGet('/providers');
   },
 
-  async createRoom(name: string, provider?: ProviderType, model?: string): Promise<Room> {
+  createRoom(name: string, provider?: ProviderType, model?: string): Promise<Room> {
     const body: { name: string; provider?: ProviderType; model?: string } = { name };
-    if (provider) {
-      body.provider = provider;
-    }
-    if (model) {
-      body.model = model;
-    }
-    const response = await fetch(`${API_BASE_URL}/rooms`, getFetchOptions({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }));
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Failed to create room' }));
-      throw new Error(errorData.detail || 'Failed to create room');
-    }
-    return response.json();
+    if (provider) body.provider = provider;
+    if (model) body.model = model;
+    return apiPost('/rooms', body);
   },
 
-  async updateRoom(roomId: number, roomData: RoomUpdate): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions({
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(roomData),
-    }));
-    if (!response.ok) throw new Error('Failed to update room');
-    return response.json();
+  updateRoom(roomId: number, roomData: RoomUpdate): Promise<Room> {
+    return apiPatch(`/rooms/${roomId}`, roomData);
   },
 
-  async pauseRoom(roomId: number): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/pause`, getFetchOptions({
-      method: 'POST',
-    }));
-    if (!response.ok) throw new Error('Failed to pause room');
-    return response.json();
+  pauseRoom(roomId: number): Promise<Room> {
+    return apiPost(`/rooms/${roomId}/pause`);
   },
 
-  async resumeRoom(roomId: number): Promise<Room> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/resume`, getFetchOptions({
-      method: 'POST',
-    }));
-    if (!response.ok) throw new Error('Failed to resume room');
-    return response.json();
+  resumeRoom(roomId: number): Promise<Room> {
+    return apiPost(`/rooms/${roomId}/resume`);
   },
 
-  async markRoomAsRead(roomId: number): Promise<{ message: string; last_read_at: string }> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/mark-read`, getFetchOptions({
-      method: 'POST',
-    }));
-    if (!response.ok) throw new Error('Failed to mark room as read');
-    return response.json();
+  markRoomAsRead(roomId: number): Promise<{ message: string; last_read_at: string }> {
+    return apiPost(`/rooms/${roomId}/mark-read`);
   },
 
-  async deleteRoom(roomId: number): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/rooms/${roomId}`, getFetchOptions({
-      method: 'DELETE',
-    }));
-    if (!response.ok) throw new Error('Failed to delete room');
-    return response.json();
+  deleteRoom(roomId: number): Promise<void> {
+    return apiDelete(`/rooms/${roomId}`);
   },
 };

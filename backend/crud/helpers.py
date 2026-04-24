@@ -16,6 +16,16 @@ from sqlalchemy.orm import selectinload
 logger = logging.getLogger("CRUD")
 
 
+def invalidate_agent_cache(agent_id: int, *, include_object: bool = True) -> None:
+    """Drop cached entries for an agent after its config changes."""
+    from infrastructure.cache import agent_config_key, agent_object_key, get_cache
+
+    cache = get_cache()
+    cache.invalidate(agent_config_key(agent_id))
+    if include_object:
+        cache.invalidate(agent_object_key(agent_id))
+
+
 async def get_room_with_relationships(db: AsyncSession, room_id: int) -> Optional[models.Room]:
     """
     Helper to fetch a room with all relationships (agents and messages).

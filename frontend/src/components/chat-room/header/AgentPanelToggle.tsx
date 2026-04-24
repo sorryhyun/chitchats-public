@@ -1,20 +1,15 @@
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useChatRoomControls } from '../../../contexts/ChatRoomControlsContext';
 
-interface AgentPanelToggleProps {
-  isAgentManagerCollapsed: boolean;
-  onShowAgentManager: () => void;
-  onToggleAgentManagerCollapse: () => void;
-  onClearMessages: () => void;
-}
-
-export const AgentPanelToggle = ({
-  isAgentManagerCollapsed,
-  onShowAgentManager,
-  onToggleAgentManagerCollapse,
-  onClearMessages,
-}: AgentPanelToggleProps) => {
+export const AgentPanelToggle = () => {
   const { isAdmin } = useAuth();
+  const {
+    isAgentManagerCollapsed,
+    onShowAgentManager,
+    onToggleAgentManagerCollapse,
+    onClearMessages,
+  } = useChatRoomControls();
 
   // Handle click based on screen size
   const handleAgentButtonClick = () => {

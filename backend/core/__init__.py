@@ -1,13 +1,11 @@
 """
 Core application modules.
 
-This package contains core functionality like settings, logging, auth, dependencies,
-AgentManager, and service layer functions.
-
-Uses lazy loading for AgentManager and ClientPool to avoid circular import issues.
+This package contains core functionality like settings, logging, auth,
+dependencies, AgentManager, and service layer functions.
 """
 
-# Auth exports
+from .agent_config_service import AgentConfigService
 from .auth import (
     AuthMiddleware,
     generate_jwt_token,
@@ -18,8 +16,8 @@ from .auth import (
     validate_jwt_token,
     validate_password_with_role,
 )
-
-# Dependency exports
+from .cache_service import CacheService
+from .client_pool import ClientPool
 from .dependencies import (
     RequestIdentity,
     ensure_room_access,
@@ -27,8 +25,6 @@ from .dependencies import (
     get_chat_orchestrator,
     get_request_identity,
 )
-
-# Exception exports
 from .exceptions import (
     AgentNotFoundError,
     ConfigurationError,
@@ -36,34 +32,17 @@ from .exceptions import (
     RoomNotFoundError,
 )
 from .logging import get_logger, setup_logging
+from .manager import AgentManager
 from .settings import Settings, get_settings, reset_settings
-
-# Lazy-loaded exports (to avoid circular imports)
-_lazy_imports = {
-    "AgentManager": "manager",
-    "ClientPool": "client_pool",
-    "AgentConfigService": "agent_config_service",
-    "CacheService": "cache_service",
-    "build_system_prompt": "prompt_builder",
-    # Config validation (lazy to avoid circular imports with mcp_servers.config)
-    "log_config_validation": "mcp_servers.config.validation",
-    "reload_all_configs": "mcp_servers.config.validation",
-    "validate_config_schema": "mcp_servers.config.validation",
-}
 
 
 def __getattr__(name: str):
-    """Lazy loading for heavy imports to avoid circular dependencies."""
-    if name in _lazy_imports:
-        module_name = _lazy_imports[name]
-        import importlib
+    """Defer config-validation imports — pulling them eagerly creates a cycle
+    via mcp_servers.config.loaders → core.get_settings during package init."""
+    if name in {"log_config_validation", "reload_all_configs", "validate_config_schema"}:
+        from mcp_servers.config import validation
 
-        # Use absolute import for external packages, relative for core submodules
-        if "." in module_name and not module_name.startswith("core."):
-            module = importlib.import_module(module_name)
-        else:
-            module = importlib.import_module(f".{module_name}", __name__)
-        return getattr(module, name)
+        return getattr(validation, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -95,13 +74,12 @@ __all__ = [
     "get_agent_manager",
     "get_chat_orchestrator",
     "get_request_identity",
-    # Lazy-loaded
+    # Services / managers
     "AgentManager",
     "ClientPool",
     "AgentConfigService",
     "CacheService",
-    "build_system_prompt",
-    # Config validation (lazy-loaded)
+    # Lazy (mcp_servers.config.validation)
     "log_config_validation",
     "reload_all_configs",
     "validate_config_schema",
