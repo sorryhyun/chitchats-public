@@ -765,7 +765,7 @@ App Server uses a simplified JSON-RPC 2.0 format (no `jsonrpc` field required):
   "params": {
     "config": {
       "cwd": "/tmp/empty",
-      "model": "gpt-5.4",
+      "model": "gpt-5.5",
       "baseInstructions": "You are a helpful assistant",
       "sandbox": "danger-full-access",
       "approvalPolicy": "never",

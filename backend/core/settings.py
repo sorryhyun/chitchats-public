@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     max_concurrent_rooms: int = 5
 
     # Codex provider configuration
-    codex_model: str = "gpt-5.4"  # Default model for Codex provider
+    codex_model: str = "gpt-5.5"  # Default model for Codex provider
 
     # Custom OpenAI-compatible provider configuration
     custom_api_key: Optional[str] = None  # API key for custom provider
