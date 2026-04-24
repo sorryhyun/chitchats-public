@@ -13,14 +13,13 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
-from providers.base import AIClient
+from providers.base import AIClient, SessionRecoveryError
 from providers.configs import CodexStartupConfig, CodexTurnConfig
 
 from .app_server_instance import CodexAppServerInstance
 from .app_server_pool import CodexAppServerPool
 from .constants import (
     AppServerMethod,
-    SessionRecoveryError,
     error,
     thread_started,
 )

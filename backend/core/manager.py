@@ -32,7 +32,7 @@ from providers import (
     ProviderType,
     get_provider,
 )
-from providers.codex.constants import SessionRecoveryError
+from providers.base import SessionRecoveryError
 
 if TYPE_CHECKING:
     from core.sse import EventBroadcaster

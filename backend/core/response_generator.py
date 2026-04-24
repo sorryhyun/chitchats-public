@@ -19,7 +19,7 @@ from domain.contexts import AgentMessageData, AgentResponseContext, MessageConte
 from domain.streaming import ContentDeltaEvent, StreamEndEvent, StreamStartEvent, ThinkingDeltaEvent
 from domain.task_identifier import TaskIdentifier
 from i18n.timezone import format_kst_timestamp
-from providers.codex.constants import SessionRecoveryError
+from providers.base import SessionRecoveryError
 
 logger = logging.getLogger("ResponseGenerator")
 

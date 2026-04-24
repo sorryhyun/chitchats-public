@@ -32,6 +32,23 @@ class ProviderType(str, Enum):
     CUSTOM = "custom"
 
 
+class SessionRecoveryError(Exception):
+    """Raised when a provider session is invalid and needs to be restarted with full history.
+
+    Signals to the caller (ResponseGenerator) that:
+    1. The existing session/thread id is invalid (e.g., the provider's backing
+       process was restarted or the session expired).
+    2. A fresh session needs to be started with FULL conversation history.
+    3. The caller should rebuild conversation context without limits.
+    """
+
+    def __init__(self, old_session_id: str, message: str = "Session recovery needed"):
+        self.old_session_id = old_session_id
+        # Back-compat alias for existing Codex call sites that reference old_thread_id.
+        self.old_thread_id = old_session_id
+        super().__init__(message)
+
+
 @dataclass
 class AIMessage:
     """Unified message format across providers.
