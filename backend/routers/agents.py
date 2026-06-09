@@ -59,7 +59,7 @@ async def get_agent_direct_room(
     Args:
         agent_id: ID of the agent
         provider: AI provider - "claude" (default) or "codex"
-        model: Optional model override - "claude-opus-4-6" or "claude-sonnet-4-6"
+        model: Optional model override - "claude-opus-4-8" or "claude-sonnet-4-6"
     """
     if provider not in ("claude", "codex"):
         raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")

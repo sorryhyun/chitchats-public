@@ -41,7 +41,7 @@ async def create_room(db: AsyncSession, room: schemas.RoomCreate, owner_id: str)
         raise ValueError(f"Invalid provider: {provider}")
 
     # Validate model if specified
-    valid_models = ("claude-opus-4-6", "claude-sonnet-4-6")
+    valid_models = ("claude-opus-4-8", "claude-sonnet-4-6")
     if model and model not in valid_models:
         raise ValueError(f"Invalid model: {model}. Must be one of {valid_models}")
 
@@ -223,7 +223,7 @@ async def get_or_create_direct_room(
         agent_id: ID of the agent
         owner_id: Owner identifier (user_id or guest-xxx)
         provider: AI provider - "claude" or "codex"
-        model: Optional model override - "claude-opus-4-6" or "claude-sonnet-4-6"
+        model: Optional model override - "claude-opus-4-8" or "claude-sonnet-4-6"
 
     Returns:
         Room object or None if agent not found
@@ -233,7 +233,7 @@ async def get_or_create_direct_room(
         raise ValueError(f"Invalid provider: {provider}")
 
     # Validate model if specified
-    valid_models = ("claude-opus-4-6", "claude-sonnet-4-6")
+    valid_models = ("claude-opus-4-8", "claude-sonnet-4-6")
     if model and model not in valid_models:
         raise ValueError(f"Invalid model: {model}. Must be one of {valid_models}")
 
@@ -253,7 +253,7 @@ async def get_or_create_direct_room(
     model_suffix = ""
     if model == "claude-sonnet-4-6":
         model_suffix = " [sonnet]"
-    elif model == "claude-opus-4-6":
+    elif model == "claude-opus-4-8":
         model_suffix = " [opus]"
     base_room_name = f"Direct: {agent.name}{provider_suffix}{model_suffix}"
     room_name = f"guest: {base_room_name}" if is_guest else base_room_name

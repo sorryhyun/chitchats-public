@@ -95,7 +95,7 @@ export const AgentListPanel = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onSelectAgent(agent.id, 'claude', 'claude-opus-4-6');
+            onSelectAgent(agent.id, 'claude', 'claude-opus-4-8');
           }}
           className="p-1.5 hover:bg-orange-100 active:bg-orange-200 rounded text-orange-600 hover:text-orange-700 min-w-[32px] min-h-[32px] flex items-center justify-center touch-manipulation font-bold text-xs"
           title="Chat with Opus"

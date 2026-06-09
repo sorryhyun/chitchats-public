@@ -184,7 +184,7 @@ class ClaudeProvider(AIProvider):
         model = base_options.model
         if not model:
             _settings = get_settings()
-            model = "claude-sonnet-4-6" if _settings.use_sonnet else "claude-opus-4-6"
+            model = "claude-sonnet-4-6" if _settings.use_sonnet else "claude-opus-4-8"
 
         # Use static config for unchanging settings
         static = DEFAULT_CLAUDE_CONFIG

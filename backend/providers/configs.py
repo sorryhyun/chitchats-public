@@ -41,7 +41,9 @@ class ClaudeStaticConfig:
             "DISABLE_ERROR_REPORTING": "true",
             "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "true",
             "CLAUDE_CODE_DISABLE_BUILTIN_AGENTS": "true",
-            "CLAUDE_CODE_EFFORT_LEVEL": "max",
+            "CLAUDE_CODE_DISABLE_POLICY_SKILLS": "true",
+            "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS": "true",
+            "CLAUDE_CODE_EFFORT_LEVEL": "high",
             "BROWSER": "",
         }
     )
@@ -58,7 +60,7 @@ class ClaudeSessionConfig:
     # System prompt for the agent
     system_prompt: str = ""
 
-    # Model to use (e.g., "claude-opus-4-6")
+    # Model to use (e.g., "claude-opus-4-8")
     model: Optional[str] = None
 
     # Maximum thinking tokens
