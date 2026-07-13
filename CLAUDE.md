@@ -9,14 +9,16 @@ ChitChats is a multi-Claude chat room application where multiple Claude AI agent
 **Tech Stack:**
 - Backend: FastAPI + SQLAlchemy (async) + PostgreSQL
 - Frontend: React + TypeScript + Vite + Tailwind CSS
-- AI Integration: Multi-provider support (Claude Agent SDK, Codex MCP)
-- Real-time Communication: HTTP Polling (2-second intervals)
+- AI Integration: Multi-provider support (Claude Agent SDK, Codex)
+- Real-time Communication: Server-Sent Events (SSE), with a 5s HTTP polling fallback
 - Background Processing: APScheduler for autonomous agent interactions
 
 ## Development Commands
 
 ```bash
 make dev           # Run both backend and frontend
+make dev-voice     # Also run the voice TTS server (port 8002)
+make dev-sqlite    # Run with SQLite instead of PostgreSQL
 make install       # Install all dependencies
 make stop          # Stop all servers
 make clean         # Clean build artifacts
@@ -46,10 +48,11 @@ make build-non-tauri   # Same as build-exe
 ## Architecture Overview
 
 ### Backend
-- **FastAPI** application with REST API and polling endpoints
-- **Multi-agent orchestration** with multi-provider support (Claude SDK, Codex MCP)
-- **PostgreSQL** database with async SQLAlchemy (asyncpg)
-- **Background scheduler** for autonomous agent conversations
+- **FastAPI** application with REST API and SSE streaming endpoints
+- **App/router wiring** lives in `backend/core/app_factory.py` (`create_app()`); `backend/main.py` is a thin entry point
+- **Multi-agent orchestration** with multi-provider support (Claude SDK, Codex)
+- **PostgreSQL** database with async SQLAlchemy (asyncpg); SQLite fallback via `USE_SQLITE=true`
+- **Background scheduler** for autonomous agent conversations (`backend/infrastructure/scheduler.py`)
 - **In-memory caching** for performance optimization
 - **Domain layer** with Pydantic models for type-safe business logic
 - **Key features:**
@@ -58,8 +61,12 @@ make build-non-tauri   # Same as build-exe
   - Auto-seeding agents from `agents/` directory
   - Recent events auto-update based on conversation history
   - Agents continue conversations in background when user is not in room
-  - Cached database queries and filesystem reads (70-90% performance improvement)
-  - Modular tool architecture (action_tools, guidelines_tools, brain_tools)
+  - Cached database queries and filesystem reads (`backend/core/cache_service.py`, `backend/infrastructure/cache.py`)
+  - Modular MCP tool servers (`backend/mcp_servers/`: action, guidelines, etc, social)
+
+**Backend packages:** `chatroom_orchestration` (incl. `tape/`), `core`, `crud`, `domain`, `i18n`, `infrastructure` (`database/`, `logging/`), `launch` (`setup/`), `mcp_servers` (`config/`), `providers` (`claude/`, `codex/`), `routers`, `schemas`.
+
+**Routers** (mounted in `app_factory.py`): `auth`, `rooms`, `agent_management`, `agents`, `room_agents`, `messages`, `sse`, `debug`, `providers`, `exports`, `voice`, `user`, `tools_api`, `serve_mcp`.
 
 **For detailed backend documentation**, see [backend/README.md](backend/README.md) which includes:
 - Complete API reference
@@ -67,22 +74,29 @@ make build-non-tauri   # Same as build-exe
 - Agent configuration system
 - Chat orchestration logic
 - Session management
-- Phase 5 refactored SDK integration (AgentManager, ClientPool, StreamParser)
 - Debugging guides
-
-**For caching system details**, see [backend/CACHING.md](backend/CACHING.md).
 
 ### Frontend
 - **React + TypeScript + Vite** with Tailwind CSS
 - **Key components:**
-  - MainSidebar - Room list and agent management
-  - ChatRoom - Main chat interface with polling integration
+  - MainSidebar - Room list and agent management (`components/sidebar/`)
+  - ChatRoom - Main chat interface (`components/chat-room/`)
   - AgentManager - Add/remove agents from rooms
   - MessageList - Display messages with thinking text
 - **Real-time features:**
-  - HTTP polling for live message updates (2-second intervals)
+  - SSE for live message/token streaming (`frontend/src/hooks/useSSE.ts`, backed by `backend/routers/sse.py`)
+  - `usePolling.ts` wraps `useSSE` and adds a 5s polling fallback when SSE is not connected
   - Typing indicators
   - Agent thinking process display
+
+### Voice (TTS)
+- Optional TTS server in `voice_server/` (Qwen3-TTS), run with `make run-voice` or `make dev-voice` (port 8002)
+- Backend proxies it via `backend/routers/voice.py` (`/voice/status`, `/voice/generate`, `/voice/audio/{message_id}`)
+- Configure the server location with `VOICE_SERVER_URL` (default `http://localhost:8002`)
+
+### Exports
+- `backend/routers/exports.py` exposes Claude Code conversation files (`~/.claude/projects/*.jsonl`) at `/exports/conversations` (admin only)
+- Frontend UI: `frontend/src/components/sidebar/ExportModal.tsx`
 
 ### AI Providers
 
@@ -91,28 +105,28 @@ ChitChats supports multiple AI providers through a unified abstraction layer:
 | Provider | Description | Authentication |
 |----------|-------------|----------------|
 | `claude` | Claude Agent SDK (default) | Via Claude Code subscription |
-| `codex` | Codex MCP Server | Via `codex login` |
+| `codex` | Codex (app-server or MCP mode) | Via `codex login` |
 
 **Provider Selection:**
 - Rooms are created with a default provider (`claude` if not specified)
-- Provider is set at room creation time via the `provider` field
+- Provider is set at room creation time via the `default_provider` field
 - All agents in a room use the same provider
 
 Provider implementations are in `backend/providers/`.
 
 ## Agent Configuration
 
-Agents can be configured using folder-based structure (new) or single file (legacy):
+Agents are configured with a folder per agent (`in_a_nutshell.md` and `characteristics.md` are required):
 
-**New Format (Preferred):**
 ```
 agents/
   agent_name/
-    ├── in_a_nutshell.md      # Brief identity summary (third-person)
-    ├── characteristics.md     # Personality traits (third-person)
+    ├── in_a_nutshell.md      # Brief identity summary (third-person) — required
+    ├── characteristics.md     # Personality traits (third-person) — required
     ├── recent_events.md      # Auto-updated from ChitChats platform conversations ONLY (not for anime/story backstory)
     ├── consolidated_memory.md # Long-term memories with subtitles (optional)
-    └── profile.png           # Optional profile picture (png, jpg, jpeg, gif, webp, svg)
+    ├── profile.png           # Optional profile picture (png, jpg, jpeg, gif, webp, svg)
+    └── voice.wav             # Optional TTS voice sample (wav, mp3, flac, ogg)
 ```
 
 **IMPORTANT:** Agent configuration files must use **third-person perspective**:
@@ -125,8 +139,8 @@ agents/
 
 **Agent configs**, **system prompt**, and **tool configurations** use filesystem as single source of truth:
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
-- Agent parsing: `backend/domain/agent_parser.py`
-- System prompt: `backend/mcp_servers/config/guidelines.yaml` (`system_prompt` field)
+- Agent parsing: `backend/domain/agent_parser.py` (folder-based only)
+- System prompt: `backend/providers/{claude,codex}/prompts.yaml` (`active_system_prompt` selects the version); shared sections in `backend/mcp_servers/config/prompts_shared.yaml`
 - Tool configurations: `backend/mcp_servers/config/` directory
 - File locking prevents concurrent write conflicts
 - See `backend/infrastructure/locking.py` for implementation
@@ -136,12 +150,12 @@ agents/
 Tool descriptions and debug settings are configured in `backend/mcp_servers/config/`:
 
 **`tools.py`** - Tool definitions and descriptions (Python-based)
-- Defines available tools (skip, memorize, recall, read, etc.)
-- Tool descriptions support template variables (`{agent_name}`, `{config_sections}`)
-- Enable/disable tools individually
+- Defines available tools: `skip`, `memorize`, `recall`, `excuse` (action server); `read`/`anthropic`/`openai` (guidelines server); `current_time` (etc server); `moltbook` (social server)
+- Tool descriptions support template variables (`{agent_name}`, `{memory_subtitles}`)
+- Each `ToolDef` has an `enabled` flag; some are off by default
 
-**`guidelines.yaml`** - Role guidelines for agent behavior
-- Defines system prompt template and behavioral guidelines
+**`guidelines.yaml`** - Role guidelines injected into agents via the guidelines tool
+- `active_version` selects the template to use (currently `v14`)
 - Uses third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why)
 
 **`debug.yaml`** - Debug logging configuration
@@ -151,8 +165,13 @@ Tool descriptions and debug settings are configured in `backend/mcp_servers/conf
 ### Group Configuration
 
 Groups (`group_*` folders) can have a `group_config.yaml` for shared settings:
-- **Tool overrides** - Custom tool responses/descriptions for all agents in the group
-- **Behavior settings** - `interrupt_every_turn`, `priority`, `transparent`
+- **Tool overrides** - Custom tool responses/descriptions for all agents in the group (any field from `tools.py`, e.g. `tools.recall.response`)
+- **Behavior settings:**
+  - `interrupt_every_turn` - When `true`, agents in this group get a turn after any message
+  - `priority` - Integer (default `0`). Higher values respond before lower priority agents
+  - `transparent` - When `true`, this agent's messages don't trigger others to reply (useful for Narrator-type agents). Messages are still visible to all agents.
+
+Ordering logic lives in `backend/chatroom_orchestration/agent_ordering.py` and `backend/chatroom_orchestration/tape/`.
 
 See `agents/group_config.yaml.example` for examples.
 
@@ -169,7 +188,7 @@ make dev                                          # Run backend + frontend
 - Backend API: http://localhost:8001
 - API Docs: http://localhost:8001/docs
 
-See [SETUP.md](SETUP.md) for PostgreSQL setup and authentication configuration.
+See [docs/SETUP.md](docs/SETUP.md) for PostgreSQL setup and authentication configuration.
 
 ## Configuration
 
@@ -180,14 +199,20 @@ See [SETUP.md](SETUP.md) for PostgreSQL setup and authentication configuration.
 - `API_KEY_HASH` - Bcrypt hash of your password (generate with `make generate-hash`)
 - `JWT_SECRET` - Secret key for signing JWT tokens (generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
 
+All settings are declared in `backend/core/settings.py` (Pydantic `BaseSettings`); anything not listed there is ignored.
+
 **Optional:**
 - `USER_NAME` - Display name for user messages in chat (default: "User")
 - `DEBUG_AGENTS` - Set to "true" for verbose agent logging
-- `RECALL_MEMORY_FILE` - Memory file for recall mode: `consolidated_memory` (default) or `long_term_memory`
 - `USE_SONNET` - Set to "true" to default to Sonnet instead of Opus (default: false). Can also be toggled at runtime via Settings UI. Accepts `USE_HAIKU` as alias for backward compatibility.
 - `PRIORITY_AGENTS` - Comma-separated agent names for priority responding
 - `MAX_CONCURRENT_ROOMS` - Max rooms for background scheduler (default: 5)
+- `GUEST_PASSWORD_HASH` - Separate bcrypt hash for guest (read-only) login
 - `ENABLE_GUEST_LOGIN` - Enable/disable guest login (default: true)
+- `USE_SQLITE` - Set to "true" to use SQLite instead of PostgreSQL (also used by `make dev-sqlite`)
+- `VOICE_SERVER_URL` - Voice TTS server URL (default: `http://localhost:8002`)
+- `CODEX_MODEL` - Model used by the Codex provider (default: `gpt-5.5`)
+- `ENABLE_COMMUNITY` / `MOLTBOOK_API_KEY` - Enable the Moltbook social tools (default: disabled)
 - `FRONTEND_URL` - CORS allowed origin for production (e.g., `https://your-app.vercel.app`)
 - `VERCEL_URL` - Auto-detected on Vercel deployments
 
@@ -203,7 +228,7 @@ See [SETUP.md](SETUP.md) for PostgreSQL setup and authentication configuration.
 - **Setup:** Create database with `createdb chitchats` before first run
 
 ### CORS Configuration
-- CORS is configured in `main.py` using environment variables
+- CORS is configured in `backend/core/app_factory.py` from `Settings.get_cors_origins()`
 - Default allowed origins: `localhost:5173`, `localhost:5174`, and local network IPs
 - Add custom origins via `FRONTEND_URL` or `VERCEL_URL` environment variables
 - Backend logs CORS configuration on startup for visibility
@@ -214,17 +239,17 @@ See [SETUP.md](SETUP.md) for PostgreSQL setup and authentication configuration.
 
 **Update agent:** Edit `.md` files directly
 
-**Update system prompt:** Edit `system_prompt` section in `backend/mcp_servers/config/guidelines.yaml`
+**Update system prompt:** Edit the active `system_prompt_*` block in `backend/providers/{claude,codex}/prompts.yaml`
 
 **Update tool descriptions:** Edit `backend/mcp_servers/config/tools.py`
 
-**Update guidelines:** Edit version template sections in `backend/mcp_servers/config/guidelines.yaml`
+**Update guidelines:** Edit the version template in `backend/mcp_servers/config/guidelines.yaml` (and bump `active_version`)
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/mcp_servers/config/debug.yaml`
 
-**Add database field:** Update `models.py`, add migration in `backend/infrastructure/database/migrations.py`, update `schemas.py` and `crud.py`, restart
+**Add database field:** Update `backend/infrastructure/database/models.py`, add migration in `backend/infrastructure/database/migrations.py`, update `backend/schemas/` and `backend/crud/`, restart
 
-**Add endpoint:** Define schema in `schemas.py`, add CRUD in `crud.py`, add endpoint in `main.py`
+**Add endpoint:** Define schema in `backend/schemas/`, add CRUD in `backend/crud/`, add the route to an existing router in `backend/routers/` (or create a new one and register it with `app.include_router(...)` in `backend/core/app_factory.py`)
 
 ## Automated Simulations
 
@@ -254,4 +279,4 @@ Or use the script directly:
 
 **Scripts Location:** `scripts/simulation/` and `scripts/testing/`
 
-**See [SIMULATIONS.md](SIMULATIONS.md) for complete guide.**
+Run `./scripts/simulation/simulate_chatroom.sh --help` for the full option list.
