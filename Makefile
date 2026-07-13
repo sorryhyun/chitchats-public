@@ -38,7 +38,11 @@ help:
 
 install:
 	@echo "Installing dependencies..."
-	sudo npm install -g @anthropic-ai/claude-code || echo "Warning: Failed to install Claude Code CLI globally. You may need to run with sudo."
+	@if ! command -v claude >/dev/null 2>&1; then \
+		echo "Note: the 'claude' CLI was not found on your PATH."; \
+		echo "      The 'claude' provider needs it: npm install -g @anthropic-ai/claude-code"; \
+		echo "      (Not needed if you only use the 'codex' provider.)"; \
+	fi
 	@echo "Installing backend dependencies with uv..."
 	uv sync
 	@echo "Installing frontend dependencies..."

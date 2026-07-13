@@ -6,7 +6,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     # Database
     "asyncpg>=0.29.0",
-    "SQLAlchemy>=2.0.0",
+    "SQLAlchemy[asyncio]>=2.0.0",  # asyncio extra pulls in greenlet, required by create_async_engine
 
     # Web framework
     "fastapi>=0.115.0",
