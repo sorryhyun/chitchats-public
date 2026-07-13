@@ -8,6 +8,7 @@ backend/**/__pycache__/
 *.pyd
 backend/.env
 .env
+.env.bak
 test_*.txt
 .python-version
 example.md

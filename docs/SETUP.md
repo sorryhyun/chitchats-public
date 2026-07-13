@@ -33,29 +33,27 @@ SQLite is also auto-selected on Windows. See `backend/database.py`.
 
 ChitChats uses JWT token-based authentication with bcrypt password hashing.
 
-**Generate password hash:**
+**Generate password hash and configure `.env`:**
 ```bash
 make generate-hash
-# Or directly:
-# uv run python scripts/setup/generate_hash.py
 ```
 
-**Generate JWT secret:**
+This prompts for a password and writes the result straight into `.env`:
+- Creates `.env` from `.env.example` if you don't have one yet
+- Sets `API_KEY_HASH` to the bcrypt hash of your password
+- Fills in a random `JWT_SECRET` if it isn't set yet
+- Offers to set `GUEST_PASSWORD_HASH` for read-only guest access
+
+Re-running it is safe: existing values and comments are preserved, an unchanged
+`JWT_SECRET` is left alone, and the previous file is backed up to `.env.bak`.
+
+To print the hash instead of writing it (e.g. for a deployment secret store):
 ```bash
-python -c "import secrets; print(secrets.token_hex(32))"
+make generate-hash ARGS=--print-only
 ```
 
-**Configure environment:**
-```bash
-cp .env.example .env
-# Or interactively: make env
-```
-
-Edit `.env` and add:
-```env
-API_KEY_HASH=<hash from step 1>
-JWT_SECRET=<secret from step 2>
-```
+`make env` is a separate, more opinionated alternative: it writes a fresh minimal
+`.env` from scratch (SQLite by default) and overwrites any existing one.
 
 **Optional settings:**
 ```env

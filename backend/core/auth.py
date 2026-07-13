@@ -42,7 +42,7 @@ def get_api_key_hash_from_env() -> str:
     # API_KEY_HASH is required
     logger.error("❌ ERROR: API_KEY_HASH is not set in environment variables!")
     logger.error("❌ Authentication cannot work without a password configured.")
-    logger.error("💡 To fix: Run 'python generate_hash.py' to create a hash, then add it to .env")
+    logger.error("💡 To fix: Run 'make generate-hash' — it writes API_KEY_HASH into .env for you")
     sys.exit(1)
 
 

@@ -22,7 +22,7 @@ help:
 	@echo ""
 	@echo "Setup:"
 	@echo "  make env               - Create .env file (prompts for password)"
-	@echo "  make generate-hash     - Generate password hash for authentication"
+	@echo "  make generate-hash     - Generate password hash and write it to .env"
 	@echo ""
 	@echo "Simulation:"
 	@echo "  make simulate          - Run chatroom simulation (requires args)"
@@ -136,7 +136,7 @@ env:
 
 generate-hash:
 	@echo "Generating password hash..."
-	uv run python scripts/setup/generate_hash.py
+	@uv run python scripts/setup/generate_hash.py $(ARGS)
 
 simulate:
 	@echo "Running chatroom simulation..."
