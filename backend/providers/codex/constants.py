@@ -42,7 +42,10 @@ class ItemType:
 class AppServerMethod:
     """JSON-RPC method names for Codex App Server protocol.
 
-    These are the notification/response methods returned by `codex app-server`.
+    These are the notification methods sent by `codex app-server`; the authoritative
+    list is `codex app-server generate-json-schema` (ServerNotification). Tool calls
+    are *not* their own methods — they arrive as `item/started` + `item/completed`
+    carrying an `McpToolCallThreadItem`.
     """
 
     # Turn lifecycle
@@ -56,13 +59,6 @@ class AppServerMethod:
     # Streaming deltas
     AGENT_MESSAGE_DELTA = "item/agentMessage/delta"
     REASONING_DELTA = "item/reasoning/textDelta"
-
-    # Tool calls
-    MCP_TOOL_CALL_STARTED = "item/mcpToolCall/started"
-    MCP_TOOL_CALL_COMPLETED = "item/mcpToolCall/completed"
-
-    # Error/status
-    EXEC_ERROR = "item/execError"
 
 
 class TurnStatus:

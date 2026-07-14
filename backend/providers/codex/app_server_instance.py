@@ -1,8 +1,12 @@
 """
-Single Codex App Server instance using the official codex-app-server SDK.
+Single Codex App Server instance using the official openai-codex SDK.
 
 This module manages one `codex app-server` subprocess via the official
-sync Python SDK (AppServerClient), bridged to async via asyncio.to_thread().
+sync Python SDK (CodexClient), bridged to async via asyncio.to_thread().
+
+`CodexClient` is the SDK's low-level JSON-RPC surface; the high-level
+`Codex`/`Thread` wrappers are deliberately not used because we drive the
+notification stream ourselves (see `start_turn`).
 
 The SDK handles:
 - Subprocess lifecycle (stdio transport)
@@ -24,9 +28,10 @@ import shutil
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
-from codex_app_server import AppServerClient, AppServerConfig
-from codex_app_server.errors import AppServerError, TransportClosedError
-from codex_app_server.generated.v2_all import (
+from openai_codex import CodexConfig
+from openai_codex.client import CodexClient
+from openai_codex.errors import CodexError, TransportClosedError
+from openai_codex.generated.v2_all import (
     AgentMessageDeltaNotification,
     ImageGenerationThreadItem,
     ItemCompletedNotification,
@@ -36,7 +41,7 @@ from codex_app_server.generated.v2_all import (
     TurnCompletedNotification,
     TurnStartedNotification,
 )
-from codex_app_server.models import Notification, UnknownNotification
+from openai_codex.models import Notification, UnknownNotification
 
 from providers.configs import DEFAULT_CODEX_CONFIG, CodexStartupConfig, CodexTurnConfig
 
@@ -77,7 +82,7 @@ class CodexAppServerInstance:
         self._startup_config = startup_config or DEFAULT_CODEX_CONFIG
         self._agent_key = agent_key
 
-        self._client: Optional[AppServerClient] = None
+        self._client: Optional[CodexClient] = None
         self._active_threads: Set[str] = set()
         self._current_turn_id: Optional[str] = None
 
@@ -149,8 +154,8 @@ class CodexAppServerInstance:
             return True
         return False
 
-    def _build_sdk_config(self) -> AppServerConfig:
-        """Build AppServerConfig for the official SDK."""
+    def _build_sdk_config(self) -> CodexConfig:
+        """Build CodexConfig for the official SDK."""
         codex_path = shutil.which("codex")
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
@@ -174,7 +179,7 @@ class CodexAppServerInstance:
 
         env = {"BROWSER": ""}  # Prevent subprocess from opening browser
 
-        return AppServerConfig(
+        return CodexConfig(
             launch_args_override=tuple(launch_args),
             env=env,
             client_name="chitchats",
@@ -194,7 +199,7 @@ class CodexAppServerInstance:
         )
 
         def _start_sync():
-            client = AppServerClient(sdk_config)
+            client = CodexClient(sdk_config)
             client.start()
             client.initialize()
             return client
@@ -256,7 +261,7 @@ class CodexAppServerInstance:
             else:
                 logger.warning(f"[Instance {self._instance_id}] Resume returned no thread: {result}")
                 return False
-        except (AppServerError, TransportClosedError) as e:
+        except (CodexError, TransportClosedError) as e:
             logger.debug(f"[Instance {self._instance_id}] Failed to resume thread {thread_id}: {e}")
             return False
 

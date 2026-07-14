@@ -20,7 +20,10 @@ dependencies = [
     "mcp>=1.0.0",
     "fastapi-mcp>=0.3.0",
     "websockets>=13.0",
-    "codex-app-server-sdk @ git+https://github.com/openai/codex.git@main#subdirectory=sdk/python",
+    # The app-server protocol types are generated per-release, so this pin tracks the
+    # `codex` CLI. Released builds only; the SDK was previously a `@main` git dep, which
+    # floated and could change the protocol types under us on any re-lock.
+    "openai-codex>=0.1.0b3",
 
     # Auth
     "bcrypt>=4.2.0",
