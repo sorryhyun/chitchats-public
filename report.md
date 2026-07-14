@@ -83,11 +83,14 @@ Correction to the original finding: only `<korean_dialogue>` and `<output_format
 
 Result (verified by diffing the rendered prompts): **Codex byte-identical**; Claude gained exactly `<korean_dialogue>` and `<output_format>` — the intended behavior change, approved by the owner.
 
-### 23. `schemas/message.py` hand-maps 16 fields and throws away `from_attributes` **[A]**
+### ~~23. `schemas/message.py` hand-maps 16 fields and throws away `from_attributes`~~ — **Done 2026-07-14**
 
-`schemas/message.py:41-102` uses a `@model_validator(mode="before")` to rebuild the ORM row into a dict field-by-field. **This is why `anthropic_calls` and `provider` silently went unwritten for so long** — because the mapping is manual, a new column is invisible until someone remembers to edit this function. Two already slipped through (both now fixed, but the trap remains).
+The 60-line `@model_validator(mode="before")` that rebuilt the ORM row field-by-field is gone. `Message` now validates straight off the row with `from_attributes=True`, plus:
+- one `@field_validator(mode="before")` shared by the three JSON-in-TEXT columns (`anthropic_calls`, `excuse_reasons`, `images`),
+- `AliasChoices("agent_name", AliasPath("agent", "name"))` (same for `profile_pic`) for the flattened agent fields — so the by-name form still validates,
+- a small `mode="after"` validator that keeps the legacy single-image (`image_data`/`image_media_type`) backfill.
 
-**Fix:** restore `from_attributes=True`; use per-field `@field_validator(mode="before")` for the three JSON columns and `AliasPath("agent", "name")` for the flattened agent fields.
+New columns are now picked up by declaring the field, not by editing a mapper. Serialized output is key-for-key identical (checked against agent-attached, agent-less, legacy-image and malformed-JSON rows); full suite green.
 
 ### 24. Schema/model drift **[A]**
 
