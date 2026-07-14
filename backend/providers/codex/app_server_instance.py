@@ -304,9 +304,15 @@ class CodexAppServerInstance:
         # Queue for passing notifications from sync thread to async
         queue: asyncio.Queue[Optional[Notification]] = asyncio.Queue()
         turn_error: List[Optional[Exception]] = [None]
+        loop = asyncio.get_event_loop()
 
         def _run_turn_sync():
             """Run the turn in a sync thread, collecting notifications."""
+
+            def emit(item: Optional[Notification]) -> None:
+                # asyncio.Queue is not thread-safe; hand items over on the loop thread.
+                loop.call_soon_threadsafe(queue.put_nowait, item)
+
             try:
                 client = self._client
                 if client is None:
@@ -316,39 +322,39 @@ class CodexAppServerInstance:
                 started = client.turn_start(thread_id, input_items, params=turn_params)
                 turn_id = started.turn.id
 
-                # Put turn started event
-                turn_started_notif = Notification(
-                    method="turn/started",
-                    payload=UnknownNotification(params={"turnId": turn_id, "threadId": thread_id}),
-                )
-                queue.put_nowait(turn_started_notif)
+                # Everything this turn emits is routed to a dedicated queue, NOT the
+                # global one `next_notification()` drains — without registering, the
+                # events pile up unread and the turn never completes. Registering also
+                # replays whatever arrived between turn/start returning and this call.
+                client.register_turn_notifications(turn_id)
+                try:
+                    # Put turn started event
+                    emit(
+                        Notification(
+                            method="turn/started",
+                            payload=UnknownNotification(params={"turnId": turn_id, "threadId": thread_id}),
+                        )
+                    )
 
-                # Stream notifications until turn completes
-                while True:
-                    try:
-                        notification = client.next_notification()
-                        queue.put_nowait(notification)
-
-                        # Check for turn completion
+                    # Stream notifications until turn completes. The queue carries only
+                    # this turn's events, so any turn/completed is ours.
+                    while True:
+                        try:
+                            notification = client.next_turn_notification(turn_id)
+                        except TransportClosedError:
+                            break
+                        emit(notification)
                         if notification.method == "turn/completed":
-                            if isinstance(notification.payload, TurnCompletedNotification):
-                                if notification.payload.turn.id == turn_id:
-                                    break
-                            else:
-                                break
-                    except TransportClosedError:
-                        break
-                    except Exception as e:
-                        turn_error[0] = e
-                        break
+                            break
+                finally:
+                    client.unregister_turn_notifications(turn_id)
             except Exception as e:
                 turn_error[0] = e
             finally:
                 # Signal completion
-                queue.put_nowait(None)
+                emit(None)
 
         # Run the sync turn in a background thread
-        loop = asyncio.get_event_loop()
         turn_future = loop.run_in_executor(None, _run_turn_sync)
 
         try:
