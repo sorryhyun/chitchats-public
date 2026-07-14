@@ -150,13 +150,11 @@ agents/
 Tool descriptions and debug settings are configured in `backend/mcp_servers/config/`:
 
 **`tools.py`** - Tool definitions and descriptions (Python-based)
-- Defines available tools: `skip`, `memorize`, `recall`, `excuse` (action server); `read`/`anthropic`/`openai` (guidelines server); `current_time` (etc server); `moltbook` (social server)
+- Defines available tools: `skip`, `memorize`, `recall`, `excuse` (action server); `anthropic`/`openai` (guidelines server); `current_time` (etc server); `moltbook` (social server)
 - Tool descriptions support template variables (`{agent_name}`, `{memory_subtitles}`)
 - Each `ToolDef` has an `enabled` flag; some are off by default
 
-**`guidelines.yaml`** - Role guidelines injected into agents via the guidelines tool
-- `active_version` selects the template to use (currently `v14`)
-- Uses third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why)
+**Guidelines** are not a tool and not a separate config file. They ship inside the `<guidelines>` block of the active system prompt in `backend/providers/{claude,codex}/prompts.yaml`, and use third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why).
 
 **`debug.yaml`** - Debug logging configuration
 - Control what gets logged (system prompt, tools, messages, responses)
@@ -243,7 +241,7 @@ All settings are declared in `backend/core/settings.py` (Pydantic `BaseSettings`
 
 **Update tool descriptions:** Edit `backend/mcp_servers/config/tools.py`
 
-**Update guidelines:** Edit the version template in `backend/mcp_servers/config/guidelines.yaml` (and bump `active_version`)
+**Update guidelines:** Edit the `<guidelines>` block inside the active `system_prompt_*` in `backend/providers/{claude,codex}/prompts.yaml`
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/mcp_servers/config/debug.yaml`
 

@@ -25,6 +25,7 @@ class MessageCreate(MessageBase):
     anthropic_calls: Optional[List[str]] = None
     excuse_reasons: Optional[List[str]] = None
     mentioned_agent_ids: Optional[List[int]] = None  # Agent IDs from @mentions
+    provider: Optional[str] = None  # AI provider that produced this message
 
 
 class Message(MessageBase):
@@ -37,6 +38,7 @@ class Message(MessageBase):
     timestamp: datetime
     agent_name: Optional[str] = None
     agent_profile_pic: Optional[str] = None
+    provider: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -93,6 +95,7 @@ class Message(MessageBase):
                 "timestamp": data.timestamp,
                 "agent_name": agent.name if agent else None,
                 "agent_profile_pic": agent.profile_pic if agent else None,
+                "provider": getattr(data, "provider", None),
                 "images": images,
                 # Keep deprecated fields for backward compatibility
                 "image_data": data.image_data if hasattr(data, "image_data") else None,

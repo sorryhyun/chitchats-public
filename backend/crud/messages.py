@@ -58,8 +58,10 @@ async def create_message(
         participant_type=message.participant_type,
         participant_name=message.participant_name,
         thinking=message.thinking,
+        anthropic_calls=json.dumps(message.anthropic_calls) if message.anthropic_calls else None,
         excuse_reasons=json.dumps(message.excuse_reasons) if message.excuse_reasons else None,
         images=images_json,  # Store as JSON string
+        provider=message.provider,
         # Keep deprecated fields for backward compatibility during transition
         image_data=message.image_data,
         image_media_type=message.image_media_type,

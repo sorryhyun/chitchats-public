@@ -17,10 +17,9 @@ logger = logging.getLogger("ChatOrchestrator")
 import crud
 import schemas
 from core.manager import AgentManager
+from core.response_generator import ResponseGenerator
 from domain.contexts import OrchestrationContext
 from infrastructure.database import models
-
-from core.response_generator import ResponseGenerator
 
 from .agent_ordering import separate_interrupt_agents
 from .critic import process_critic_feedback

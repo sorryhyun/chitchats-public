@@ -162,7 +162,6 @@ class ClaudeProvider(AIProvider):
             group_name=base_options.group_name,
             agent_id=base_options.agent_id,
             config_file=base_options.config_file,
-            has_situation_builder=base_options.has_situation_builder,
         )
         mcp_servers = MCPConfigBuilder.build_all_servers(
             env_config,

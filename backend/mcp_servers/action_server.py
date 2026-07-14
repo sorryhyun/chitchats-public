@@ -312,9 +312,9 @@ def _load_memory_index_and_entries(config_file: Optional[str]) -> tuple[dict[str
         return {}, None
 
     try:
-        from domain.agent_parser import parse_long_term_memory, parse_long_term_memory_with_thoughts
         from core import AgentConfigService
         from core.settings import get_settings
+        from domain.agent_parser import parse_long_term_memory, parse_long_term_memory_with_thoughts
 
         project_root = AgentConfigService.get_project_root()
         config_path = project_root / config_file

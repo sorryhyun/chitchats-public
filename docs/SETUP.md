@@ -250,7 +250,7 @@ All scripts are organized in the `scripts/` directory:
 
 **Update system prompt:** Edit `backend/providers/claude/prompts.yaml` (or `backend/providers/codex/prompts.yaml`), selecting the active prompt via `active_system_prompt`
 
-**Update guidelines:** Edit `backend/mcp_servers/config/guidelines.yaml` (active version selected by `active_version`)
+**Update guidelines:** Edit the `<guidelines>` block inside the active `system_prompt_*` in the provider's `prompts.yaml`
 
 **Update tool descriptions:** Edit the `TOOLS` registry in `backend/mcp_servers/config/tools.py`
 

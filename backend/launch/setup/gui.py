@@ -121,8 +121,9 @@ def run_first_time_setup_gui():
     Returns:
         dict with password_hash, jwt_secret, user_name, or None if cancelled.
     """
-    import bcrypt
     import subprocess
+
+    import bcrypt
 
     try:
         result = subprocess.run(
@@ -159,9 +160,10 @@ def run_first_time_setup_gui():
 
 def _auto_generate_setup():
     """Fallback: auto-generate credentials and show the password via MessageBox."""
-    import bcrypt
     import random
     import string
+
+    import bcrypt
 
     chars = string.ascii_letters + string.digits
     password = "".join(random.choices(chars, k=12))

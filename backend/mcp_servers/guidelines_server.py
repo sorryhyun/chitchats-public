@@ -1,8 +1,11 @@
 """
 Shared MCP Guidelines Server for ChitChats.
 
-This server exposes guidelines tools (read, anthropic) via the MCP protocol.
+This server exposes the policy tools (anthropic, openai) via the MCP protocol.
 It can be used by any AI provider (Claude SDK, Codex CLI, etc.).
+
+Behavioral guidelines themselves are NOT served here — they are part of the system
+prompt (providers/{claude,codex}/prompts.yaml).
 
 Usage:
     # Factory mode (in-process)
@@ -15,7 +18,6 @@ Usage:
 Environment variables (for subprocess mode):
     AGENT_NAME: Name of the agent (required)
     AGENT_GROUP: Group name for loading extreme traits (optional)
-    HAS_SITUATION_BUILDER: Whether room has situation builder (optional, default: false)
     PROVIDER: AI provider (optional, default: claude)
 """
 
@@ -26,12 +28,10 @@ from typing import Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Resource, TextContent, Tool
-from pydantic import AnyUrl
+from mcp.types import TextContent, Tool
 
 from .config import (
     get_extreme_traits,
-    get_situation_builder_note,
     get_tool_description,
     get_tool_response,
     get_tools_by_group,
@@ -44,16 +44,14 @@ logger = logging.getLogger("GuidelinesServer")
 
 def create_guidelines_server(
     agent_name: str,
-    has_situation_builder: bool = False,
     group_name: Optional[str] = None,
     provider: str = "claude",
 ) -> Server:
     """
-    Create an MCP server with guidelines tools (read, anthropic).
+    Create an MCP server with the policy tools (anthropic, openai).
 
     Args:
         agent_name: Name of the agent
-        has_situation_builder: Whether the room has a situation builder agent
         group_name: Optional group name for loading extreme traits
         provider: AI provider ("claude" or "codex")
 
@@ -61,18 +59,6 @@ def create_guidelines_server(
         Configured MCP Server instance
     """
     server = Server("guidelines")
-
-    # Pre-compute guidelines content
-    situation_builder_note = get_situation_builder_note(has_situation_builder)
-    guidelines_content = (
-        get_tool_description(
-            "guidelines",
-            agent_name=agent_name,
-            situation_builder_note=situation_builder_note,
-            provider=provider,
-        )
-        or ""
-    )
 
     # Load extreme traits if group is specified
     extreme_traits = get_extreme_traits(group_name) if group_name else {}
@@ -83,7 +69,6 @@ def create_guidelines_server(
         "agent_name": agent_name,
         "agent_group": group_name,
         "provider": provider,
-        "guidelines_content": guidelines_content,
         "agent_extreme_trait": agent_extreme_trait,
     }
 
@@ -118,35 +103,10 @@ def create_guidelines_server(
     @server.call_tool()
     async def call_tool(name: str, arguments: dict):
         """Handle tool calls."""
-        if name == "read":
-            return [TextContent(type="text", text=context["guidelines_content"])]
-
-        elif name in ("anthropic", "openai"):
+        if name in ("anthropic", "openai"):
             return _handle_policy_tool(name, arguments, context)
 
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-    @server.list_resources()
-    async def list_resources():
-        """List available guideline resources."""
-        return [
-            Resource(
-                uri=AnyUrl(f"guidelines://{agent_name}/behavioral"),
-                name="Behavioral Guidelines",
-                description=f"Roleplay and behavioral guidelines for {agent_name}",
-                mimeType="text/plain",
-            )
-        ]
-
-    @server.read_resource()
-    async def read_resource(uri: AnyUrl) -> str:
-        """Read a guideline resource by URI."""
-        uri_str = str(uri)
-        if uri_str == f"guidelines://{agent_name}/behavioral":
-            return context["guidelines_content"]
-
-        raise ValueError(f"Unknown resource: {uri_str}")
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     return server
 
@@ -184,11 +144,9 @@ def _handle_policy_tool(tool_name: str, arguments: dict, context: dict) -> list[
 
 def _get_env_config() -> dict:
     """Get configuration from environment variables."""
-    has_sb_str = os.environ.get("HAS_SITUATION_BUILDER", "false").lower()
     return {
         "agent_name": os.environ.get("AGENT_NAME", "Agent"),
         "agent_group": os.environ.get("AGENT_GROUP"),
-        "has_situation_builder": has_sb_str == "true",
         "provider": os.environ.get("PROVIDER", "claude"),
     }
 
@@ -201,7 +159,6 @@ async def main():
 
     server = create_guidelines_server(
         agent_name=config["agent_name"],
-        has_situation_builder=config["has_situation_builder"],
         group_name=config["agent_group"],
         provider=config["provider"],
     )

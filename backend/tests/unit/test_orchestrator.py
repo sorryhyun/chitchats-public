@@ -8,9 +8,9 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from domain.task_identifier import TaskIdentifier
 from chatroom_orchestration.critic import process_critic_feedback
 from chatroom_orchestration.orchestrator import MAX_FOLLOW_UP_ROUNDS, MAX_TOTAL_MESSAGES, ChatOrchestrator
+from domain.task_identifier import TaskIdentifier
 
 
 class TestChatOrchestratorInit:

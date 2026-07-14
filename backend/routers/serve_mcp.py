@@ -9,6 +9,7 @@ from typing import Optional
 
 import crud
 import schemas
+from chatroom_orchestration import ChatOrchestrator
 from core import (
     RequestIdentity,
     ensure_room_access,
@@ -20,7 +21,6 @@ from core import (
 from core.manager import AgentManager
 from fastapi import APIRouter, Depends, HTTPException
 from infrastructure.database import get_db
-from chatroom_orchestration import ChatOrchestrator
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 

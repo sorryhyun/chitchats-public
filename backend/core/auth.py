@@ -341,24 +341,50 @@ class AuthMiddleware:
         "/generated_images",  # AI-generated images, served to <img> tags
     )
 
-    # API path prefixes (routes that require authentication)
-    API_PREFIXES = (
-        "/auth/",
-        "/rooms/",
-        "/agents/",
-        "/debug/",
+    # Frontend assets served by the bundled (PyInstaller) build. In frozen mode these
+    # are the ONLY paths let through without auth — everything else must authenticate.
+    # The allowlist is deliberately inverted from an API denylist so that a newly added
+    # router is protected by default instead of exposed by default.
+    SPA_PATHS = {
+        "/index.html",
+        "/manifest.json",
+        "/favicon.ico",
+    }
+
+    SPA_PREFIXES = (
+        "/assets/",
+        "/fonts/",
+    )
+
+    # Static files index.html pulls in from the bundle root (icons, images, fonts)
+    SPA_FILE_SUFFIXES = (
+        ".js",
+        ".css",
+        ".map",
+        ".ico",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".webmanifest",
     )
 
     def __init__(self, app):
         self.app = app
 
-    def _is_api_route(self, path: str) -> bool:
-        """Check if path is an API route that requires authentication."""
-        # Exact API paths
-        if path in {"/auth/login", "/auth/health"}:
-            return False  # These are excluded from auth
-        # API prefixes
-        return path.startswith(self.API_PREFIXES)
+    def _is_spa_route(self, path: str, method: str) -> bool:
+        """Check if path is a frontend asset the bundled build may serve without auth."""
+        if path in self.SPA_PATHS:
+            return True
+        if path.startswith(self.SPA_PREFIXES):
+            return True
+        return method == "GET" and path.endswith(self.SPA_FILE_SUFFIXES)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -384,8 +410,10 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Skip auth for voice status check and audio file serving
-        if path == "/voice/status" or path.startswith("/voice/audio/"):
+        # Skip auth for voice status check (no room data, just server availability).
+        # /voice/audio/ is NOT skipped: audio is room-scoped and the frontend fetches it
+        # with X-API-Key, then plays it from a blob URL.
+        if path == "/voice/status":
             await self.app(scope, receive, send)
             return
 
@@ -395,8 +423,8 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # In bundled mode, skip auth for non-API routes (frontend SPA routes)
-        if getattr(sys, "frozen", False) and not self._is_api_route(path):
+        # In bundled mode, skip auth for frontend assets only
+        if getattr(sys, "frozen", False) and self._is_spa_route(path, method):
             await self.app(scope, receive, send)
             return
 

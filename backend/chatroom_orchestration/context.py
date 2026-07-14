@@ -7,14 +7,13 @@ detecting conversation types and participants.
 """
 
 import logging
-import random
 from typing import List, Optional, Tuple
 
-from mcp_servers.config import get_conversation_context_config
 from core import get_settings
 from core.settings import SKIP_MESSAGE_TEXT
 from domain.enums import ParticipantType
 from i18n.korean import format_with_particles
+from mcp_servers.config import get_conversation_context_config
 
 from .whiteboard import process_messages_for_whiteboard
 

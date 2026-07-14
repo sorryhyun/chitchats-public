@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiGet, apiPost } from './apiClient';
+import { API_BASE_URL, apiGet, apiPost, getFetchOptions } from './apiClient';
 
 export interface VoiceStatus {
   enabled: boolean;
@@ -41,9 +41,17 @@ export const voiceService = {
   },
 
   /**
-   * Get the URL for playing cached voice audio.
+   * Download cached voice audio and wrap it in a blob URL for playback.
+   *
+   * The audio endpoint requires auth, and <audio>/`new Audio(url)` cannot send the
+   * X-API-Key header, so the bytes are fetched here instead. Callers own the returned
+   * URL and must revoke it with URL.revokeObjectURL when playback finishes.
    */
-  getAudioUrl(messageId: number): string {
-    return `${API_BASE_URL}/voice/audio/${messageId}`;
+  async fetchAudioUrl(messageId: number): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/voice/audio/${messageId}`, getFetchOptions());
+    if (!response.ok) {
+      throw new Error(`Failed to load audio: ${response.status}`);
+    }
+    return URL.createObjectURL(await response.blob());
   },
 };

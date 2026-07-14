@@ -72,9 +72,6 @@ class Settings(BaseSettings):
     frontend_url: Optional[str] = None
     vercel_url: Optional[str] = None
 
-    # Guidelines system
-    guidelines_file: str = "guidelines_3rd"
-
     # Model configuration
     use_sonnet: bool = Field(
         default=False,
@@ -292,16 +289,6 @@ class Settings(BaseSettings):
             Path to system_prompt.yaml in backend/config/ (may not exist)
         """
         return self.config_dir / "system_prompt.yaml"
-
-    @property
-    def guidelines_config_path(self) -> Path:
-        """
-        Get the path to the guidelines tool configuration file.
-
-        Returns:
-            Path to guidelines.yaml
-        """
-        return self.mcp_servers_config_dir / "guidelines.yaml"
 
     def get_cors_origins(self) -> List[str]:
         """

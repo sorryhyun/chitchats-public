@@ -25,7 +25,6 @@ class MCPServerEnv:
         agent_id: Optional agent ID (for action server)
         config_file: Optional path to agent config folder
         room_id: Optional room ID (for action server)
-        has_situation_builder: Whether room has situation builder (for guidelines)
     """
 
     agent_name: str
@@ -34,7 +33,6 @@ class MCPServerEnv:
     agent_id: Optional[int] = None
     config_file: Optional[str] = None
     room_id: Optional[int] = None
-    has_situation_builder: bool = False
 
 
 # Type alias for MCP server subprocess config
@@ -79,8 +77,8 @@ class MCPConfigBuilder:
         # Build action server config
         action_env = MCPConfigBuilder._build_action_env(base_env, env_config)
 
-        # Build guidelines server config
-        guidelines_env = MCPConfigBuilder._build_guidelines_env(base_env, env_config)
+        # The guidelines server needs nothing beyond the base env
+        guidelines_env = base_env.copy()
 
         # When running as PyInstaller bundle, use --mcp-server flag instead of -m
         is_frozen = getattr(sys, "frozen", False)
@@ -166,10 +164,3 @@ class MCPConfigBuilder:
             action_env["ROOM_ID"] = str(env_config.room_id)
         return action_env
 
-    @staticmethod
-    def _build_guidelines_env(base_env: Dict[str, str], env_config: MCPServerEnv) -> Dict[str, str]:
-        """Build environment variables for the guidelines server."""
-        guidelines_env = base_env.copy()
-        if env_config.has_situation_builder:
-            guidelines_env["HAS_SITUATION_BUILDER"] = "true"
-        return guidelines_env

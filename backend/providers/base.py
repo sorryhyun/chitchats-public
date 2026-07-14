@@ -135,7 +135,6 @@ class AIClientOptions:
         agent_id: Unique agent identifier
         config_file: Path to agent configuration folder
         group_name: Optional group name for tool config overrides
-        has_situation_builder: Whether room has situation builder
         long_term_memory_index: Memory subtitles to content mapping
         working_dir: Working directory for subprocess
         extra_options: Provider-specific additional options
@@ -150,7 +149,6 @@ class AIClientOptions:
     agent_id: int = 0
     config_file: Optional[str] = None
     group_name: Optional[str] = None
-    has_situation_builder: bool = False
     long_term_memory_index: Optional[Dict[str, str]] = None
     working_dir: Optional[str] = None
     extra_options: Dict[str, Any] = field(default_factory=dict)
@@ -188,7 +186,6 @@ class AIClientOptions:
             agent_id=context.agent_id,
             config_file=context.config.config_file,
             group_name=context.group_name,
-            has_situation_builder=context.has_situation_builder,
             long_term_memory_index=context.config.long_term_memory_index,
             mcp_tools={
                 "agent_name": context.agent_name,

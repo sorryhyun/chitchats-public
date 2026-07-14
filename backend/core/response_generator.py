@@ -11,15 +11,16 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import crud
+import schemas
 from chatroom_orchestration.context import build_conversation_context, detect_conversation_type
 from chatroom_orchestration.critic import save_critic_report
 from chatroom_orchestration.handlers import save_agent_message
-from providers.prompt_builder import build_system_prompt
 from domain.contexts import AgentMessageData, AgentResponseContext, MessageContext, OrchestrationContext
 from domain.streaming import ContentDeltaEvent, StreamEndEvent, StreamStartEvent, ThinkingDeltaEvent
 from domain.task_identifier import TaskIdentifier
 from i18n.timezone import format_kst_timestamp
 from providers.base import SessionRecoveryError
+from providers.prompt_builder import build_system_prompt
 
 logger = logging.getLogger("ResponseGenerator")
 
@@ -264,6 +265,24 @@ class ResponseGenerator:
                 orch_context.db, orch_context.room_id, agent.id, new_session_id, provider
             )
 
+        # Helper to broadcast a finalized message via SSE
+        async def broadcast_new_message(message_id: int):
+            broadcaster = orch_context.agent_manager.event_broadcaster
+            if not broadcaster:
+                return
+
+            saved = await crud.get_message_by_id(orch_context.db, message_id)
+            if not saved:
+                return
+
+            await broadcaster.broadcast(
+                orch_context.room_id,
+                {
+                    "type": "new_message",
+                    "message": schemas.Message.model_validate(saved).model_dump(mode="json"),
+                },
+            )
+
         # Helper to broadcast stream_end via SSE
         async def broadcast_stream_end(is_skipped: bool):
             if not end_event:
@@ -328,8 +347,13 @@ class ResponseGenerator:
             anthropic_calls=anthropic_calls if anthropic_calls else None,
             excuse_reasons=excuse_reasons if excuse_reasons else None,
             generated_images=generated_images if generated_images else None,
+            provider=provider,
         )
-        await save_agent_message(msg_context, message_data)
+        saved_message_id = await save_agent_message(msg_context, message_data)
+
+        # Deliver the finalized message BEFORE stream_end, so clients can swap the
+        # typing indicator for the real message without a gap.
+        await broadcast_new_message(saved_message_id)
 
         # Broadcast stream_end AFTER message is saved - this prevents race condition
         # where frontend polls for message before it exists in database

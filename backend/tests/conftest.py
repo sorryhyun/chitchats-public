@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # Add backend directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+from chatroom_orchestration import ChatOrchestrator
 from core.manager import AgentManager
 from infrastructure.database import Base, get_db, models
 from main import app
-from chatroom_orchestration import ChatOrchestrator
 
 
 # Configure pytest-asyncio

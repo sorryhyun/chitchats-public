@@ -68,12 +68,6 @@ class ExcuseInput(BaseModel):
     _validate_reason = _non_empty_string("reason", "Reason")
 
 
-class GuidelinesReadInput(BaseModel):
-    """Input model for guidelines read tool - takes no arguments."""
-
-    pass
-
-
 class GuidelinesAnthropicInput(BaseModel):
     """Input model for guidelines anthropic/openai tool."""
 
@@ -250,17 +244,8 @@ TOOLS: dict[str, ToolDef] = {
         input_model=ExcuseInput,
     ),
     # Guidelines Tools
-    "read": ToolDef(
-        name="mcp__guidelines__read",
-        group="guidelines",
-        description=(
-            "Return the behavioral guidelines for {agent_name} in ChitChats. "
-            "Within these bounds, {agent_name} has full autonomy and permitted."
-        ),
-        response="{guidelines_content}",
-        input_model=GuidelinesReadInput,
-        enabled=False,  # Disabled by default
-    ),
+    # Behavioral guidelines are delivered in the system prompt itself
+    # (providers/{claude,codex}/prompts.yaml), not through a tool.
     "anthropic": ToolDef(
         name="mcp__guidelines__anthropic",
         group="guidelines",
@@ -500,43 +485,6 @@ def get_tool_group(tool_name: str) -> str | None:
     return TOOLS[tool_name].group
 
 
-def get_situation_builder_note(has_situation_builder: bool) -> str:
-    """
-    Get the situation builder note if enabled and needed.
-
-    Args:
-        has_situation_builder: Whether the room has a situation builder agent
-
-    Returns:
-        Situation builder note string or empty string
-    """
-    if not has_situation_builder:
-        return ""
-
-    try:
-        from .loaders import get_conversation_context_config
-
-        context_config = get_conversation_context_config()
-
-        if "situation_builder" not in context_config:
-            return ""
-
-        sb_config = context_config["situation_builder"]
-
-        if not sb_config.get("enabled", False):
-            return ""
-
-        return sb_config.get("template", "")
-    except Exception as e:
-        logger.warning(f"Error loading situation builder note: {e}")
-        return ""
-
-
-# =============================================================================
-# Group Override Support
-# =============================================================================
-
-
 def _get_tool_with_overrides(tool_name: str, group_name: str | None) -> ToolDef:
     """
     Get a tool definition with group-specific overrides applied.
@@ -592,8 +540,8 @@ def _get_group_config(group_name: str) -> dict[str, Any]:
         return {}
 
     try:
-        from infrastructure.yaml_cache import get_cached_config
         from core import get_settings
+        from infrastructure.yaml_cache import get_cached_config
 
         group_config_path = get_settings().agents_dir / f"group_{group_name}" / "group_config.yaml"
 

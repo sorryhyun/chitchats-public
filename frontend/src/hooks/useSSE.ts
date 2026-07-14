@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getApiKey, getFetchOptions, API_BASE_URL } from '../services';
+import type { Message } from '../types';
 
 interface StreamingAgent {
   thinking_text: string;
@@ -19,6 +20,7 @@ interface SSEEvent {
   thinking_text?: string | null;
   skipped?: boolean;
   timestamp?: number;
+  message?: Message;
 }
 
 interface SSETicketResponse {
@@ -59,7 +61,10 @@ async function fetchSSETicket(roomId: number): Promise<string | null> {
   }
 }
 
-export const useSSE = (roomId: number | null): UseSSEReturn => {
+export const useSSE = (
+  roomId: number | null,
+  onNewMessage?: (message: Message) => void
+): UseSSEReturn => {
   const [isConnected, setIsConnected] = useState(false);
   const [streamingAgents, setStreamingAgents] = useState<Map<number, StreamingAgent>>(new Map());
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +72,10 @@ export const useSSE = (roomId: number | null): UseSSEReturn => {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Held in a ref so a caller passing an unstable callback doesn't force a reconnect
+  const onNewMessageRef = useRef(onNewMessage);
+  onNewMessageRef.current = onNewMessage;
 
   const connect = useCallback(async () => {
     if (!roomId) return;
@@ -215,6 +224,18 @@ export const useSSE = (roomId: number | null): UseSSEReturn => {
         }
       } catch (e) {
         console.error('Failed to parse stream_end event:', e);
+      }
+    });
+
+    // Handle new_message event (message finalized and saved to the DB)
+    eventSource.addEventListener('new_message', (event: MessageEvent) => {
+      try {
+        const data: SSEEvent = JSON.parse(event.data);
+        if (data.message) {
+          onNewMessageRef.current?.(data.message);
+        }
+      } catch (e) {
+        console.error('Failed to parse new_message event:', e);
       }
     });
 

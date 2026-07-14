@@ -271,7 +271,7 @@ async def list_conversations() -> ConversationList:
     return ConversationList(conversations=all_conversations)
 
 
-@router.get("/conversations/{project}/{conversation_id}")
+@router.get("/conversations/{project}/{conversation_id}", dependencies=[Depends(require_admin)])
 async def download_conversation(
     project: str,
     conversation_id: str,

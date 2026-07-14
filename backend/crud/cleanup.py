@@ -18,8 +18,8 @@ from .room_agents import get_agents, remove_agent_from_room
 from .rooms import delete_room
 
 if TYPE_CHECKING:
-    from core import AgentManager
     from chatroom_orchestration import ChatOrchestrator
+    from core import AgentManager
 
 logger = logging.getLogger("CrudCleanup")
 

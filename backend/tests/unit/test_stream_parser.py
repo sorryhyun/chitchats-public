@@ -8,7 +8,6 @@ unified ParsedStreamMessage format.
 from unittest.mock import Mock
 
 from claude_agent_sdk import AssistantMessage, SystemMessage, TextBlock, ThinkingBlock, ToolUseBlock
-
 from providers.base import ParsedStreamMessage
 from providers.claude.parser import ClaudeStreamParser as StreamParser
 

@@ -7,9 +7,9 @@ Tests dependency injection functions.
 from unittest.mock import MagicMock
 
 import pytest
+from chatroom_orchestration import ChatOrchestrator
 from core import get_agent_manager, get_chat_orchestrator
 from core.manager import AgentManager
-from chatroom_orchestration import ChatOrchestrator
 
 
 class TestDependencies:

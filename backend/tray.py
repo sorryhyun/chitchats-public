@@ -73,8 +73,9 @@ def _open_browser(icon=None, item=None):
     # Try app mode for native-like window (Edge/Chrome --app flag)
     if getattr(sys, "frozen", False):
         try:
-            from launcher import _find_browser_for_app_mode
             import subprocess as sp
+
+            from launcher import _find_browser_for_app_mode
 
             browser_path = _find_browser_for_app_mode()
             if browser_path:

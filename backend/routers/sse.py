@@ -10,13 +10,13 @@ import logging
 from typing import Optional
 
 import crud
-from core import get_agent_manager, get_chat_orchestrator
+from chatroom_orchestration import ChatOrchestrator
+from core import RequestIdentity, ensure_room_access, get_agent_manager, get_chat_orchestrator, get_request_identity
 from core.auth import generate_sse_ticket, validate_sse_ticket
-from core.sse import EventBroadcaster, generate_sse_events
 from core.manager import AgentManager
+from core.sse import EventBroadcaster, generate_sse_events
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from infrastructure.database import get_db
-from chatroom_orchestration import ChatOrchestrator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -47,6 +47,7 @@ def get_broadcaster(request: Request) -> EventBroadcaster:
 async def create_sse_ticket(
     room_id: int,
     request: Request,
+    identity: RequestIdentity = Depends(get_request_identity),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a short-lived ticket for SSE connection.
@@ -64,16 +65,12 @@ async def create_sse_ticket(
     Returns:
         dict with ticket and expiry info
     """
-    # Verify room exists
-    room = await crud.get_room(db, room_id)
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
+    # Verify the room exists and this user is allowed to read it
+    await ensure_room_access(db, room_id, identity)
 
-    # Get user_id from auth middleware (set in AuthMiddleware)
-    user_id = getattr(request.state, "user_id", "anonymous")
-
-    # Generate short-lived ticket (60 seconds)
-    ticket = generate_sse_ticket(room_id, user_id=user_id, expiration_seconds=60)
+    # Generate short-lived ticket (60 seconds). Possession of the ticket is proof
+    # that room access was checked here, at issue time.
+    ticket = generate_sse_ticket(room_id, user_id=identity.user_id, expiration_seconds=60)
 
     return {
         "ticket": ticket,
@@ -115,23 +112,22 @@ async def stream_room_events(
     Returns:
         EventSourceResponse streaming room events
     """
-    # Authenticate via ticket (short-lived, room-specific)
-    # First check if already authenticated via middleware (X-API-Key header)
-    user_role = getattr(request.state, "user_role", None)
+    # The auth middleware skips this route (EventSource cannot send headers), so the
+    # ticket is the ONLY credential here. It is room-scoped, expires in 60s, and is
+    # issued by create_sse_ticket only after that endpoint verifies room ownership —
+    # which is what keeps a guest from subscribing to someone else's room.
+    #
+    # Never authorize from request.state here: get_request_identity defaults an absent
+    # role to "admin", and this route never populates it.
+    if not ticket:
+        raise HTTPException(
+            status_code=401, detail="Authentication required. Obtain a ticket via POST /{room_id}/sse-ticket"
+        )
 
-    if not user_role:
-        # Fall back to ticket authentication
-        if not ticket:
-            raise HTTPException(
-                status_code=401, detail="Authentication required. Obtain a ticket via POST /{room_id}/sse-ticket"
-            )
+    if not validate_sse_ticket(ticket, room_id):
+        raise HTTPException(status_code=401, detail="Invalid or expired ticket")
 
-        if not validate_sse_ticket(ticket, room_id):
-            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
-
-    # Verify room exists
-    room = await crud.get_room(db, room_id)
-    if not room:
+    if not await crud.get_room(db, room_id):
         raise HTTPException(status_code=404, detail="Room not found")
 
     # Get broadcaster from app state

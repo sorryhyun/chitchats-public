@@ -17,18 +17,6 @@ logger = logging.getLogger(__name__)
 _PROMPTS_SHARED_PATH = Path(__file__).parent / "prompts_shared.yaml"
 
 
-def get_guidelines_config_path() -> Path:
-    """
-    Get the path to the guidelines config file.
-
-    Returns:
-        Path to the guidelines YAML file
-    """
-    from core import get_settings
-
-    return get_settings().guidelines_config_path
-
-
 def get_provider_prompts(provider: str) -> Dict[str, Any]:
     """
     Load provider-specific prompts configuration.
@@ -81,16 +69,6 @@ def get_tools_config() -> Dict[str, Any]:
             tools_dict[tool_name]["requires"] = tool_def.requires
 
     return {"tools": tools_dict}
-
-
-def get_guidelines_config() -> Dict[str, Any]:
-    """
-    Load the guidelines configuration from guidelines.yaml.
-
-    Returns:
-        Dictionary containing guideline templates
-    """
-    return get_cached_config(get_guidelines_config_path())
 
 
 def get_system_prompt_config() -> Dict[str, Any]:

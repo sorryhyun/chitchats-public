@@ -48,6 +48,7 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
   const [cachedMessageIds, setCachedMessageIds] = useState<Set<number>>(new Set());
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   // Save enabled state to localStorage
   const setEnabled = useCallback((value: boolean) => {
@@ -76,6 +77,14 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [enabled]);
 
+  // Blob URLs stay alive until explicitly revoked
+  const releaseAudioUrl = useCallback(() => {
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
+
   // Stop playing when component unmounts
   useEffect(() => {
     return () => {
@@ -83,16 +92,18 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         audioRef.current.pause();
         audioRef.current = null;
       }
+      releaseAudioUrl();
     };
-  }, []);
+  }, [releaseAudioUrl]);
 
   const stopPlaying = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    releaseAudioUrl();
     setPlayingMessageId(null);
-  }, []);
+  }, [releaseAudioUrl]);
 
   const playMessage = useCallback(async (messageId: number, roomId: number) => {
     // Stop any current playback
@@ -117,20 +128,23 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
         setCachedMessageIds(prev => new Set([...prev, messageId]));
       }
 
-      // Play the audio
-      const audioUrl = voiceService.getAudioUrl(messageId);
+      // Play the audio (fetched with auth, so it arrives as a blob URL)
+      const audioUrl = await voiceService.fetchAudioUrl(messageId);
+      audioUrlRef.current = audioUrl;
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
 
       audio.onended = () => {
         setPlayingMessageId(null);
         audioRef.current = null;
+        releaseAudioUrl();
       };
 
       audio.onerror = () => {
         console.error('Audio playback error');
         setPlayingMessageId(null);
         audioRef.current = null;
+        releaseAudioUrl();
       };
 
       setPlayingMessageId(messageId);
@@ -140,8 +154,9 @@ export const VoiceProvider = ({ children }: { children: ReactNode }) => {
       console.error('Voice playback error:', error);
       setGeneratingMessageId(null);
       setPlayingMessageId(null);
+      releaseAudioUrl();
     }
-  }, [stopPlaying]);
+  }, [stopPlaying, releaseAudioUrl]);
 
   const hasAudio = useCallback((messageId: number): boolean => {
     return cachedMessageIds.has(messageId);

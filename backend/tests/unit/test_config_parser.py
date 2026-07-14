@@ -9,8 +9,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from domain.agent_parser import _parse_folder_config, parse_agent_config
 from domain.agent_config import AgentConfigData
+from domain.agent_parser import _parse_folder_config, parse_agent_config
 
 
 class TestAgentConfigData:

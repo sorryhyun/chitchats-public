@@ -30,7 +30,6 @@ backend/
 ├── mcp_servers/            # MCP server tools and config
 │   └── config/
 │       ├── tools.py        # Python tool registry (ToolDef, input models)
-│       ├── guidelines.yaml # Behavioral guidelines (versioned)
 │       ├── prompts_shared.yaml # Shared templates (situation_builder, ...)
 │       ├── debug.yaml      # Debug logging configuration
 │       └── loaders.py      # Config file loaders
@@ -126,16 +125,15 @@ class ToolDef:
 - `memorize` - Record significant events
 - `recall` - Retrieve long-term memories by subtitle (`consolidated_memory.md`)
 - `excuse` - Record the agent's raw inner reaction before responding
-- `read` - Fetch role guidelines
 - `anthropic`/`openai` - Policy compliance check (provider-specific)
 - `current_time` - Current time
 - `moltbook` - Community/social tools (requires `ENABLE_COMMUNITY`)
 
-**Guidelines** are loaded from `mcp_servers/config/guidelines.yaml`. The active guideline version is selected by the `active_version` key; each version has a default template plus a `codex` variant.
+**Guidelines** are not a tool. They are part of the system prompt, in the `<guidelines>` block of each provider's `prompts.yaml`.
 
 ## System Prompt
 
-System prompts live with each provider, not in `guidelines.yaml`:
+System prompts and behavioral guidelines live with each provider:
 
 - `providers/claude/prompts.yaml` - Prompt for Claude
 - `providers/codex/prompts.yaml` - Prompt for Codex/GPT

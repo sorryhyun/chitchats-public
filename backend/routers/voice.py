@@ -7,7 +7,7 @@ from typing import Optional
 
 import crud
 import httpx
-from core import RequestIdentity, get_request_identity, get_settings
+from core import RequestIdentity, ensure_room_access, get_request_identity, get_settings
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from infrastructure.database import get_db
@@ -16,6 +16,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 logger = logging.getLogger("VoiceRouter")
+
+
+async def _ensure_message_access(db: AsyncSession, message_id: int, identity: RequestIdentity):
+    """Load a message and verify the caller may access the room it belongs to."""
+    message = await crud.get_message_by_id(db, message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    await ensure_room_access(db, message.room_id, identity)
+    return message
 
 
 def _get_sounds_dir() -> Path:
@@ -105,6 +115,11 @@ async def generate_voice(
     settings = get_settings()
     voice_url = settings.voice_server_url
 
+    # Get the message and verify the caller owns the room it lives in
+    message = await _ensure_message_access(db, request.message_id, identity)
+    if message.room_id != request.room_id:
+        raise HTTPException(status_code=400, detail="Message does not belong to the given room")
+
     # Check if audio already exists
     existing = await crud.get_voice_audio_by_message_id(db, request.message_id)
     if existing:
@@ -113,11 +128,6 @@ async def generate_voice(
             file_path=existing.file_path,
             duration_ms=existing.duration_ms,
         )
-
-    # Get the message
-    message = await crud.get_message_by_id(db, request.message_id)
-    if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
 
     # Only generate for assistant messages
     if message.role != "assistant":
@@ -227,6 +237,8 @@ async def get_voice_audio(
     Returns:
         Audio file (WAV)
     """
+    await _ensure_message_access(db, message_id, identity)
+
     voice_audio = await crud.get_voice_audio_by_message_id(db, message_id)
     if not voice_audio:
         raise HTTPException(status_code=404, detail="Audio not found")
@@ -261,6 +273,8 @@ async def check_voice_exists(
     Returns:
         Whether audio exists and its file path
     """
+    await _ensure_message_access(db, message_id, identity)
+
     voice_audio = await crud.get_voice_audio_by_message_id(db, message_id)
     if voice_audio:
         # Verify file actually exists

@@ -212,7 +212,6 @@ def parse_agent_config(file_path: str) -> Optional["AgentConfigData"]:
         AgentConfigData object or None if folder doesn't exist
     """
     # Import here to avoid circular dependency
-    from .agent_config import AgentConfigData
 
     # Resolve path relative to agents directory if not absolute
     path = Path(file_path)

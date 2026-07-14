@@ -8,8 +8,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict
 
-from infrastructure.locking import file_lock
 from ruamel.yaml import YAML
+
+from infrastructure.locking import file_lock
 
 yaml = YAML(typ="safe", pure=True)
 logger = logging.getLogger(__name__)

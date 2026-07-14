@@ -3,6 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useWhiteboard } from '../../../hooks/useWhiteboard';
 import { useExcusePreference } from '../../../hooks/useExcusePreference';
+import { useThinkingPreference } from '../../../hooks/useThinkingPreference';
 import { MessageRow } from './MessageRow';
 
 interface MessageListProps {
@@ -21,6 +22,7 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
   // Process whiteboard diffs to get rendered content
   const whiteboardInfo = useWhiteboard(messages);
   const { showExcuse } = useExcusePreference();
+  const { expandedByDefault } = useThinkingPreference();
 
   // Reset state when messages become empty (e.g., switching rooms)
   useEffect(() => {
@@ -32,15 +34,14 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
     }
   }, [messages.length]);
 
-  // Auto-expand thinking for new messages
+  // Auto-expand thinking for new messages, unless the user turned that off in Settings
   useEffect(() => {
     const messagesToExpand: (number | string)[] = [];
 
     messages.forEach((msg) => {
       if (!seenMessagesRef.current.has(msg.id)) {
         seenMessagesRef.current.add(msg.id);
-        // Auto-expand new messages with thinking
-        if (msg.role === 'assistant' && msg.thinking) {
+        if (expandedByDefault && msg.role === 'assistant' && msg.thinking) {
           messagesToExpand.push(msg.id);
         }
       }
@@ -53,7 +54,7 @@ export const MessageList = memo(({ messages, roomId }: MessageListProps) => {
         return newSet;
       });
     }
-  }, [messages]);
+  }, [messages, expandedByDefault]);
 
   // Auto-scroll to bottom on new messages if user is at bottom
   useEffect(() => {

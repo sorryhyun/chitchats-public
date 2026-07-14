@@ -46,6 +46,7 @@ class AgentMessageData:
         anthropic_calls: Optional list of anthropic tool call situations
         generated_images: Images the agent generated this turn.
             Each entry: {"url": str, "media_type": str, "prompt": Optional[str]}
+        provider: AI provider that produced the message ("claude" or "codex")
     """
 
     content: str
@@ -53,6 +54,7 @@ class AgentMessageData:
     anthropic_calls: Optional[list[str]] = None
     excuse_reasons: Optional[list[str]] = None
     generated_images: Optional[list[dict]] = None
+    provider: Optional[str] = None
 
 
 @dataclass

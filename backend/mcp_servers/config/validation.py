@@ -6,15 +6,14 @@ Provides functions for validating configuration schema and startup logging.
 
 import logging
 
+from infrastructure.yaml_cache import clear_cache
+
 from .loaders import (
     get_conversation_context_config,
     get_debug_config,
-    get_guidelines_config,
     get_tools_config,
 )
 from .tools import is_tool_enabled
-
-from infrastructure.yaml_cache import clear_cache
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +41,7 @@ def validate_config_schema() -> list[str]:
         errors.append("Tools registry missing 'tools' section")
     else:
         # Check for required tools
-        # Note: "guidelines" content comes from guidelines.yaml, not tools registry
-        required_tools = ["skip", "memorize", "recall", "read"]
+        required_tools = ["skip", "memorize", "recall"]
         for tool_name in required_tools:
             if tool_name not in tools_config["tools"]:
                 errors.append(f"Tools registry missing required tool: {tool_name}")
@@ -56,26 +54,8 @@ def validate_config_schema() -> list[str]:
                 if "description" not in tool:
                     errors.append(f"Tools registry tool '{tool_name}' missing 'description' field")
 
-    # Validate guidelines yaml (mcp_servers/config/guidelines.yaml)
-    guidelines_config = get_guidelines_config()
-    guidelines_filename = "guidelines.yaml"
-    if not guidelines_config:
-        errors.append(f"{guidelines_filename} is empty or missing")
-    else:
-        # Check for active_version (guidelines template)
-        if "active_version" not in guidelines_config:
-            errors.append(f"{guidelines_filename} missing 'active_version' field")
-        else:
-            active_version = guidelines_config.get("active_version")
-            if active_version not in guidelines_config:
-                errors.append(f"{guidelines_filename} missing version section: {active_version}")
-            else:
-                version_config = guidelines_config[active_version]
-                if "template" not in version_config:
-                    errors.append(f"{guidelines_filename} version '{active_version}' missing 'template' field")
-
-        # Note: system_prompt is now in provider-specific prompts.yaml files
-        # (providers/claude/prompts.yaml and providers/codex/prompts.yaml)
+    # Note: guidelines and system_prompt live in the provider-specific prompts.yaml files
+    # (providers/claude/prompts.yaml and providers/codex/prompts.yaml)
 
     # Validate debug.yaml
     debug_config = get_debug_config()
@@ -112,11 +92,6 @@ def log_config_validation():
 
     # Log active configuration settings
     tools_config = get_tools_config()
-    guidelines_config = get_guidelines_config()
-
-    logger.info("Guidelines file: guidelines.yaml")
-    active_version = guidelines_config.get("active_version", "unknown")
-    logger.info(f"Active guidelines version: {active_version}")
 
     # Count enabled tools
     if "tools" in tools_config:

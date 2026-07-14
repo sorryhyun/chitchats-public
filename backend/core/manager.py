@@ -14,7 +14,6 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, AsyncIterator, Optional, Union
 
-from mcp_servers.config import get_debug_config
 from domain.contexts import AgentResponseContext
 from domain.streaming import (
     ResponseAccumulator,
@@ -25,6 +24,7 @@ from domain.streaming import (
 from domain.task_identifier import TaskIdentifier
 from infrastructure.logging.agent_logger import append_response_to_debug_log, write_debug_log
 from infrastructure.logging.formatters import format_message_for_debug
+from mcp_servers.config import get_debug_config
 from providers import (
     AIClient,
     AIClientOptions,

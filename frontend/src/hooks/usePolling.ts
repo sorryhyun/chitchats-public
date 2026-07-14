@@ -12,7 +12,7 @@ interface UsePollingReturn {
   sseConnected: boolean;
 }
 
-const POLL_INTERVAL = 5000; // Poll every 5s for new messages (fallback - SSE handles real-time)
+const POLL_INTERVAL = 5000; // Poll every 5s for new messages (fallback - SSE delivers new_message in real time)
 const STATUS_POLL_INTERVAL = 5000; // Poll agent status every 5s (fallback when SSE not connected)
 
 export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePollingReturn => {
@@ -25,8 +25,31 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
   const isInitialLoadRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Append a message delivered over SSE, replacing that agent's typing indicator
+  const handleNewMessage = useCallback((message: Message) => {
+    setMessages((prev) => {
+      if (prev.some(m => m.id === message.id)) return prev;
+
+      const realMessages = prev.filter(m => !m.is_chatting);
+      const chattingIndicators = prev.filter(m => m.is_chatting && m.agent_id !== message.agent_id);
+      return [...realMessages, message, ...chattingIndicators];
+    });
+
+    if (typeof message.id === 'number' && message.id > lastMessageIdRef.current) {
+      lastMessageIdRef.current = message.id;
+    }
+  }, []);
+
   // SSE streaming for real-time updates
-  const { isConnected: sseConnected, streamingAgents } = useSSE(useSSEStreaming ? roomId : null);
+  const { isConnected: sseConnected, streamingAgents } = useSSE(
+    useSSEStreaming ? roomId : null,
+    handleNewMessage
+  );
+
+  // Read inside the poll loop without making it an effect dependency: re-running the
+  // setup effect on connect would blank the transcript (it calls setMessages([])).
+  const sseConnectedRef = useRef(sseConnected);
+  sseConnectedRef.current = sseConnected;
 
   // Track previous streaming agent count to detect when agents finish streaming
   const prevStreamingCountRef = useRef<number>(0);
@@ -245,7 +268,8 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
       if (!isActive) return;
 
       statusPollIntervalRef.current = setTimeout(async () => {
-        if (!sseConnected) {
+        // Only a fallback: while SSE is up, streamingAgents drives the indicators
+        if (!sseConnectedRef.current) {
           await pollChattingAgents();
         }
         scheduleNextStatusPoll();
@@ -253,9 +277,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
     };
 
     scheduleNextPoll();
-    if (!sseConnected) {
-      scheduleNextStatusPoll();
-    }
+    scheduleNextStatusPoll();
 
     return () => {
       isActive = false;
@@ -274,7 +296,7 @@ export const usePolling = (roomId: number | null, useSSEStreaming = true): UsePo
       }
       setIsConnected(false);
     };
-  }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents, sseConnected]);
+  }, [roomId, fetchAllMessages, pollNewMessages, pollChattingAgents]);
 
   const isSendingRef = useRef(false);
 
