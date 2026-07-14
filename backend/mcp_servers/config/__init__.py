@@ -12,7 +12,6 @@ from .loaders import (
     get_group_config,
     get_provider_prompts,
     get_shared_prompts_config,
-    merge_tool_configs,
 )
 from .tools import (
     TOOLS,
@@ -45,7 +44,6 @@ __all__ = [
     "get_shared_prompts_config",
     "get_extreme_traits",
     "get_group_config",
-    "merge_tool_configs",
     # Tool config
     "TOOLS",
     "ToolDef",

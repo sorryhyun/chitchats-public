@@ -2,83 +2,21 @@
 
 _Generated 2026-07-14. Scope: `backend/` (~28k LOC Python), `frontend/src` (~9.5k LOC TS/React), `scripts/`, `Makefile`._
 
-> **Status:** P0 (the four auth holes, the dead `guidelines.yaml` system, the dropped `anthropic_calls`/`provider` columns, and the three frontend no-ops) was fixed and removed from this report on 2026-07-14. P1–P3 below are still open.
+> **Status:** P0 (the four auth holes, the dead `guidelines.yaml` system, the dropped `anthropic_calls`/`provider` columns, and the three frontend no-ops) was fixed and removed from this report on 2026-07-14.
+> **P1 (§10–16, ~1,500 lines of dead code) was deleted and removed from this report on 2026-07-14.** P2–P3 below are still open.
 
 ## Executive summary
 
-The codebase does not primarily have a **duplication** problem — it has an **incomplete-refactor** problem. Several subsystems (the client pool, the agent-cleanup service, the caching layer) were rewritten, and the old implementations were never deleted. They are still exported, still reachable, and in three cases still referenced by code that would crash or silently no-op if it ran.
+The codebase does not primarily have a **duplication** problem — it has an **incomplete-refactor** problem. Several subsystems (the client pool, the agent-cleanup service, the caching layer) were rewritten, and the old implementations were never deleted.
 
-Two themes remain, in order of urgency:
+With the dead code now gone (P1), one structural theme remains:
 
-1. **~1,500 lines of dead code**, some of it dangerous (a second `declarative_base()`, a module that opens a DB pool at import time, a dead fork that calls a nonexistent attribute).
-2. **Inverted layering** — `core` has a bidirectional import dependency with *every* other package, papered over with 86 function-local imports.
+1. **Inverted layering** — `core` has a bidirectional import dependency with *every* other package, papered over with 86 function-local imports.
 
 A legend for confidence:
 
 - **[V]** — I verified this directly (ran it, grepped it, or read the code myself).
 - **[A]** — Reported by an audit agent; plausible and cited, but confirm before acting.
-
----
-
-## P1 — Dead code (~1,500 lines, no behavior change)
-
-Delete these. Three of them are actively hazardous, not merely unused.
-
-### 10. `backend/crud/cleanup.py` (195 lines) — a stale fork that would crash **[V]**
-
-It re-defines the same four functions as `backend/core/agent_service.py` (`delete_agent_with_cleanup`, `remove_agent_from_room_with_cleanup`, `delete_room_with_cleanup`, `clear_room_messages_with_cleanup`). All routers import the `core/agent_service.py` versions (`routers/rooms.py:16`, `routers/agents.py:8`, `routers/room_agents.py:8`, `routers/user.py:11`).
-
-The dead fork calls `agent_manager.client_pool` at `cleanup.py:46, 48, 75, 118, 183`. **`AgentManager` has no `client_pool` attribute** — `core/manager.py:62` defines `self._client_pools` (a dict keyed by provider). Every one of those six lines is an `AttributeError` waiting to fire. It is still exported from `crud/__init__.py:37-42`.
-
-Note the semantic drift too: the live version (`core/agent_service.py:39`) calls `agent_manager.get_keys_for_agent(...)`, which searches **all** provider pools; the dead one assumed a single pool and would leak Codex clients.
-
-**Fix:** delete `backend/crud/cleanup.py` and its re-exports in `crud/__init__.py`.
-
-### 11. `backend/core/client_pool.py` (301 lines) — pre-abstraction ancestor **[V]**
-
-A near-verbatim ancestor of `providers/base_pool.py` (same fast-path session compare, same double-check-under-lock, same shielded background disconnect). Its only importer is `core/__init__.py:20`. The retry-on-`ProcessTransport` loop it contains now lives at `providers/claude/provider.py:71-94`.
-
-**Fix:** delete the module, the `core/__init__.py` export, and `tests/unit/test_client_pool.py` (412 lines) — `BaseClientPool` already covers the behavior.
-
-### 12. `backend/infrastructure/database/connection.py` (95 lines) — dangerous **[A]**
-
-Unimported by anything. But `connection.py:14` calls `create_async_engine()` **at import time** against a hardcoded Postgres URL, and `connection.py:31` declares a **second `Base = declarative_base()`**. Any accidental import binds models to the wrong metadata and opens a connection pool.
-
-**Fix:** delete it.
-
-### 13. `ProviderType.CUSTOM` dispatches to a module that doesn't exist **[V]**
-
-`backend/providers/factory.py:52` does `from .custom import CustomProvider`. `backend/providers/` contains only `claude/` and `codex/` — there is no `custom/`. Worse, `get_available_providers()` (`factory.py:91`) returns `list(ProviderType)`, so it **advertises `"custom"`** to any caller, who then gets an `ImportError` from `get_provider("custom")`.
-
-**Fix:** drop `CUSTOM` from the enum and the factory branch.
-
-### 14. `backend/routers/tools_api.py` and `backend/routers/user.py` — entire routers, zero callers **[A]**
-
-Cross-referenced against `frontend/src/services/*`. `GET /tools` and everything in `user.py` have no frontend or MCP caller.
-
-### 15. Frontend dead components **[V]** — verified zero importers by grep
-
-| File | Lines |
-|---|---|
-| `components/ui/dropdown-menu.tsx` | 201 |
-| `components/ui/dialog.tsx` | 120 (also redundant with `ui/modal.tsx`) |
-| `components/sidebar/CreateRoomForm.tsx` | 103 (`MainSidebar` inlines its own form) |
-| `components/ui/scroll-area.tsx` | 48 |
-| `components/ui/separator.tsx` | 29 |
-| `components/ui/skeleton.tsx` | 15 |
-| `components/chat-room/header/SidebarToggle.tsx` | — (`App.tsx:140` inlines the button) |
-
-Note `ui/card.tsx` **is** used (one importer) — keep it.
-
-### 16. Other dead exports **[A]**
-
-- `core/auth.py:493-519` — a second `ensure_room_access` with an incompatible signature and zero importers, shadowing the real one in `core/dependencies.py:29` by name.
-- `chatroom_orchestration/agent_ordering.py:14` — `separate_priority_agents()`, no callers; `tape/generator.py:56` `_separate_by_priority()` is a strict superset.
-- `mcp_servers/config/loaders.py:234` — `merge_tool_configs()`, the old override mechanism, zero callers.
-- `providers/base.py` — `AIMessage`, `AIStreamEvent`, `AIClientOptions.extra_options`, `AIProvider.create_client()` — all abstractions with no production callers.
-- `ChatOrchestrator.priority_agent_names` (`orchestrator.py:44`) is stored and never read. `core/app_factory.py:177` reads settings, passes it in, and logs `"🎯 Priority agents enabled: …"` — **the startup log is lying**; priority actually resolves from `agent.priority` inside `TapeGenerator`.
-- `/auth/google` appears in `core/auth.py:331`'s excluded-paths list. **The endpoint does not exist.** `settings.google_client_id` is likewise referenced nowhere.
-- CRUD: `voice_audio_exists`, `get_agents_by_ids`, `get_agent_cached`, `invalidate_messages_cache` — zero callsites, all in `__all__`.
 
 ---
 
@@ -185,7 +123,7 @@ But Codex has **also drifted 15 lines ahead** (`codex:50-62` adds `<tool_groundi
 ## Suggested order of attack
 
 1. ~~**P0** — auth holes, the dead guidelines system, and the four silent no-ops.~~ **Done 2026-07-14.**
-2. **P1 §10–16** — pure deletion, ~1,500 lines, zero behavior change. Do this *before* the refactors; it makes everything below legible.
+2. ~~**P1 §10–16** — pure deletion, ~1,500 lines, zero behavior change.~~ **Done 2026-07-14.**
 3. **P3 §21–22** — the MCP server factory and the prompt unification. Highest duplication payoff, mechanical.
 4. **P2 §17–18** — pay down the import cycles one back-edge at a time. Track progress by the deferred-import count (86 → 0).
 5. **P2 §20** — ORM-objects-in-cache. Largest single piece of work, and the one most likely to bite under production concurrency.

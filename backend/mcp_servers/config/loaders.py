@@ -209,37 +209,3 @@ def get_extreme_traits(group_name: str) -> Dict[str, str]:
         return {}
 
 
-def merge_tool_configs(base_config: Dict[str, Any], group_config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merge group-specific tool configurations over base (global) tool configurations.
-
-    Group config can override any field in the base config (e.g., response, description, etc.)
-
-    Args:
-        base_config: Base tools configuration from tools.yaml
-        group_config: Group-specific configuration from group_config.yaml
-
-    Returns:
-        Merged configuration dictionary
-    """
-    if not group_config or "tools" not in group_config:
-        return base_config
-
-    # Deep copy base config to avoid mutation
-    import copy
-
-    merged = copy.deepcopy(base_config)
-
-    # Merge tool overrides from group config
-    group_tools = group_config.get("tools", {})
-    base_tools = merged.get("tools", {})
-
-    for tool_name, tool_overrides in group_tools.items():
-        if tool_name in base_tools:
-            # Merge/override fields for this tool
-            base_tools[tool_name].update(tool_overrides)
-            logger.debug(f"Applied group config override for tool '{tool_name}': {list(tool_overrides.keys())}")
-        else:
-            logger.warning(f"Group config specifies unknown tool '{tool_name}', ignoring")
-
-    return merged

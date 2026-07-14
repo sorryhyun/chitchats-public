@@ -33,18 +33,16 @@ MAX_TOTAL_MESSAGES = 30  # Safety limit to prevent infinite loops
 class ChatOrchestrator:
     """
     Orchestrates multi-agent conversations with follow-up rounds.
-    Supports priority agent system where specific agents get first chance to respond.
+    Response ordering (including agent priority) is resolved by TapeGenerator.
     """
 
     def __init__(
         self,
         max_follow_up_rounds: int = MAX_FOLLOW_UP_ROUNDS,
         max_total_messages: int = MAX_TOTAL_MESSAGES,
-        priority_agent_names: List[str] = None,
     ):
         self.max_follow_up_rounds = max_follow_up_rounds
         self.max_total_messages = max_total_messages
-        self.priority_agent_names = priority_agent_names or []
         # Track active processing tasks per room for interruption
         self.active_room_tasks: dict[int, asyncio.Task] = {}
         # Used to skip broadcasting responses that were started before the interruption

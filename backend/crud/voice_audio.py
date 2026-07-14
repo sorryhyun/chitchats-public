@@ -93,20 +93,3 @@ async def get_message_by_id(db: AsyncSession, message_id: int) -> Optional[model
         select(models.Message).options(selectinload(models.Message.agent)).where(models.Message.id == message_id)
     )
     return result.scalar_one_or_none()
-
-
-async def voice_audio_exists(db: AsyncSession, message_id: int) -> bool:
-    """
-    Check if voice audio exists for a message.
-
-    Args:
-        db: Database session
-        message_id: Message ID
-
-    Returns:
-        True if audio exists, False otherwise
-    """
-    result = await db.execute(
-        select(models.VoiceAudio.id).where(models.VoiceAudio.message_id == message_id).limit(1)
-    )
-    return result.scalar_one_or_none() is not None

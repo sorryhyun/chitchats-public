@@ -118,17 +118,6 @@ class ClaudeProvider(AIProvider):
         """Get the provider type identifier."""
         return ProviderType.CLAUDE
 
-    def create_client(self, options: ClaudeAgentOptions) -> ClaudeClient:
-        """Create a new Claude client with the given options.
-
-        Args:
-            options: ClaudeAgentOptions for client configuration
-
-        Returns:
-            ClaudeClient ready for connection
-        """
-        return ClaudeClient(options)
-
     def get_client_pool(self) -> ClaudeClientPool:
         """Get the client pool for this provider."""
         if self._pool is None:

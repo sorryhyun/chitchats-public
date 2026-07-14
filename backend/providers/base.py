@@ -29,7 +29,6 @@ class ProviderType(str, Enum):
 
     CLAUDE = "claude"
     CODEX = "codex"
-    CUSTOM = "custom"
 
 
 class SessionRecoveryError(Exception):
@@ -49,36 +48,6 @@ class SessionRecoveryError(Exception):
         super().__init__(message)
 
 
-@dataclass
-class AIMessage:
-    """Unified message format across providers.
-
-    Attributes:
-        type: Message type (text, thinking, tool_use, system, error)
-        content: The message content
-        metadata: Provider-specific data (e.g., tool_name, tool_input)
-    """
-
-    type: str  # "text", "thinking", "tool_use", "system", "error"
-    content: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class AIStreamEvent:
-    """Unified streaming event for real-time responses.
-
-    Attributes:
-        type: Event type (stream_start, content_delta, thinking_delta, stream_end)
-        delta: Incremental content for delta events
-        session_id: Session/thread ID for resume support
-        metadata: Provider-specific event data
-    """
-
-    type: str  # "stream_start", "content_delta", "thinking_delta", "stream_end"
-    delta: Optional[str] = None
-    session_id: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -137,7 +106,6 @@ class AIClientOptions:
         group_name: Optional group name for tool config overrides
         long_term_memory_index: Memory subtitles to content mapping
         working_dir: Working directory for subprocess
-        extra_options: Provider-specific additional options
     """
 
     system_prompt: str
@@ -151,7 +119,6 @@ class AIClientOptions:
     group_name: Optional[str] = None
     long_term_memory_index: Optional[Dict[str, str]] = None
     working_dir: Optional[str] = None
-    extra_options: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_context(
@@ -381,18 +348,6 @@ class AIProvider(ABC):
     @abstractmethod
     def provider_type(self) -> ProviderType:
         """Get the provider type identifier."""
-        ...
-
-    @abstractmethod
-    def create_client(self, options: Any) -> AIClient:
-        """Create a new AI client with the given options.
-
-        Args:
-            options: Provider-specific options object
-
-        Returns:
-            Configured AIClient ready for connection
-        """
         ...
 
     @abstractmethod

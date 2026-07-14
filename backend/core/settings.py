@@ -65,9 +65,6 @@ class Settings(BaseSettings):
     # User configuration
     user_name: str = "User"
 
-    # Agent priority system
-    priority_agents: str = ""
-
     # CORS configuration
     frontend_url: Optional[str] = None
     vercel_url: Optional[str] = None
@@ -105,9 +102,6 @@ class Settings(BaseSettings):
 
     # Memory preview configuration
     memory_preview_with_thoughts: bool = False  # Show thoughts in recall tool preview
-
-    # Google OAuth configuration
-    google_client_id: Optional[str] = None  # Google OAuth Client ID for Sign-In
 
     # Proxy configuration for rate limiting
     trusted_proxy_count: int = 0  # Number of trusted proxies (for X-Forwarded-For handling)
@@ -161,18 +155,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.lower() == "true"
         return False
-
-    def get_priority_agent_names(self) -> List[str]:
-        """
-        Get the list of priority agent names from the PRIORITY_AGENTS setting.
-
-        Returns:
-            List of agent names that should have priority in responding
-        """
-        if not self.priority_agents:
-            return []
-        # Split by comma and strip whitespace from each name
-        return [name.strip() for name in self.priority_agents.split(",") if name.strip()]
 
     @property
     def project_root(self) -> Path:

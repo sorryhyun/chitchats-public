@@ -10,10 +10,9 @@ Usage:
     # Get a provider
     provider = get_provider("claude")  # or ProviderType.CLAUDE
 
-    # Build options and create client
+    # Build options and get a pooled client
     options = provider.build_options(base_options)
-    client = provider.create_client(options)
-    await client.connect()
+    client, is_new = await provider.get_client_pool().get_or_create(task_id, options)
 
     # Send message and receive response
     await client.query("Hello!")
@@ -27,9 +26,7 @@ Usage:
 from .base import (
     AIClient,
     AIClientOptions,
-    AIMessage,
     AIProvider,
-    AIStreamEvent,
     AIStreamParser,
     ClientPoolInterface,
     ParsedStreamMessage,
@@ -46,9 +43,7 @@ __all__ = [
     # Base classes
     "AIClient",
     "AIClientOptions",
-    "AIMessage",
     "AIProvider",
-    "AIStreamEvent",
     "AIStreamParser",
     "ClientPoolInterface",
     "ParsedStreamMessage",

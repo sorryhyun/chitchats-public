@@ -203,7 +203,6 @@ All settings are declared in `backend/core/settings.py` (Pydantic `BaseSettings`
 - `USER_NAME` - Display name for user messages in chat (default: "User")
 - `DEBUG_AGENTS` - Set to "true" for verbose agent logging
 - `USE_SONNET` - Set to "true" to default to Sonnet instead of Opus (default: false). Can also be toggled at runtime via Settings UI. Accepts `USE_HAIKU` as alias for backward compatibility.
-- `PRIORITY_AGENTS` - Comma-separated agent names for priority responding
 - `MAX_CONCURRENT_ROOMS` - Max rooms for background scheduler (default: 5)
 - `GUEST_PASSWORD_HASH` - Separate bcrypt hash for guest (read-only) login
 - `ENABLE_GUEST_LOGIN` - Enable/disable guest login (default: true)

@@ -11,32 +11,6 @@ from typing import List, Tuple
 logger = logging.getLogger("AgentOrdering")
 
 
-def separate_priority_agents(agents: List) -> Tuple[List, List]:
-    """
-    Separate agents into priority and regular groups based on agent.priority field.
-
-    Args:
-        agents: List of agent objects
-
-    Returns:
-        Tuple of (priority_agents, regular_agents) sorted by priority (higher first)
-    """
-    priority_agents = []
-    regular_agents = []
-
-    for agent in agents:
-        # Agents with priority > 0 are considered priority agents
-        if getattr(agent, "priority", 0) > 0:
-            priority_agents.append(agent)
-        else:
-            regular_agents.append(agent)
-
-    # Sort priority agents by priority value (descending: higher priority first)
-    priority_agents.sort(key=lambda a: getattr(a, "priority", 0), reverse=True)
-
-    return priority_agents, regular_agents
-
-
 def separate_interrupt_agents(agents: List) -> Tuple[List, List]:
     """
     Separate agents into interrupt and regular groups based on interrupt_every_turn.

@@ -67,13 +67,8 @@ async def test_db() -> AsyncGenerator[AsyncSession, None]:
 def _setup_app_state():
     """Set up app state with mock instances for testing."""
     if not hasattr(app.state, "agent_manager") or app.state.agent_manager is None:
-        from core.client_pool import ClientPool
-
         app.state.agent_manager = MagicMock(spec=AgentManager)
         app.state.agent_manager.shutdown = AsyncMock()
-        # Set up client_pool mock with necessary methods
-        app.state.agent_manager.client_pool = MagicMock(spec=ClientPool)
-        app.state.agent_manager.client_pool.remove_agent_from_room = MagicMock()
     if not hasattr(app.state, "chat_orchestrator") or app.state.chat_orchestrator is None:
         app.state.chat_orchestrator = MagicMock(spec=ChatOrchestrator)
     if not hasattr(app.state, "background_scheduler") or app.state.background_scheduler is None:

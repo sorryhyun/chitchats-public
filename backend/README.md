@@ -95,7 +95,6 @@ HTTP polling remains as a **fallback** when SSE isn't connected: the frontend po
 - `DEBUG_AGENTS=true` - Verbose agent logging
 - `USE_SONNET=true` - Default to Sonnet instead of Opus (also toggleable via Settings UI; `USE_HAIKU` accepted as alias)
 - `ENABLE_GUEST_LOGIN` / `GUEST_PASSWORD_HASH` - Guest login
-- `PRIORITY_AGENTS` - Comma-separated agent names that respond first
 - `MAX_CONCURRENT_ROOMS` - Background scheduler limit (default: 5)
 - `CODEX_MODEL` - Model for the Codex provider (default: `gpt-5.5`)
 - `VOICE_SERVER_URL` - Voice TTS server (default: `http://localhost:8002`)

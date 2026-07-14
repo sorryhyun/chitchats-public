@@ -104,17 +104,6 @@ class CodexProvider(AIProvider):
         """Get the provider type identifier."""
         return ProviderType.CODEX
 
-    def create_client(self, options: CodexAppServerOptions) -> AIClient:
-        """Create a new Codex client with the given options.
-
-        Args:
-            options: CodexAppServerOptions for client configuration
-
-        Returns:
-            CodexAppServerClient instance
-        """
-        return CodexAppServerClient(options)
-
     def get_client_pool(self) -> CodexClientPool:
         """Get the client pool for this provider."""
         if self._pool is None:

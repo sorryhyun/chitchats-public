@@ -44,8 +44,6 @@ def create_app() -> FastAPI:
         rooms,
         serve_mcp,
         sse,
-        tools_api,
-        user,
         voice,
     )
     from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -174,21 +172,13 @@ def create_app() -> FastAPI:
         event_broadcaster = EventBroadcaster()
         agent_manager.set_event_broadcaster(event_broadcaster)
 
-        priority_agent_names = settings.get_priority_agent_names()
-        chat_orchestrator = ChatOrchestrator(priority_agent_names=priority_agent_names)
+        chat_orchestrator = ChatOrchestrator()
         background_scheduler = BackgroundScheduler(
             chat_orchestrator=chat_orchestrator,
             agent_manager=agent_manager,
             get_db_session=get_db,
             max_concurrent_rooms=settings.max_concurrent_rooms,
         )
-
-        # Log priority agent configuration
-        if priority_agent_names:
-            logger.info(f"🎯 Priority agents enabled: {priority_agent_names}")
-            logger.info("   💡 Priority agents will respond first in both initial and follow-up rounds")
-        else:
-            logger.info("👥 All agents have equal priority (PRIORITY_AGENTS not set)")
 
         # Store in app state for dependency injection
         app.state.agent_manager = agent_manager
@@ -310,8 +300,6 @@ def create_app() -> FastAPI:
     app.include_router(providers.router, tags=["Providers"])
     app.include_router(exports.router, prefix="/exports", tags=["Exports"])
     app.include_router(voice.router, prefix="/voice", tags=["Voice"])
-    app.include_router(user.router, prefix="/user", tags=["User"])
-    app.include_router(tools_api.router, tags=["Tools"])
     app.include_router(serve_mcp.router, tags=["MCP Tools"])
 
     # Mount AI-generated image storage as static files (accessible via /generated_images/*)

@@ -12,7 +12,6 @@ from .agents import (
     create_agent,
     delete_agent,
     get_agent,
-    get_agents_by_ids,
     get_all_agents,
     reload_agent_from_config,
     seed_agents_from_configs,
@@ -21,7 +20,6 @@ from .agents import (
 
 # Cached operations
 from .cached import (
-    get_agent_cached,
     get_agents_cached,
     get_messages_after_agent_response_cached,
     get_messages_cached,
@@ -29,16 +27,7 @@ from .cached import (
     get_recent_messages_cached,
     get_room_cached,
     invalidate_agent_cache,
-    invalidate_messages_cache,
     invalidate_room_cache,
-)
-
-# Cleanup operations (CRUD + resource cleanup coordination)
-from .cleanup import (
-    clear_room_messages_with_cleanup,
-    delete_agent_with_cleanup,
-    delete_room_with_cleanup,
-    remove_agent_from_room_with_cleanup,
 )
 
 # Message operations
@@ -77,7 +66,6 @@ from .voice_audio import (
     delete_voice_audio,
     get_message_by_id,
     get_voice_audio_by_message_id,
-    voice_audio_exists,
 )
 
 # Export all functions
@@ -94,7 +82,6 @@ __all__ = [
     # Agent operations
     "create_agent",
     "get_all_agents",
-    "get_agents_by_ids",
     "get_agent",
     "delete_agent",
     "update_agent",
@@ -116,7 +103,6 @@ __all__ = [
     "get_room_agent_session",
     "update_room_agent_session",
     # Cached operations
-    "get_agent_cached",
     "get_room_cached",
     "get_agents_cached",
     "get_messages_cached",
@@ -125,16 +111,9 @@ __all__ = [
     "get_messages_after_agent_response_cached",
     "invalidate_room_cache",
     "invalidate_agent_cache",
-    "invalidate_messages_cache",
-    # Cleanup operations
-    "delete_agent_with_cleanup",
-    "remove_agent_from_room_with_cleanup",
-    "delete_room_with_cleanup",
-    "clear_room_messages_with_cleanup",
     # Voice audio operations
     "get_voice_audio_by_message_id",
     "create_voice_audio",
     "delete_voice_audio",
     "get_message_by_id",
-    "voice_audio_exists",
 ]

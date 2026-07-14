@@ -23,27 +23,6 @@ import crud
 logger = logging.getLogger("CachedCRUD")
 
 
-async def get_agent_cached(db: AsyncSession, agent_id: int) -> Optional[models.Agent]:
-    """
-    Get agent with caching (TTL: 5 minutes).
-
-    Args:
-        db: Database session
-        agent_id: Agent ID
-
-    Returns:
-        Agent object or None
-    """
-    cache = get_cache()
-    key = agent_object_key(agent_id)
-
-    return await cache.get_or_set_async(
-        key=key,
-        factory=lambda: crud.get_agent(db, agent_id),
-        ttl_seconds=300,  # 5 minutes
-    )
-
-
 async def get_room_cached(db: AsyncSession, room_id: int) -> Optional[models.Room]:
     """
     Get room with caching (TTL: 30 seconds).
@@ -193,15 +172,3 @@ def invalidate_agent_cache(agent_id: int):
     cache.invalidate(agent_object_key(agent_id))
     cache.invalidate(agent_config_key(agent_id))
     logger.debug(f"Invalidated cache for agent {agent_id}")
-
-
-def invalidate_messages_cache(room_id: int):
-    """
-    Invalidate message cache for a room.
-
-    Args:
-        room_id: Room ID
-    """
-    cache = get_cache()
-    cache.invalidate_pattern(room_messages_key(room_id))
-    logger.debug(f"Invalidated message cache for room {room_id}")

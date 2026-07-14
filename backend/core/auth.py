@@ -328,7 +328,6 @@ class AuthMiddleware:
         "/openapi.json",
         "/redoc",
         "/auth/login",
-        "/auth/google",  # Google Sign-In endpoint
         "/auth/health",
         "/register",  # OAuth dynamic client registration (for MCP clients)
     }
@@ -515,33 +514,4 @@ def require_admin(request: Request):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This action requires admin privileges.",
-        )
-
-
-async def ensure_room_access(room, user_id: str, user_role: str) -> None:
-    """
-    Verify that a user can access a specific room.
-
-    Room access rules:
-    - Admins can access all rooms
-    - Non-admins can only access rooms they own (owner_id matches user_id)
-
-    Args:
-        room: Room object (must have owner_id attribute)
-        user_id: The user's ID
-        user_role: The user's role ('admin', 'guest', or 'user')
-
-    Raises:
-        HTTPException: 403 Forbidden if user cannot access the room
-    """
-    # Admins can access all rooms
-    if user_role == "admin":
-        return
-
-    # Non-admins can only access their own rooms
-    if room.owner_id != user_id:
-        logger.warning(f"⚠️  User {user_id} attempted to access room owned by {room.owner_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this room.",
         )

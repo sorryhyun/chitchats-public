@@ -17,7 +17,6 @@ from .auth import (
     validate_password_with_role,
 )
 from .cache_service import CacheService
-from .client_pool import ClientPool
 from .dependencies import (
     RequestIdentity,
     ensure_room_access,
@@ -76,7 +75,6 @@ __all__ = [
     "get_request_identity",
     # Services / managers
     "AgentManager",
-    "ClientPool",
     "AgentConfigService",
     "CacheService",
     # Lazy (mcp_servers.config.validation)

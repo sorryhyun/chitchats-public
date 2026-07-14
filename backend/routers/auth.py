@@ -125,29 +125,25 @@ async def pool_stats(request: Request):
     if not agent_manager:
         return {"error": "agent_manager not available"}
 
-    pool = getattr(agent_manager, "client_pool", None)
-    if not pool:
-        return {"error": "client_pool not available"}
-
-    # Defensive access to pool internals
-    pool_dict = getattr(pool, "pool", {})
-    pool_keys = list(pool_dict.keys())
-    cleanup_tasks_set = getattr(pool, "_cleanup_tasks", set())
-    cleanup_tasks = len(cleanup_tasks_set)
-
-    # Get semaphore availability (how many slots are free for new connections)
-    semaphore = getattr(pool, "_connection_semaphore", None)
-    # Note: _value is internal but useful for debugging
-    available_slots = getattr(semaphore, "_value", "unknown") if semaphore else "unknown"
+    # Pools are lazily created per provider, so report each one separately.
+    pools = getattr(agent_manager, "_client_pools", {})
+    providers = {}
+    for provider_type, pool in pools.items():
+        pool_keys = list(getattr(pool, "pool", {}).keys())
+        # _value / _cleanup_tasks are internal, but useful for debugging.
+        semaphore = getattr(pool, "_connection_semaphore", None)
+        providers[provider_type.value] = {
+            "pool_size": len(pool_keys),
+            "pool_keys": [str(k) for k in pool_keys],
+            "pending_cleanup_tasks": len(getattr(pool, "_cleanup_tasks", set())),
+            "connection_semaphore_available": getattr(semaphore, "_value", "unknown") if semaphore else "unknown",
+            "max_concurrent_connections": getattr(pool, "MAX_CONCURRENT_CONNECTIONS", "unknown"),
+        }
 
     active_clients = getattr(agent_manager, "active_clients", {})
-    max_connections = getattr(pool, "MAX_CONCURRENT_CONNECTIONS", "unknown")
 
     return {
-        "pool_size": len(pool_keys),
-        "pool_keys": [str(k) for k in pool_keys],
-        "pending_cleanup_tasks": cleanup_tasks,
+        "pool_size": sum(p["pool_size"] for p in providers.values()),
         "active_clients": len(active_clients),
-        "connection_semaphore_available": available_slots,
-        "max_concurrent_connections": max_connections,
+        "providers": providers,
     }

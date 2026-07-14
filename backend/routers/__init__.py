@@ -12,8 +12,6 @@ from . import (
     rooms,
     serve_mcp,
     sse,
-    tools_api,
-    user,
     voice,
 )
 
@@ -29,7 +27,5 @@ __all__ = [
     "exports",
     "providers",
     "sse",
-    "tools_api",
-    "user",
     "voice",
 ]
