@@ -5,9 +5,11 @@ This module provides type-safe access to environment variables with validation.
 All settings are loaded once at application startup.
 """
 
+import socket
 import sys
+import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
@@ -16,6 +18,42 @@ from pydantic_settings import BaseSettings
 def _is_frozen() -> bool:
     """Check if running as a PyInstaller bundle."""
     return getattr(sys, "frozen", False)
+
+
+def _hostname_ips(timeout: float = 0.5) -> Set[str]:
+    """Resolve this machine's hostname to LAN IPs, giving up after `timeout`.
+
+    A hostname that doesn't resolve (the norm on macOS, where it is `*.local`, and on
+    any host behind a VPN) costs the resolver ~5s before it fails. Doing that inline
+    stalled startup, so the lookup runs on a daemon thread we simply stop waiting for.
+    """
+    ips: Set[str] = set()
+
+    def _resolve() -> None:
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                ips.add(info[4][0])
+        except OSError:
+            pass  # Unresolvable hostname: the default-route probe below still finds the LAN IP.
+
+    thread = threading.Thread(target=_resolve, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    return set(ips)  # Copy: the thread may still be running, and we accept losing late results.
+
+
+def _default_route_ip() -> Optional[str]:
+    """LAN IP of the interface holding the default route.
+
+    A UDP `connect` sends no packets — it only consults the routing table — so this is
+    instant and works offline. This is what actually finds the LAN IP on most machines.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
 
 
 def _get_base_path() -> Path:
@@ -294,35 +332,14 @@ class Settings(BaseSettings):
         if self.vercel_url:
             origins.append(f"https://{self.vercel_url}")
 
-        # Add local network IPs for development (including WSL2)
-        import socket
+        # Add local network IPs so the dev frontend can be opened from another device
+        local_ips = _hostname_ips()
+        default_route_ip = _default_route_ip()
+        if default_route_ip:
+            local_ips.add(default_route_ip)
 
-        try:
-            # Get all IPs from all network interfaces
-            local_ips = set()
-            hostname = socket.gethostname()
-            # Try hostname-based lookup
-            try:
-                local_ips.add(socket.gethostbyname(hostname))
-            except Exception:
-                pass
-            # Try getting all addresses for the hostname
-            try:
-                for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
-                    local_ips.add(info[4][0])
-            except Exception:
-                pass
-            # Try connecting to external to find default route IP (works in WSL2)
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                    s.connect(("8.8.8.8", 80))
-                    local_ips.add(s.getsockname()[0])
-            except Exception:
-                pass
-            for local_ip in local_ips:
-                origins.extend([f"http://{local_ip}:5173", f"http://{local_ip}:5174"])
-        except Exception:
-            pass
+        for local_ip in sorted(local_ips):
+            origins.extend([f"http://{local_ip}:5173", f"http://{local_ip}:5174"])
 
         return origins
 
