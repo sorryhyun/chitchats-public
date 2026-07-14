@@ -6,7 +6,7 @@ separating static/startup settings from dynamic per-session settings.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # =============================================================================
 # Claude Provider Configs
@@ -44,6 +44,11 @@ class ClaudeStaticConfig:
             "CLAUDE_CODE_DISABLE_POLICY_SKILLS": "true",
             "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS": "true",
             "CLAUDE_CODE_EFFORT_LEVEL": "high",
+            "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
+            "ENABLE_TOOL_SEARCH": "false",
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+            "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1",
+            "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS": "1",
             "BROWSER": "",
         }
     )
@@ -107,46 +112,50 @@ class CodexStartupConfig:
             "features.shell_tool": False,  # Disables: shell, local_shell, container.exec, shell_command
             "features.unified_exec": False,  # Disables: exec_command, write_stdin
             "features.apply_patch_freeform": False,  # Disables: apply_patch
+            "features.collaboration_modes": False,  # Disables: apply_patch
+            "features.request_rule": False,  # Disables: apply_patch
+            "features.powershell_utf8": False,  # Disables: apply_patch
             "features.collab": False,  # Disables: spawn_agent, send_input, wait, close_agent
             "features.child_agents_md": False,  # Disables child agents markdown
-            # Tool settings
-            "tools.view_image": False,  # Agents receive images directly
-            "tools_view_image": False,
+            "features.enable_request_compression": False,
+            "features.skill_mcp_dependency_install": False,
             "features.image_generation": True,  # Enable built-in image generation (equivalent to --enable image_generation)
+            "features.memories": False,
+            "features.apps": False,
+            "features.fast_mode": False,
+            "features.multi_agent": False,
+            # Tool settings
+            "include_apply_patch_tool": False,
+            "tools_view_image": False,  # Agents receive images directly
             "web_search": "disabled",
             # "project_doc_max_bytes": 0,
             "show_raw_agent_reasoning": True,
             "model_verbosity": "medium",
             "model_reasoning_summary": "detailed",
-            "features.personality" : False,
             "personality": "none",
-            "features.enable_request_compression" : False,
-            "features.skill_mcp_dependency_install" : False,
+            "model_reasoning_effort": "xhigh",
         }
     )
 
-    # MCP server configurations (passed via -c mcp_servers.*)
+    # MCP server configurations (rendered as mcp_servers.* overrides)
     # Format: {"server_name": {"command": "...", "args": [...], "env": {...}, "cwd": "..."}}
     mcp_servers: Dict[str, Any] = field(default_factory=dict)
 
-    def to_cli_args(self) -> List[str]:
-        """Convert config to CLI arguments for subprocess.
+    def to_config_overrides(self) -> Tuple[str, ...]:
+        """Render config as `key=value` overrides for `CodexConfig.config_overrides`.
+
+        The SDK turns each entry into a `--config key=value` flag on the
+        `codex app-server` command line.
 
         Returns:
-            List of CLI arguments (e.g., ["-c", "features.shell_tool=false", "-c", "web_search=disabled"])
+            Tuple of overrides (e.g., ("features.shell_tool=false", 'web_search="disabled"'))
         """
-        args: List[str] = []
+        overrides: List[str] = [f"{key}={_to_toml_value(value)}" for key, value in self.config_overrides.items()]
 
-        # Add -c flags for config overrides
-        for key, value in self.config_overrides.items():
-            args.extend(["-c", f"{key}={_to_toml_value(value)}"])
-
-        # Add -c flags for MCP servers
         for server_name, server_config in self.mcp_servers.items():
-            prefix = f"mcp_servers.{server_name}"
-            args.extend(_flatten_mcp_config(prefix, server_config))
+            overrides.extend(_flatten_mcp_config(f"mcp_servers.{server_name}", server_config))
 
-        return args
+        return tuple(overrides)
 
 
 def _to_toml_value(value: Any) -> str:
@@ -168,16 +177,16 @@ def _to_toml_value(value: Any) -> str:
 
 
 def _flatten_mcp_config(prefix: str, config: Dict[str, Any]) -> List[str]:
-    """Flatten MCP server config to -c flags.
+    """Flatten MCP server config to `key=value` overrides.
 
     Args:
         prefix: Key prefix (e.g., "mcp_servers.action")
         config: Server config dict with command, args, env, cwd
 
     Returns:
-        List of ["-c", "key=value", ...] arguments
+        List of "key=value" strings
     """
-    args: List[str] = []
+    overrides: List[str] = []
 
     for key, value in config.items():
         full_key = f"{prefix}.{key}"
@@ -185,11 +194,11 @@ def _flatten_mcp_config(prefix: str, config: Dict[str, Any]) -> List[str]:
         if key == "env" and isinstance(value, dict):
             # Flatten env vars: mcp_servers.action.env.AGENT_NAME="value"
             for env_key, env_value in value.items():
-                args.extend(["-c", f"{full_key}.{env_key}={_to_toml_value(env_value)}"])
+                overrides.append(f"{full_key}.{env_key}={_to_toml_value(env_value)}")
         else:
-            args.extend(["-c", f"{full_key}={_to_toml_value(value)}"])
+            overrides.append(f"{full_key}={_to_toml_value(value)}")
 
-    return args
+    return overrides
 
 
 @dataclass

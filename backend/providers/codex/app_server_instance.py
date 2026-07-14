@@ -1,21 +1,19 @@
 """
 Single Codex App Server instance using the official openai-codex SDK.
 
-This module manages one `codex app-server` subprocess via the official
-sync Python SDK (CodexClient), bridged to async via asyncio.to_thread().
-
-`CodexClient` is the SDK's low-level JSON-RPC surface; the high-level
-`Codex`/`Thread` wrappers are deliberately not used because we drive the
-notification stream ourselves (see `start_turn`).
+This module manages one `codex app-server` subprocess via the SDK's
+`AsyncCodexClient`, its JSON-RPC surface. The high-level `AsyncCodex`/
+`AsyncThread` wrappers are not used because `AsyncThread.turn()` cannot carry
+per-turn `baseInstructions`, which is how each agent's system prompt is sent.
 
 The SDK handles:
-- Subprocess lifecycle (stdio transport)
+- Subprocess lifecycle (stdio transport) and launch-arg assembly
 - JSON-RPC protocol framing
 - Initialize handshake
+- Per-turn notification routing
 - Typed Pydantic notification models (AgentMessageDelta, ItemCompleted, etc.)
 
 This module provides ChitChats-specific wrapping:
-- Async bridge via asyncio.to_thread()
 - Per-agent instance management
 - Thread ownership tracking
 - Streaming turn events converted to internal dict format
@@ -29,7 +27,7 @@ import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from openai_codex import CodexConfig
-from openai_codex.client import CodexClient
+from openai_codex.async_client import AsyncCodexClient
 from openai_codex.errors import CodexError, TransportClosedError
 from openai_codex.generated.v2_all import (
     AgentMessageDeltaNotification,
@@ -61,7 +59,6 @@ class CodexAppServerInstance:
     """Single Codex App Server instance.
 
     Manages one `codex app-server` subprocess via the official Python SDK.
-    All blocking SDK calls are bridged to async via asyncio.to_thread().
 
     Usage:
         instance = CodexAppServerInstance(instance_id=0)
@@ -82,7 +79,7 @@ class CodexAppServerInstance:
         self._startup_config = startup_config or DEFAULT_CODEX_CONFIG
         self._agent_key = agent_key
 
-        self._client: Optional[CodexClient] = None
+        self._client: Optional[AsyncCodexClient] = None
         self._active_threads: Set[str] = set()
         self._current_turn_id: Optional[str] = None
 
@@ -94,14 +91,20 @@ class CodexAppServerInstance:
         return self._instance_id
 
     @property
+    def _proc(self):
+        """The app-server subprocess, owned by the SDK's sync transport."""
+        if self._client is None:
+            return None
+        return self._client._sync._proc
+
+    @property
     def is_started(self) -> bool:
-        return self._client is not None and self._client._proc is not None
+        return self._proc is not None
 
     @property
     def is_healthy(self) -> bool:
-        if self._client is None or self._client._proc is None:
-            return False
-        return self._client._proc.poll() is None  # Process still running
+        proc = self._proc
+        return proc is not None and proc.poll() is None  # Process still running
 
     @property
     def active_thread_count(self) -> int:
@@ -125,15 +128,15 @@ class CodexAppServerInstance:
 
     @property
     def process_pid(self) -> Optional[int]:
-        if self._client and self._client._proc:
-            return self._client._proc.pid
-        return None
+        proc = self._proc
+        return proc.pid if proc else None
 
     def kill(self) -> None:
         """Forcefully kill the subprocess (sync, for emergency cleanup)."""
-        if self._client and self._client._proc:
+        proc = self._proc
+        if proc:
             try:
-                self._client._proc.kill()
+                proc.kill()
             except ProcessLookupError:
                 pass
 
@@ -155,33 +158,19 @@ class CodexAppServerInstance:
         return False
 
     def _build_sdk_config(self) -> CodexConfig:
-        """Build CodexConfig for the official SDK."""
+        """Build CodexConfig for the official SDK.
+
+        The SDK assembles the launch command itself: it renders each override as
+        `--config key=value` and appends `app-server --listen stdio://`.
+        """
         codex_path = shutil.which("codex")
         if not codex_path:
             raise RuntimeError("Codex CLI not found. Install it with: npm install -g @openai/codex")
 
-        # Build CLI args from startup config
-        cli_args = self._startup_config.to_cli_args()
-
-        # The SDK expects launch_args_override as the full command
-        # Format: codex --config key=value ... app-server --listen stdio://
-        launch_args = [codex_path]
-        # Convert -c flags to --config flags (SDK uses --config)
-        i = 0
-        while i < len(cli_args):
-            if cli_args[i] == "-c" and i + 1 < len(cli_args):
-                launch_args.extend(["--config", cli_args[i + 1]])
-                i += 2
-            else:
-                launch_args.append(cli_args[i])
-                i += 1
-        launch_args.extend(["app-server", "--listen", "stdio://"])
-
-        env = {"BROWSER": ""}  # Prevent subprocess from opening browser
-
         return CodexConfig(
-            launch_args_override=tuple(launch_args),
-            env=env,
+            codex_bin=codex_path,
+            config_overrides=self._startup_config.to_config_overrides(),
+            env={"BROWSER": ""},  # Prevent subprocess from opening browser
             client_name="chitchats",
             client_version="1.0.0",
         )
@@ -194,22 +183,19 @@ class CodexAppServerInstance:
         sdk_config = self._build_sdk_config()
 
         logger.info(
-            f"[Instance {self._instance_id}] Starting Codex App Server via official SDK, "
-            f"command: {' '.join(sdk_config.launch_args_override or [])}"
+            f"[Instance {self._instance_id}] Starting Codex App Server via official SDK "
+            f"({sdk_config.codex_bin}, {len(sdk_config.config_overrides)} config overrides)"
         )
 
-        def _start_sync():
-            client = CodexClient(sdk_config)
-            client.start()
-            client.initialize()
-            return client
-
+        client = AsyncCodexClient(sdk_config)
         try:
-            self._client = await asyncio.to_thread(_start_sync)
+            await client.start()
+            await client.initialize()
         except Exception:
-            self._client = None
+            await client.close()
             raise
 
+        self._client = client
         logger.info(f"[Instance {self._instance_id}] Codex App Server started (PID: {self.process_pid})")
 
     async def create_thread(self, config: CodexTurnConfig) -> str:
@@ -230,7 +216,7 @@ class CodexAppServerInstance:
         logger.debug(f"[Instance {self._instance_id}] Creating thread with params: {params}")
 
         try:
-            result = await asyncio.to_thread(self._client.thread_start, params)
+            result = await self._client.thread_start(params)
         except Exception as e:
             if "validation error" in str(e).lower():
                 raise RuntimeError("코덱스 업데이트해주세요!") from e
@@ -252,7 +238,7 @@ class CodexAppServerInstance:
         logger.debug(f"[Instance {self._instance_id}] Resuming thread {thread_id}")
 
         try:
-            result = await asyncio.to_thread(self._client.thread_resume, thread_id)
+            result = await self._client.thread_resume(thread_id)
             resumed_id = result.thread.id if result.thread else None
             if resumed_id:
                 self.register_thread(thread_id)
@@ -273,14 +259,14 @@ class CodexAppServerInstance:
     ) -> AsyncIterator[Dict[str, Any]]:
         """Start a turn and stream events.
 
-        Uses the SDK's sync API in a background thread, piping typed
-        Notification objects through an asyncio.Queue and converting
-        them to internal dict format.
+        Consumes the SDK's per-turn notification stream and converts each typed
+        Notification to our internal dict format.
 
         Yields:
             Streaming events as dicts (internal format for parser/client)
         """
-        if not self._client:
+        client = self._client
+        if not client:
             raise RuntimeError("Instance not started")
 
         self.touch()
@@ -301,95 +287,45 @@ class CodexAppServerInstance:
         if config.model:
             turn_params["model"] = config.model
 
-        # Queue for passing notifications from sync thread to async
-        queue: asyncio.Queue[Optional[Notification]] = asyncio.Queue()
-        turn_error: List[Optional[Exception]] = [None]
-        loop = asyncio.get_event_loop()
+        started = await client.turn_start(thread_id, input_items, params=turn_params)
+        turn_id = started.turn.id
 
-        def _run_turn_sync():
-            """Run the turn in a sync thread, collecting notifications."""
-
-            def emit(item: Optional[Notification]) -> None:
-                # asyncio.Queue is not thread-safe; hand items over on the loop thread.
-                loop.call_soon_threadsafe(queue.put_nowait, item)
-
-            try:
-                client = self._client
-                if client is None:
-                    return
-
-                # Start the turn
-                started = client.turn_start(thread_id, input_items, params=turn_params)
-                turn_id = started.turn.id
-
-                # Everything this turn emits is routed to a dedicated queue, NOT the
-                # global one `next_notification()` drains — without registering, the
-                # events pile up unread and the turn never completes. Registering also
-                # replays whatever arrived between turn/start returning and this call.
-                client.register_turn_notifications(turn_id)
-                try:
-                    # Put turn started event
-                    emit(
-                        Notification(
-                            method="turn/started",
-                            payload=UnknownNotification(params={"turnId": turn_id, "threadId": thread_id}),
-                        )
-                    )
-
-                    # Stream notifications until turn completes. The queue carries only
-                    # this turn's events, so any turn/completed is ours.
-                    while True:
-                        try:
-                            notification = client.next_turn_notification(turn_id)
-                        except TransportClosedError:
-                            break
-                        emit(notification)
-                        if notification.method == "turn/completed":
-                            break
-                finally:
-                    client.unregister_turn_notifications(turn_id)
-            except Exception as e:
-                turn_error[0] = e
-            finally:
-                # Signal completion
-                emit(None)
-
-        # Run the sync turn in a background thread
-        turn_future = loop.run_in_executor(None, _run_turn_sync)
-
+        # Everything this turn emits is routed to a dedicated queue, NOT the global
+        # one `next_notification()` drains — without registering, the events pile up
+        # unread and the turn never completes. Registering also replays whatever
+        # arrived between turn/start returning and this call.
+        client.register_turn_notifications(turn_id)
         try:
+            started_event = self._notification_to_event(
+                Notification(
+                    method="turn/started",
+                    payload=UnknownNotification(params={"turnId": turn_id, "threadId": thread_id}),
+                )
+            )
+            if started_event:
+                yield started_event
+
+            # Stream notifications until the turn completes. The queue carries only
+            # this turn's events, so any turn/completed is ours.
             while True:
                 try:
-                    notification = await asyncio.wait_for(queue.get(), timeout=120.0)
+                    notification = await asyncio.wait_for(client.next_turn_notification(turn_id), timeout=120.0)
                 except asyncio.TimeoutError:
                     logger.warning(f"[Instance {self._instance_id}] Turn timed out")
                     break
-
-                if notification is None:
-                    # Turn completed or errored
+                except TransportClosedError:
                     break
 
-                # Convert typed Notification to internal dict format
                 event = self._notification_to_event(notification)
                 if event:
                     yield event
 
-                # Check for turn completion in the event
-                method = notification.method
-                if method == "turn/completed":
+                if notification.method == "turn/completed":
                     break
         finally:
+            client.unregister_turn_notifications(turn_id)
             self._current_turn_id = None
             self.touch()
-            # Ensure the background thread completes
-            try:
-                await asyncio.wait_for(asyncio.wrap_future(turn_future), timeout=5.0)
-            except (asyncio.TimeoutError, Exception):
-                pass
-
-        # Propagate errors from the sync thread
-        if turn_error[0]:
-            logger.error(f"[Instance {self._instance_id}] Turn error: {turn_error[0]}")
 
     def _notification_to_event(self, notification: Notification) -> Optional[Dict[str, Any]]:
         """Convert a typed SDK Notification to our internal event dict format."""
@@ -475,7 +411,7 @@ class CodexAppServerInstance:
         logger.info(f"[Instance {self._instance_id}] Interrupting turn {turn_id}")
 
         try:
-            await asyncio.to_thread(self._client.turn_interrupt, thread_id, turn_id)
+            await self._client.turn_interrupt(thread_id, turn_id)
             return True
         except Exception as e:
             logger.error(f"[Instance {self._instance_id}] Interrupt failed: {e}")
@@ -493,7 +429,7 @@ class CodexAppServerInstance:
 
         if self._client:
             try:
-                await asyncio.to_thread(self._client.close)
+                await self._client.close()
             except Exception as e:
                 logger.debug(f"[Instance {self._instance_id}] Error closing SDK client: {e}")
             self._client = None
