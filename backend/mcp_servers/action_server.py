@@ -19,26 +19,18 @@ Environment variables (for subprocess mode):
     CONFIG_FILE: Path to agent config folder (optional, for memorize)
 """
 
-import asyncio
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Optional
 
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Resource, ResourceTemplate, TextContent, Tool
+from mcp.types import Resource, ResourceTemplate, TextContent
 from pydantic import AnyUrl
 
-from .config import (
-    get_tool_description,
-    get_tool_response,
-    get_tools_by_group,
-    is_tool_enabled,
-)
+from .base import build_server, run_stdio, setup_logging
+from .config import get_tool_response
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ActionServer")
+logger = setup_logging("ActionServer")
 
 
 def create_action_server(
@@ -65,8 +57,6 @@ def create_action_server(
     Returns:
         Configured MCP Server instance
     """
-    server = Server("action")
-
     # Use provided memory entries/index or load from config file
     memory_entries = long_term_memory_entries
     memory_index = long_term_memory_index
@@ -79,82 +69,28 @@ def create_action_server(
     elif memory_index is None:
         memory_index = {}
 
-    # Context for tools
-    context = {
-        "agent_name": agent_name,
-        "agent_group": agent_group,
-        "agent_id": agent_id,
-        "config_file": config_file,
-        "memory_index": memory_index,
-        "memory_entries": memory_entries,
-        "provider": provider,
-    }
-
-    @server.list_tools()
-    async def list_tools():
-        """List available action tools based on registry."""
-        tools = []
-
-        for tool_id, tool_def in get_tools_by_group("action").items():
-            # Check if enabled for this provider/group
-            if not is_tool_enabled(tool_id, group_name=agent_group, provider=provider):
-                continue
-
-            # Check requirements (e.g., recall needs memory_index)
-            if "memory_index" in tool_def.requires and not memory_index:
-                continue
-
-            # Get description with variable substitution
-            # Generate memory subtitles with thoughts preview if available
-            if memory_entries:
-                # Use thoughts as previews: [subtitle]: "thought"
-                preview_parts = []
-                for subtitle, entry in memory_entries.items():
-                    if entry.thoughts:
-                        preview_parts.append(f"[{subtitle}]: \"{entry.thoughts}\"")
-                    else:
-                        preview_parts.append(f"'{subtitle}'")
-                memory_subtitles = ", ".join(preview_parts)
-            elif memory_index:
-                memory_subtitles = ", ".join(f"'{s}'" for s in memory_index.keys())
-            else:
-                memory_subtitles = ""
-
-            description = get_tool_description(
-                tool_id,
-                agent_name=agent_name,
-                memory_subtitles=memory_subtitles,
-                group_name=agent_group,
-                provider=provider,
-            )
-
-            tools.append(
-                Tool(
-                    name=tool_id,
-                    description=description or tool_def.description,
-                    inputSchema=tool_def.input_model.model_json_schema(),
-                )
-            )
-
-        return tools
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict):
-        """Handle tool calls."""
-        if name == "skip":
-            return _handle_skip(context)
-
-        elif name == "memorize":
-            return await _handle_memorize(arguments, context)
-
-        elif name == "recall":
-            return _handle_recall(arguments, context)
-
-        elif name == "excuse":
-            return _handle_excuse(arguments, context)
-
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    server = build_server(
+        "action",
+        "action",
+        handlers={
+            "skip": _handle_skip,
+            "memorize": _handle_memorize,
+            "recall": _handle_recall,
+            "excuse": _handle_excuse,
+        },
+        context={
+            "agent_name": agent_name,
+            "agent_group": agent_group,
+            "agent_id": agent_id,
+            "config_file": config_file,
+            "memory_index": memory_index,
+            "memory_entries": memory_entries,
+            "provider": provider,
+        },
+        description_vars={"memory_subtitles": _format_memory_subtitles(memory_index, memory_entries)},
+        # recall declares a memory_index requirement; hide it when there is nothing to recall
+        include_tool=lambda _tool_id, tool_def: not ("memory_index" in tool_def.requires and not memory_index),
+    )
 
     # Resources for memory access
     @server.list_resources()
@@ -215,13 +151,31 @@ def create_action_server(
 # =============================================================================
 
 
-def _handle_skip(context: dict) -> list[TextContent]:
+def _format_memory_subtitles(memory_index: dict, memory_entries: Optional[dict]) -> str:
+    """Render the recall tool's memory list, using thoughts as previews when available."""
+    if memory_entries:
+        # Use thoughts as previews: [subtitle]: "thought"
+        preview_parts = []
+        for subtitle, entry in memory_entries.items():
+            if entry.thoughts:
+                preview_parts.append(f'[{subtitle}]: "{entry.thoughts}"')
+            else:
+                preview_parts.append(f"'{subtitle}'")
+        return ", ".join(preview_parts)
+
+    if memory_index:
+        return ", ".join(f"'{s}'" for s in memory_index.keys())
+
+    return ""
+
+
+def _handle_skip(_name: str, _arguments: dict, context: dict) -> list[TextContent]:
     """Handle skip tool call."""
     response_text = get_tool_response("skip", group_name=context["agent_group"])
     return [TextContent(type="text", text=response_text)]
 
 
-async def _handle_memorize(arguments: dict, context: dict) -> list[TextContent]:
+async def _handle_memorize(_name: str, arguments: dict, context: dict) -> list[TextContent]:
     """Handle memorize tool call."""
     memory_entry = arguments.get("memory_entry", "")
     if not memory_entry.strip():
@@ -253,7 +207,7 @@ async def _handle_memorize(arguments: dict, context: dict) -> list[TextContent]:
     return [TextContent(type="text", text=response_text)]
 
 
-def _handle_recall(arguments: dict, context: dict) -> list[TextContent]:
+def _handle_recall(_name: str, arguments: dict, context: dict) -> list[TextContent]:
     """Handle recall tool call."""
     subtitle = arguments.get("subtitle", "")
     if not subtitle.strip():
@@ -272,7 +226,7 @@ def _handle_recall(arguments: dict, context: dict) -> list[TextContent]:
     return [TextContent(type="text", text=response_text)]
 
 
-def _handle_excuse(arguments: dict, context: dict) -> list[TextContent]:
+def _handle_excuse(_name: str, arguments: dict, context: dict) -> list[TextContent]:
     """Handle excuse tool call."""
     reason = arguments.get("reason", "")
 
@@ -359,34 +313,16 @@ def _append_to_recent_events(config_file: str, memory_entry: str) -> bool:
 # =============================================================================
 
 
-def _get_env_config() -> dict:
-    """Get configuration from environment variables."""
-    return {
-        "agent_name": os.environ.get("AGENT_NAME", "Agent"),
-        "agent_group": os.environ.get("AGENT_GROUP"),
-        "agent_id": int(os.environ["AGENT_ID"]) if os.environ.get("AGENT_ID") else None,
-        "config_file": os.environ.get("CONFIG_FILE"),
-        "provider": os.environ.get("PROVIDER", "claude"),
-    }
-
-
-async def main():
-    """Run the MCP server as a standalone process."""
-    config = _get_env_config()
-    logger.info("Starting ChitChats Action MCP Server")
-    logger.info(f"Agent: {config['agent_name']}, Group: {config['agent_group']}, Provider: {config['provider']}")
-
-    server = create_action_server(
+def _from_env(config: dict) -> Server:
+    """Build the action server, reading the two env vars only this server takes."""
+    return create_action_server(
         agent_name=config["agent_name"],
         agent_group=config["agent_group"],
-        agent_id=config["agent_id"],
-        config_file=config["config_file"],
+        agent_id=int(os.environ["AGENT_ID"]) if os.environ.get("AGENT_ID") else None,
+        config_file=os.environ.get("CONFIG_FILE"),
         provider=config["provider"],
     )
 
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
-
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_stdio("Action", _from_env)

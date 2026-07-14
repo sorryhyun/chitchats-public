@@ -71,34 +71,6 @@ def get_tools_config() -> Dict[str, Any]:
     return {"tools": tools_dict}
 
 
-def get_system_prompt_config() -> Dict[str, Any]:
-    """
-    Load the system prompt configuration.
-
-    DEPRECATED: Use get_provider_prompts(provider) instead.
-    This function now loads from provider-specific prompts.yaml files.
-
-    Returns:
-        Dictionary containing system prompt templates (claude format for backwards compat)
-    """
-    logger.debug("get_system_prompt_config is deprecated, use get_provider_prompts() instead")
-    from providers.prompt_builder import load_provider_prompts
-
-    config = load_provider_prompts("claude")
-
-    # Convert to old format for backwards compatibility
-    active_key = config.get("active_system_prompt", "system_prompt_v7")
-    prompt_content = config.get(active_key, "")
-
-    return {
-        "active_system_prompt": active_key,
-        active_key: {
-            "claude": prompt_content,
-            "codex": get_provider_prompts("codex").get(active_key, ""),
-        },
-    }
-
-
 def get_debug_config() -> Dict[str, Any]:
     """
     Load the debug configuration from debug.yaml with environment variable overrides.

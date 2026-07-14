@@ -19,27 +19,19 @@ Environment variables (for subprocess mode):
     MOLTBOOK_API_KEY: Moltbook API key (required for Moltbook tools)
 """
 
-import asyncio
 import json
-import logging
 import os
 import urllib.error
 import urllib.request
 from typing import Optional
 
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import TextContent
 
-from .config import (
-    get_tool_description,
-    get_tool_response,
-    get_tools_by_group,
-    is_tool_enabled,
-)
+from .base import build_server, run_stdio, setup_logging
+from .config import get_tool_response
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("SocialServer")
+logger = setup_logging("SocialServer")
 
 
 def create_social_server(
@@ -58,53 +50,16 @@ def create_social_server(
     Returns:
         Configured MCP Server instance
     """
-    server = Server("chitchats_social")
-
-    # Context for tools
-    context = {
-        "agent_name": agent_name,
-        "agent_group": group_name,
-        "provider": provider,
-    }
-
-    @server.list_tools()
-    async def list_tools():
-        """List available social tools based on registry."""
-        tools = []
-
-        for tool_id, tool_def in get_tools_by_group("social").items():
-            # Check if enabled for this provider/group
-            if not is_tool_enabled(tool_id, group_name=group_name, provider=provider):
-                continue
-
-            # Get description with variable substitution
-            description = get_tool_description(
-                tool_id,
-                agent_name=agent_name,
-                group_name=group_name,
-                provider=provider,
-            )
-
-            tools.append(
-                Tool(
-                    name=tool_id,
-                    description=description or tool_def.description,
-                    inputSchema=tool_def.input_model.model_json_schema(),
-                )
-            )
-
-        return tools
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict):
-        """Handle tool calls."""
-        if name == "moltbook":
-            return _handle_moltbook(arguments, context)
-
-        else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-    return server
+    return build_server(
+        "chitchats_social",
+        "social",
+        handlers={"moltbook": _handle_moltbook},
+        context={
+            "agent_name": agent_name,
+            "agent_group": group_name,
+            "provider": provider,
+        },
+    )
 
 
 # =============================================================================
@@ -112,7 +67,7 @@ def create_social_server(
 # =============================================================================
 
 
-def _handle_moltbook(arguments: dict, context: dict) -> list[TextContent]:
+def _handle_moltbook(_name: str, arguments: dict, context: dict) -> list[TextContent]:
     """
     Handle Moltbook social network tool calls.
 
@@ -276,30 +231,12 @@ def _moltbook_request(
 # =============================================================================
 
 
-def _get_env_config() -> dict:
-    """Get configuration from environment variables."""
-    return {
-        "agent_name": os.environ.get("AGENT_NAME", "Agent"),
-        "agent_group": os.environ.get("AGENT_GROUP"),
-        "provider": os.environ.get("PROVIDER", "claude"),
-    }
-
-
-async def main():
-    """Run the MCP server as a standalone process."""
-    config = _get_env_config()
-    logger.info("Starting ChitChats Social MCP Server")
-    logger.info(f"Agent: {config['agent_name']}, Group: {config['agent_group']}, Provider: {config['provider']}")
-
-    server = create_social_server(
-        agent_name=config["agent_name"],
-        group_name=config["agent_group"],
-        provider=config["provider"],
-    )
-
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_stdio(
+        "Social",
+        lambda config: create_social_server(
+            agent_name=config["agent_name"],
+            group_name=config["agent_group"],
+            provider=config["provider"],
+        ),
+    )

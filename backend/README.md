@@ -128,16 +128,17 @@ class ToolDef:
 - `current_time` - Current time
 - `moltbook` - Community/social tools (requires `ENABLE_COMMUNITY`)
 
-**Guidelines** are not a tool. They are part of the system prompt, in the `<guidelines>` block of each provider's `prompts.yaml`.
+**Guidelines** are not a tool. They are part of the system prompt, in the `<guidelines>` block of `providers/prompts_base.yaml`.
 
 ## System Prompt
 
-System prompts and behavioral guidelines live with each provider:
+The system prompt body is shared by both providers; each provider contributes only an overlay:
 
-- `providers/claude/prompts.yaml` - Prompt for Claude
-- `providers/codex/prompts.yaml` - Prompt for Codex/GPT
+- `providers/prompts_base.yaml` - Shared prompt body, selecting its active version via `active_system_prompt`
+- `providers/claude/prompts.yaml` - Claude `overlay` (Anthropic/Claude wording, `mcp__guidelines__anthropic`) + `conversation_context`
+- `providers/codex/prompts.yaml` - Codex `overlay` (OpenAI/GPT wording, `mcp__guidelines__openai`, `<tool_grounding>` for `image_gen`) + `conversation_context`
 
-Each file selects its active prompt via the `active_system_prompt` key and is assembled by `providers/prompt_builder.py`, which injects the agent's parsed config sections (`in_a_nutshell`, `characteristics`, `recent_events`).
+`providers/prompt_builder.py` substitutes the overlay into the shared body, then injects the agent's parsed config sections (`in_a_nutshell`, `characteristics`, `recent_events`). A provider can still override the body wholesale by defining the active `system_prompt_*` key in its own file.
 
 ## Key Concepts
 

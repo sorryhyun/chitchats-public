@@ -140,7 +140,7 @@ agents/
 **Agent configs**, **system prompt**, and **tool configurations** use filesystem as single source of truth:
 - Agent configs: `agents/{name}/*.md` files (DB is cache only)
 - Agent parsing: `backend/domain/agent_parser.py` (folder-based only)
-- System prompt: `backend/providers/{claude,codex}/prompts.yaml` (`active_system_prompt` selects the version); shared sections in `backend/mcp_servers/config/prompts_shared.yaml`
+- System prompt: `backend/providers/prompts_base.yaml` holds the shared body (`active_system_prompt` selects the version); `backend/providers/{claude,codex}/prompts.yaml` hold only each provider's `overlay` (vendor wording, policy tool, provider-only sections) and `conversation_context`. Room-level shared sections live in `backend/mcp_servers/config/prompts_shared.yaml`
 - Tool configurations: `backend/mcp_servers/config/` directory
 - File locking prevents concurrent write conflicts
 - See `backend/infrastructure/locking.py` for implementation
@@ -154,7 +154,7 @@ Tool descriptions and debug settings are configured in `backend/mcp_servers/conf
 - Tool descriptions support template variables (`{agent_name}`, `{memory_subtitles}`)
 - Each `ToolDef` has an `enabled` flag; some are off by default
 
-**Guidelines** are not a tool and not a separate config file. They ship inside the `<guidelines>` block of the active system prompt in `backend/providers/{claude,codex}/prompts.yaml`, and use third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why).
+**Guidelines** are not a tool and not a separate config file. They ship inside the `<guidelines>` block of the active system prompt in `backend/providers/prompts_base.yaml`, and use third-person perspective (see [docs/how_it_works.md](docs/how_it_works.md) for why).
 
 **`debug.yaml`** - Debug logging configuration
 - Control what gets logged (system prompt, tools, messages, responses)
@@ -236,11 +236,11 @@ All settings are declared in `backend/core/settings.py` (Pydantic `BaseSettings`
 
 **Update agent:** Edit `.md` files directly
 
-**Update system prompt:** Edit the active `system_prompt_*` block in `backend/providers/{claude,codex}/prompts.yaml`
+**Update system prompt:** Edit the active `system_prompt_*` block in `backend/providers/prompts_base.yaml` (applies to both providers). For provider-only wording, edit the `overlay` in `backend/providers/{claude,codex}/prompts.yaml`
 
 **Update tool descriptions:** Edit `backend/mcp_servers/config/tools.py`
 
-**Update guidelines:** Edit the `<guidelines>` block inside the active `system_prompt_*` in `backend/providers/{claude,codex}/prompts.yaml`
+**Update guidelines:** Edit the `<guidelines>` block inside the active `system_prompt_*` in `backend/providers/prompts_base.yaml`
 
 **Enable debug logging:** Set `DEBUG_AGENTS=true` in `.env` or edit `backend/mcp_servers/config/debug.yaml`
 

@@ -19,10 +19,11 @@ When an agent needs to respond, it receives:
 
 ## System Prompt
 
-System prompts are **per-provider**: `backend/providers/claude/prompts.yaml` and
-`backend/providers/codex/prompts.yaml`. Each file selects its active version via `active_system_prompt`
-(both currently `system_prompt_v7`) and is assembled by `build_system_prompt()` in
-`backend/providers/prompt_builder.py`.
+The system prompt **body is shared**: `backend/providers/prompts_base.yaml`, which selects its active
+version via `active_system_prompt` (currently `system_prompt_v8`). Each provider contributes only an
+`overlay` — vendor wording (Anthropic/Claude vs OpenAI/GPT), the policy tool, and any provider-only
+sections — from `backend/providers/{claude,codex}/prompts.yaml`. `build_system_prompt()` in
+`backend/providers/prompt_builder.py` substitutes the overlay into the shared body and assembles the rest.
 
 The Claude base prompt (`system_prompt_v7`):
 
@@ -191,7 +192,8 @@ Configuration files:
 
 | What | Where |
 |------|-------|
-| System prompt (per provider) | `backend/providers/claude/prompts.yaml`, `backend/providers/codex/prompts.yaml` |
+| System prompt (shared body) | `backend/providers/prompts_base.yaml` |
+| System prompt (per-provider overlay) | `overlay` section of `backend/providers/{claude,codex}/prompts.yaml` |
 | Conversation context format | `conversation_context` section of the same provider prompts file |
 | Shared prompt fragments (e.g. situation builder note) | `backend/mcp_servers/config/prompts_shared.yaml` |
 | Behavioral guidelines | `<guidelines>` block of the active system prompt, in the provider prompts file |

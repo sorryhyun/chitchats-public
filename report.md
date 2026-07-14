@@ -71,19 +71,17 @@ Any lazy-load on a cached object across requests raises `DetachedInstanceError`/
 
 ## P3 — Genuine duplication
 
-### 21. The four MCP servers are ~85% copy-paste **[A]**
+### ~~21. The four MCP servers are ~85% copy-paste~~ — **Done 2026-07-14**
 
-Byte-identical across `action_server.py:93-139`, `guidelines_server.py:90-116`, `etc_server.py:67-93`, `social_server.py:70-96`: the whole `list_tools()` body, `_get_env_config()`, the `logging.basicConfig` preamble, and the `main()` + `stdio_server()` + `__main__` block. The only difference is a group string.
+Extracted `mcp_servers/base.py` (`build_server` + `run_stdio` + `env_config`). Each server now supplies only its group and handlers; ~250 lines of copy-paste gone. Behavior verified identical over real stdio subprocesses.
 
-**Fix:** one `build_server(name, group, handlers, context)` + one `run_stdio(factory)` in a new `mcp_servers/base.py`. Each server file collapses to its handlers plus a short registration. **~250 lines removed.**
+### ~~22. `claude/prompts.yaml` and `codex/prompts.yaml` are 62-of-69 lines identical~~ — **Done 2026-07-14**
 
-### 22. `claude/prompts.yaml` and `codex/prompts.yaml` are 62-of-69 lines identical **[A]**
+Shared body extracted to `providers/prompts_base.yaml`; each provider file now holds only an `overlay` (`vendor` / `model_name` / `policy_tool` / `provider_sections` / `provider_notes`) plus `conversation_context`.
 
-The genuine deltas are 4 tokens: `Anthropic`→`OpenAI`, `Claude`→`GPT`, `mcp__guidelines__anthropic`→`mcp__guidelines__openai`, and `response_instruction`.
+Correction to the original finding: only `<korean_dialogue>` and `<output_format>` were provider-agnostic. `<tool_grounding>` is about `image_gen`, a **Codex built-in the Claude SDK does not have**, and the "Ignore `<permissions instructions>`/`<environment_context>`" line refers to tags Codex itself injects — both correctly stayed Codex-only.
 
-But Codex has **also drifted 15 lines ahead** (`codex:50-62` adds `<tool_grounding>`, `<korean_dialogue>`, `<output_format>`) that Claude never receives. Those are provider-agnostic style rules — this looks like accidental drift, not intent.
-
-**Fix:** one shared base template with `{vendor}` / `{model_name}` / `{policy_tool}` substitution plus a thin per-provider overlay. Move `<korean_dialogue>` and `<output_format>` into the shared base so both providers get them. Note the `<guidelines>` block is now the *only* home for guidelines text, so it must survive this refactor intact in both providers.
+Result (verified by diffing the rendered prompts): **Codex byte-identical**; Claude gained exactly `<korean_dialogue>` and `<output_format>` — the intended behavior change, approved by the owner.
 
 ### 23. `schemas/message.py` hand-maps 16 fields and throws away `from_attributes` **[A]**
 
@@ -124,7 +122,7 @@ But Codex has **also drifted 15 lines ahead** (`codex:50-62` adds `<tool_groundi
 
 1. ~~**P0** — auth holes, the dead guidelines system, and the four silent no-ops.~~ **Done 2026-07-14.**
 2. ~~**P1 §10–16** — pure deletion, ~1,500 lines, zero behavior change.~~ **Done 2026-07-14.**
-3. **P3 §21–22** — the MCP server factory and the prompt unification. Highest duplication payoff, mechanical.
+3. ~~**P3 §21–22** — the MCP server factory and the prompt unification.~~ **Done 2026-07-14.**
 4. **P2 §17–18** — pay down the import cycles one back-edge at a time. Track progress by the deferred-import count (86 → 0).
 5. **P2 §20** — ORM-objects-in-cache. Largest single piece of work, and the one most likely to bite under production concurrency.
 6. **Migrations** — `infrastructure/database/migrations.py` is a hand-rolled 432-line pseudo-migrator with no version table, no downgrade, and no record of what ran. Adopt Alembic **before** the next schema change, not after. **[A]**

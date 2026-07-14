@@ -248,9 +248,9 @@ All scripts are organized in the `scripts/` directory:
 
 **Update agent:** Edit `.md` files directly
 
-**Update system prompt:** Edit `backend/providers/claude/prompts.yaml` (or `backend/providers/codex/prompts.yaml`), selecting the active prompt via `active_system_prompt`
+**Update system prompt:** Edit `backend/providers/prompts_base.yaml` (shared by both providers), selecting the active prompt via `active_system_prompt`. For provider-only wording, edit the `overlay` in `backend/providers/{claude,codex}/prompts.yaml`
 
-**Update guidelines:** Edit the `<guidelines>` block inside the active `system_prompt_*` in the provider's `prompts.yaml`
+**Update guidelines:** Edit the `<guidelines>` block inside the active `system_prompt_*` in `backend/providers/prompts_base.yaml`
 
 **Update tool descriptions:** Edit the `TOOLS` registry in `backend/mcp_servers/config/tools.py`
 
