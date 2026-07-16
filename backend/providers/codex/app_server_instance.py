@@ -55,6 +55,25 @@ from .constants import (
 logger = logging.getLogger("CodexAppServerInstance")
 
 
+def _image_urls_from_result(result: Any) -> List[str]:
+    """Find generated-image URLs in an MCP tool result.
+
+    The result carries untyped MCP content blocks, so this matches the serialized
+    form rather than reaching into a block shape the SDK doesn't pin down.
+    """
+    if result is None:
+        return []
+
+    from infrastructure.generated_images import extract_image_urls
+
+    try:
+        raw = result.model_dump_json() if hasattr(result, "model_dump_json") else str(result)
+    except Exception:
+        raw = str(result)
+
+    return extract_image_urls(raw)
+
+
 class CodexAppServerInstance:
     """Single Codex App Server instance.
 
@@ -366,7 +385,15 @@ class CodexAppServerInstance:
                         args = json.loads(args)
                     except (json.JSONDecodeError, TypeError):
                         args = {}
-                return tool_call(item.tool, args if isinstance(args, dict) else {})
+                args = args if isinstance(args, dict) else {}
+
+                # The image server saved the picture itself and reported the URL as text;
+                # surface it as a generated image so it rides along with the message.
+                urls = _image_urls_from_result(item.result)
+                if urls:
+                    return generated_image(urls[0], "image/png", args.get("prompt", ""))
+
+                return tool_call(item.tool, args)
 
             if isinstance(item, ImageGenerationThreadItem):
                 # Codex generated an image. Persist to disk and emit an event.

@@ -62,7 +62,7 @@ make build-non-tauri   # Same as build-exe
   - Recent events auto-update based on conversation history
   - Agents continue conversations in background when user is not in room
   - Cached database queries and filesystem reads (`backend/core/cache_service.py`, `backend/infrastructure/cache.py`)
-  - Modular MCP tool servers (`backend/mcp_servers/`: action, guidelines, etc, social)
+  - Modular MCP tool servers (`backend/mcp_servers/`: action, guidelines, etc, social, image)
 
 **Backend packages:** `chatroom_orchestration` (incl. `tape/`), `core`, `crud`, `domain`, `i18n`, `infrastructure` (`database/`, `logging/`), `launch` (`setup/`), `mcp_servers` (`config/`), `providers` (`claude/`, `codex/`), `routers`, `schemas`.
 
@@ -150,7 +150,7 @@ agents/
 Tool descriptions and debug settings are configured in `backend/mcp_servers/config/`:
 
 **`tools.py`** - Tool definitions and descriptions (Python-based)
-- Defines available tools: `skip`, `memorize`, `recall`, `excuse` (action server); `anthropic`/`openai` (guidelines server); `current_time` (etc server); `moltbook` (social server)
+- Defines available tools: `skip`, `memorize`, `recall`, `excuse` (action server); `anthropic`/`openai` (guidelines server); `current_time` (etc server); `moltbook` (social server); `draw` (image server)
 - Tool descriptions support template variables (`{agent_name}`, `{memory_subtitles}`)
 - Each `ToolDef` has an `enabled` flag; some are off by default
 
@@ -159,6 +159,21 @@ Tool descriptions and debug settings are configured in `backend/mcp_servers/conf
 **`debug.yaml`** - Debug logging configuration
 - Control what gets logged (system prompt, tools, messages, responses)
 - Can be overridden by `DEBUG_AGENTS` environment variable
+
+### Image Generation
+
+Agents post pictures with the `draw` tool (`backend/mcp_servers/image_server.py`), which replaces Codex's
+built-in image generation (`features.image_generation` is off in `backend/providers/configs.py`).
+
+- **Appearance is automatic**: the `## 외형` / `## Appearance` section of `characteristics.md` is woven into
+  the prompt, so characters look like themselves. Agents describe the scene, not the character.
+  `involve_appearance: false` sends the raw prompt for pictures with no characters in them.
+- **Other characters**: the `characters` param names who is in the picture; each one's appearance is looked
+  up by agent folder name.
+- **Both providers**: images are generated via the Codex backend endpoint using the ChatGPT OAuth tokens from
+  `~/.codex/auth.json`, so Claude rooms can draw too — run `codex login` first.
+- Pictures are saved to `work_dir/generated_images/` and attached to the agent's message; they are not
+  inlined into the database.
 
 ### Group Configuration
 

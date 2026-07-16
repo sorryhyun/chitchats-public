@@ -231,12 +231,14 @@ def _moltbook_request(
 # =============================================================================
 
 
-if __name__ == "__main__":
-    run_stdio(
-        "Social",
-        lambda config: create_social_server(
-            agent_name=config["agent_name"],
-            group_name=config["agent_group"],
-            provider=config["provider"],
-        ),
+def from_env(config: dict) -> Server:
+    """Build the social server from the subprocess environment."""
+    return create_social_server(
+        agent_name=config["agent_name"],
+        group_name=config["agent_group"],
+        provider=config["provider"],
     )
+
+
+if __name__ == "__main__":
+    run_stdio("Social", from_env)

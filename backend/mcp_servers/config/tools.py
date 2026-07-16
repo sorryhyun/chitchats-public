@@ -85,6 +85,37 @@ class CurrentTimeInput(BaseModel):
     pass
 
 
+class DrawInput(BaseModel):
+    """Input model for the draw (image generation) tool."""
+
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "What the picture shows: subject, action, setting, mood, framing. "
+            "Describe the scene only — the appearance of the characters is filled in "
+            "automatically, so do not restate hair, eyes, build, or outfit here."
+        ),
+    )
+    involve_appearance: bool = Field(
+        True,
+        description=(
+            "Weave the registered appearance of the characters into the prompt so they "
+            "look like themselves. Set false only for pictures the characters are not in "
+            "(scenery, objects, a drawing they made)."
+        ),
+    )
+    characters: list[str] | None = Field(
+        None,
+        description=(
+            "Names of every character in the picture, exactly as they appear in the room. "
+            "Omit for a picture of the drawing agent alone. When given, this is the full cast — "
+            "include the drawing agent's own name unless it is not in the picture."
+        ),
+    )
+    _validate_prompt = _non_empty_string("prompt", "Prompt")
+
+
 class MoltbookInput(BaseModel):
     """Input model for Moltbook social network tool.
 
@@ -277,6 +308,27 @@ TOOLS: dict[str, ToolDef] = {
         ),
         response="Current time: {current_time}",
         input_model=CurrentTimeInput,
+    ),
+    # Image Tools
+    "draw": ToolDef(
+        name="mcp__image__draw",
+        group="image",
+        description=(
+            "Post a picture to the chat, as {agent_name} would share one — a selfie, a snapshot of "
+            "where {agent_name} is, something {agent_name} drew or is pointing at. "
+            "Use it when {agent_name} would naturally show something rather than describe it, or when "
+            "another character asks to see something. The picture arrives as {agent_name}'s own message, "
+            "so keep the accompanying text in character: {agent_name} is sharing a picture, "
+            "not generating an image for someone. Never announce or narrate the act of generating. "
+            "The registered appearance of each character is applied automatically — describe the scene, "
+            "not what the characters look like."
+        ),
+        response=(
+            "The picture is now posted in the chat: {image_url}\n"
+            "The others can see it. Continue in character as {agent_name}, reacting as someone who just "
+            "shared this picture — do not describe the picture in full, and do not mention having generated it."
+        ),
+        input_model=DrawInput,
     ),
     # Social Tools
     "moltbook": ToolDef(

@@ -357,6 +357,7 @@ class AIProvider(ABC):
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
         excuse_reasons_capture: Optional[List[str]] = None,
+        generated_images_capture: Optional[List[Dict[str, Any]]] = None,
     ) -> Any:
         """Build provider-specific options from base configuration.
 
@@ -365,6 +366,7 @@ class AIProvider(ABC):
             anthropic_calls_capture: List to capture anthropic tool calls
             skip_tool_capture: List to capture skip tool usage
             excuse_reasons_capture: List to capture excuse tool reasons
+            generated_images_capture: List to capture images drawn via the image tool
 
         Returns:
             Provider-specific options object

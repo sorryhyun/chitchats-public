@@ -119,7 +119,9 @@ class CodexStartupConfig:
             "features.child_agents_md": False,  # Disables child agents markdown
             "features.enable_request_compression": False,
             "features.skill_mcp_dependency_install": False,
-            "features.image_generation": True,  # Enable built-in image generation (equivalent to --enable image_generation)
+            # Built-in image generation is replaced by our image MCP server, which weaves each
+            # character's registered appearance into the prompt (see mcp_servers/image_server.py).
+            "features.image_generation": False,
             "features.memories": False,
             "features.apps": False,
             "features.fast_mode": False,

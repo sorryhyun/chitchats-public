@@ -98,12 +98,14 @@ def _handle_policy_tool(tool_name: str, arguments: dict, context: dict) -> list[
 # =============================================================================
 
 
-if __name__ == "__main__":
-    run_stdio(
-        "Guidelines",
-        lambda config: create_guidelines_server(
-            agent_name=config["agent_name"],
-            group_name=config["agent_group"],
-            provider=config["provider"],
-        ),
+def from_env(config: dict) -> Server:
+    """Build the guidelines server from the subprocess environment."""
+    return create_guidelines_server(
+        agent_name=config["agent_name"],
+        group_name=config["agent_group"],
+        provider=config["provider"],
     )
+
+
+if __name__ == "__main__":
+    run_stdio("Guidelines", from_env)

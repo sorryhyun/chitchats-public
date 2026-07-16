@@ -23,7 +23,7 @@ def main():
             idx = sys.argv.index("--mcp-server")
             server_type = sys.argv[idx + 1]
         except (IndexError, ValueError):
-            print("Usage: ChitChats.exe --mcp-server <action|guidelines>", file=sys.stderr)
+            print("Usage: ChitChats.exe --mcp-server <action|guidelines|etc|image|social>", file=sys.stderr)
             sys.exit(1)
         run_mcp_server(server_type)
         return

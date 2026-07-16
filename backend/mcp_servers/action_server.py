@@ -313,7 +313,7 @@ def _append_to_recent_events(config_file: str, memory_entry: str) -> bool:
 # =============================================================================
 
 
-def _from_env(config: dict) -> Server:
+def from_env(config: dict) -> Server:
     """Build the action server, reading the two env vars only this server takes."""
     return create_action_server(
         agent_name=config["agent_name"],
@@ -325,4 +325,4 @@ def _from_env(config: dict) -> Server:
 
 
 if __name__ == "__main__":
-    run_stdio("Action", _from_env)
+    run_stdio("Action", from_env)

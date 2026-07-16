@@ -18,21 +18,25 @@ def run_mcp_server(server_type: str) -> None:
     allowing Codex to spawn this exe as an MCP server subprocess.
 
     Args:
-        server_type: Either "action", "guidelines", or "etc"
+        server_type: One of "action", "guidelines", "etc", "image", "social"
     """
-    import asyncio
-
     setup_paths()
 
+    from mcp_servers.base import run_stdio
+
     if server_type == "action":
-        from mcp_servers.action_server import main as server_main
+        from mcp_servers.action_server import from_env
     elif server_type == "guidelines":
-        from mcp_servers.guidelines_server import main as server_main
+        from mcp_servers.guidelines_server import from_env
     elif server_type == "etc":
-        from mcp_servers.etc_server import main as server_main
+        from mcp_servers.etc_server import from_env
+    elif server_type == "image":
+        from mcp_servers.image_server import from_env
+    elif server_type == "social":
+        from mcp_servers.social_server import from_env
     else:
         print(f"Unknown MCP server type: {server_type}", file=sys.stderr)
-        print("Valid types: action, guidelines, etc", file=sys.stderr)
+        print("Valid types: action, guidelines, etc, image, social", file=sys.stderr)
         sys.exit(1)
 
-    asyncio.run(server_main())
+    run_stdio(server_type.capitalize(), from_env)

@@ -80,6 +80,11 @@ class MCPConfigBuilder:
         # The guidelines server needs nothing beyond the base env
         guidelines_env = base_env.copy()
 
+        # The image server reads the agent's own appearance from its config folder
+        image_env = base_env.copy()
+        if env_config.config_file is not None:
+            image_env["CONFIG_FILE"] = env_config.config_file
+
         # When running as PyInstaller bundle, use --mcp-server flag instead of -m
         is_frozen = getattr(sys, "frozen", False)
 
@@ -88,11 +93,13 @@ class MCPConfigBuilder:
             action_args = ["--mcp-server", "action"]
             guidelines_args = ["--mcp-server", "guidelines"]
             etc_args = ["--mcp-server", "etc"]
+            image_args = ["--mcp-server", "image"]
         else:
             # Development: use Python module invocation
             action_args = ["-m", "mcp_servers.action_server"]
             guidelines_args = ["-m", "mcp_servers.guidelines_server"]
             etc_args = ["-m", "mcp_servers.etc_server"]
+            image_args = ["-m", "mcp_servers.image_server"]
 
         servers: Dict[str, MCPServerConfig] = {
             "action": {
@@ -105,6 +112,12 @@ class MCPConfigBuilder:
                 "command": python_exe,
                 "args": guidelines_args,
                 "env": guidelines_env,
+                "cwd": backend_dir,
+            },
+            "image": {
+                "command": python_exe,
+                "args": image_args,
+                "env": image_env,
                 "cwd": backend_dir,
             },
         }

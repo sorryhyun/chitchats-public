@@ -190,6 +190,77 @@ def parse_long_term_memory_with_thoughts(file_path: Path) -> Dict[str, MemoryEnt
 
 
 # =============================================================================
+# Appearance Parsing
+# =============================================================================
+
+# characteristics.md opens with an appearance section, headed either "## 외형" or
+# "## Appearance" (see agents/README.md). Everything up to the next "##" is the body.
+APPEARANCE_SECTION_PATTERN = re.compile(
+    r"^##[ \t]*(?:외형|Appearance)[ \t]*$\n(.*?)(?=^##[ \t]|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+
+
+def extract_appearance(characteristics: str) -> str:
+    """
+    Pull the appearance section out of a characteristics.md body.
+
+    Args:
+        characteristics: Full text of characteristics.md
+
+    Returns:
+        The section body (bullets kept as written), or "" when the agent has no
+        appearance section — 2 of 61 shipped agents don't.
+    """
+    if not characteristics:
+        return ""
+
+    match = APPEARANCE_SECTION_PATTERN.search(characteristics)
+    return match.group(1).strip() if match else ""
+
+
+def get_appearance_by_name(agent_name: str) -> str:
+    """
+    Look up an agent's folder by name and return its appearance section.
+
+    Used to describe agents other than the caller, who are known only by the name
+    they go by in the room.
+
+    Args:
+        agent_name: Folder name of the agent (e.g. "프리렌")
+
+    Returns:
+        The appearance section, or "" if the agent or the section is missing.
+    """
+    config = list_available_configs().get(agent_name)
+    if not config:
+        return ""
+
+    return get_appearance_by_folder(_get_agents_dir().parent / config["path"])
+
+
+def get_appearance_by_folder(folder_path: Path) -> str:
+    """
+    Read the appearance section straight from an agent folder.
+
+    Args:
+        folder_path: Path to the agent folder
+
+    Returns:
+        The appearance section, or "" if characteristics.md is missing/unreadable.
+    """
+    characteristics = folder_path / "characteristics.md"
+    if not characteristics.exists():
+        return ""
+
+    try:
+        return extract_appearance(_read_file_with_fallback(characteristics))
+    except Exception as e:
+        logger.warning(f"Failed to read appearance from {characteristics}: {e}")
+        return ""
+
+
+# =============================================================================
 # Agent Configuration Parsing
 # =============================================================================
 

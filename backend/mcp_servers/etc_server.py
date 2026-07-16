@@ -81,12 +81,14 @@ def _handle_current_time(_name: str, _arguments: dict, context: dict) -> list[Te
 # =============================================================================
 
 
-if __name__ == "__main__":
-    run_stdio(
-        "Etc",
-        lambda config: create_etc_server(
-            agent_name=config["agent_name"],
-            group_name=config["agent_group"],
-            provider=config["provider"],
-        ),
+def from_env(config: dict) -> Server:
+    """Build the etc server from the subprocess environment."""
+    return create_etc_server(
+        agent_name=config["agent_name"],
+        group_name=config["agent_group"],
+        provider=config["provider"],
     )
+
+
+if __name__ == "__main__":
+    run_stdio("Etc", from_env)

@@ -11,7 +11,7 @@ import asyncio
 import logging
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk.types import HookMatcher, PostToolUseHookInput, SyncHookJSONOutput
@@ -130,6 +130,7 @@ class ClaudeProvider(AIProvider):
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
         excuse_reasons_capture: Optional[List[str]] = None,
+        generated_images_capture: Optional[List[Dict[str, Any]]] = None,
     ) -> ClaudeAgentOptions:
         """Build Claude SDK options from base configuration.
 
@@ -138,6 +139,7 @@ class ClaudeProvider(AIProvider):
             anthropic_calls_capture: List to capture anthropic tool calls
             skip_tool_capture: List to capture skip tool usage
             excuse_reasons_capture: List to capture excuse tool reasons
+            generated_images_capture: List to capture images drawn via the image tool
 
         Returns:
             ClaudeAgentOptions ready for client creation
@@ -163,10 +165,16 @@ class ClaudeProvider(AIProvider):
             *get_tool_names_by_group("guidelines"),
             *get_tool_names_by_group("action"),
             *get_tool_names_by_group("etc"),
+            *get_tool_names_by_group("image"),
         ]
 
         # Create PostToolUse hooks
-        hooks = self._build_tool_capture_hooks(anthropic_calls_capture, skip_tool_capture, excuse_reasons_capture)
+        hooks = self._build_tool_capture_hooks(
+            anthropic_calls_capture,
+            skip_tool_capture,
+            excuse_reasons_capture,
+            generated_images_capture,
+        )
 
         # Determine model: room override → env var default → opus
         model = base_options.model
@@ -228,6 +236,7 @@ class ClaudeProvider(AIProvider):
         anthropic_calls_capture: Optional[List[str]],
         skip_tool_capture: Optional[List[bool]],
         excuse_reasons_capture: Optional[List[str]] = None,
+        generated_images_capture: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[dict]:
         """Build PostToolUse hooks for capturing tool calls."""
         hook_matchers = []
@@ -268,6 +277,30 @@ class ClaudeProvider(AIProvider):
                 return {"continue_": True}
 
             hook_matchers.append(HookMatcher(matcher="mcp__action__skip", hooks=[capture_skip_tool]))
+
+        # Hook for the draw tool. Unlike the others this reads the tool *result*: the
+        # image server saved the picture and reported its URL back in the response.
+        if generated_images_capture is not None:
+
+            async def capture_draw_tool(
+                input_data: PostToolUseHookInput,
+                _tool_use_id: Optional[str],
+                _ctx: dict,
+            ) -> SyncHookJSONOutput:
+                """Hook to capture pictures drawn via the image tool."""
+                from infrastructure.generated_images import extract_image_urls
+
+                tool_name = input_data.get("tool_name", "")
+                if tool_name.endswith("__draw"):
+                    prompt = input_data.get("tool_input", {}).get("prompt", "")
+                    for url in extract_image_urls(str(input_data.get("tool_response", ""))):
+                        generated_images_capture.append(
+                            {"url": url, "media_type": "image/png", "prompt": prompt}
+                        )
+                        logger.info(f"Captured drawn image: {url}")
+                return {"continue_": True}
+
+            hook_matchers.append(HookMatcher(matcher="mcp__image__draw", hooks=[capture_draw_tool]))
 
         # Excuse tool calls are now captured via input_json_delta streaming
         # in ResponseAccumulator instead of PostToolUse hooks

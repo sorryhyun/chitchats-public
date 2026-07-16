@@ -9,6 +9,7 @@ static mount.
 
 import base64
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
@@ -76,6 +77,26 @@ def save_generated_image(
     url = f"{URL_PREFIX}/{filename}"
     logger.info(f"Saved generated image: {url} ({len(raw)} bytes)")
     return url, media_type
+
+
+# The image MCP server saves the file itself and can only hand the URL back to the
+# provider as text. Both providers recover it from the tool result with this.
+_IMAGE_URL_PATTERN = re.compile(rf"{re.escape(URL_PREFIX)}/[0-9a-f]+\.[A-Za-z0-9]+")
+
+
+def extract_image_urls(text: str) -> list[str]:
+    """Find the generated-image URLs an image tool reported in its result text.
+
+    Args:
+        text: Tool result text.
+
+    Returns:
+        Matching /generated_images/... URLs, in order, without duplicates.
+    """
+    if not text:
+        return []
+
+    return list(dict.fromkeys(_IMAGE_URL_PATTERN.findall(text)))
 
 
 def _ext_for_media_type(media_type: str) -> str:

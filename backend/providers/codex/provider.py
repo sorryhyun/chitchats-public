@@ -116,6 +116,7 @@ class CodexProvider(AIProvider):
         anthropic_calls_capture: Optional[List[str]] = None,
         skip_tool_capture: Optional[List[bool]] = None,
         excuse_reasons_capture: Optional[List[str]] = None,
+        generated_images_capture: Optional[List[Dict[str, Any]]] = None,
     ) -> CodexAppServerOptions:
         """Build Codex App Server options from base configuration.
 
@@ -124,6 +125,7 @@ class CodexProvider(AIProvider):
             anthropic_calls_capture: Not used for Codex (tool capture via parsing)
             skip_tool_capture: Not used for Codex (tool capture via parsing)
             excuse_reasons_capture: Not used for Codex (tool capture via parsing)
+            generated_images_capture: Not used for Codex (tool capture via parsing)
 
         Returns:
             CodexAppServerOptions ready for client creation
@@ -138,6 +140,7 @@ class CodexProvider(AIProvider):
         _ = anthropic_calls_capture
         _ = skip_tool_capture
         _ = excuse_reasons_capture
+        _ = generated_images_capture
 
         # Build agent key for instance identification
         agent_id = base_options.mcp_tools.get("agent_id") if base_options.mcp_tools else None
