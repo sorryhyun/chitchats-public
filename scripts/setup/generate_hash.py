@@ -78,15 +78,15 @@ def prompt_password(label: str) -> str | None:
     """Prompt for a password twice and return it, or None if the user bails."""
     password = getpass.getpass(f"Enter {label}: ")
     if not password:
-        print("\n❌ Empty password. Aborted.")
+        print("\n[ERROR] Empty password. Aborted.")
         return None
 
     if password != getpass.getpass(f"Confirm {label}: "):
-        print("\n❌ Passwords do not match. Please try again.")
+        print("\n[ERROR] Passwords do not match. Please try again.")
         return None
 
     if len(password) < 8:
-        print("\n⚠️  Warning: Password is less than 8 characters.")
+        print("\n[WARNING] Password is less than 8 characters.")
         print("   Consider using a longer password for better security.")
         if input("Continue anyway? (y/N): ").lower() != "y":
             print("Aborted.")
@@ -98,13 +98,13 @@ def prompt_password(label: str) -> str | None:
 def load_env_lines() -> list[str]:
     """Return .env's lines, seeding it from .env.example on first run."""
     if ENV_PATH.exists():
-        return ENV_PATH.read_text().splitlines()
+        return ENV_PATH.read_text(encoding="utf-8").splitlines()
 
     if ENV_EXAMPLE_PATH.exists():
-        print(f"📄 No .env found — creating one from {ENV_EXAMPLE_PATH.name}")
-        return ENV_EXAMPLE_PATH.read_text().splitlines()
+        print(f"[INFO] No .env found - creating one from {ENV_EXAMPLE_PATH.name}")
+        return ENV_EXAMPLE_PATH.read_text(encoding="utf-8").splitlines()
 
-    print("📄 No .env or .env.example found — creating a minimal .env")
+    print("[INFO] No .env or .env.example found - creating a minimal .env")
     return []
 
 
@@ -113,9 +113,9 @@ def write_env(lines: list[str]) -> None:
     if ENV_PATH.exists():
         backup = ENV_PATH.with_name(".env.bak")
         shutil.copy2(ENV_PATH, backup)
-        print(f"🗄️  Backed up existing .env to {backup.name}")
+        print(f"[INFO] Backed up existing .env to {backup.name}")
 
-    ENV_PATH.write_text("\n".join(lines) + "\n")
+    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -139,7 +139,7 @@ def main() -> int:
 
     if args.print_only:
         print("\n" + "=" * 60)
-        print("✅ Hash generated successfully!")
+        print("[OK] Hash generated successfully!")
         print("=" * 60)
         print("\nAdd this line to your .env file:\n")
         print(f"API_KEY_HASH={admin_hash}\n")
@@ -155,7 +155,7 @@ def main() -> int:
         if guest_password is None:
             return 1
         if guest_password == password:
-            print("\n❌ Guest password must differ from the admin password.")
+            print("\n[ERROR] Guest password must differ from the admin password.")
             return 1
         lines = upsert(lines, "GUEST_PASSWORD_HASH", hash_password(guest_password))
         written.append("GUEST_PASSWORD_HASH")
@@ -169,11 +169,11 @@ def main() -> int:
     write_env(lines)
 
     print("\n" + "=" * 60)
-    print(f"✅ Wrote {', '.join(written)} to {ENV_PATH}")
+    print(f"[OK] Wrote {', '.join(written)} to {ENV_PATH}")
     print("=" * 60)
     print()
-    print("📝 Notes:")
-    print("  - .env is gitignored — keep it that way")
+    print("Notes:")
+    print("  - .env is gitignored - keep it that way")
     print("  - You log in with the original password, not the hash")
     print("  - Restart the backend to pick up the changes")
     print()
@@ -187,5 +187,5 @@ if __name__ == "__main__":
         print("\n\nAborted.")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n[ERROR] {e}")
         sys.exit(1)
