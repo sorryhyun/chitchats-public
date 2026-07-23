@@ -34,43 +34,63 @@ Windows에서 사용하려면 다음 중 하나 이상을 설치해야 합니다
 
 방 생성 시 설치된 프로바이더를 선택할 수 있습니다.
 
-## 빠른 시작 (윈도우)
+## 설치
 
-릴리즈에서 최신 exe를 다운로드 받아 실행해주세요
+### 윈도우
 
-## 시작 (WSL, 리눅스 등)
+PowerShell에서 아래 한 줄을 실행하세요. 최신 릴리즈의 `ChitChats.exe`와 기본 에이전트를
+`%LOCALAPPDATA%\ChitChats`에 설치하고 시작 메뉴/바탕화면 바로가기를 만듭니다.
 
-### 1. 의존성 설치
-
-```bash
-make install
+```powershell
+irm https://github.com/sorryhyun/chitchats-public/releases/latest/download/install.ps1 | iex
 ```
 
-### 2. 데이터베이스 준비
+설치 위치 등 옵션을 지정하려면 스크립트를 내려받아 실행하세요:
 
-```bash
-createdb chitchats  # PostgreSQL 데이터베이스 생성
+```powershell
+irm https://github.com/sorryhyun/chitchats-public/releases/latest/download/install.ps1 -OutFile install.ps1
+.\install.ps1 -InstallDir D:\ChitChats
 ```
 
-PostgreSQL 없이 실행하려면 `make dev-sqlite`로 SQLite를 사용할 수 있습니다.
+설치 후 시작 메뉴의 **ChitChats**를 실행하면 첫 실행 시 비밀번호를 설정하고 브라우저가 열립니다.
 
-### 3. 인증 설정
+### macOS / 리눅스 / WSL
 
 ```bash
-make generate-hash  # 비밀번호 해시 생성
-python -c "import secrets; print(secrets.token_hex(32))"  # JWT 시크릿 생성
-cp .env.example .env  # .env 파일에 API_KEY_HASH와 JWT_SECRET 추가
+curl -fsSL https://github.com/sorryhyun/chitchats-public/releases/latest/download/install.sh | bash
 ```
 
+최신 릴리즈를 `~/.chitchats`에 설치하고, 의존성 설치와 `.env` 생성(비밀번호 입력)까지 진행한 뒤
+`~/.local/bin/chitchats` 실행 파일을 만듭니다. **Node.js 20+** 가 필요하며, `uv`는 없으면 자동으로 설치됩니다.
+
+```bash
+chitchats            # 백엔드 + 프론트엔드 실행
+chitchats sqlite     # SQLite로 실행 (PostgreSQL 불필요)
+chitchats voice      # 음성 TTS 서버까지 실행
+chitchats update     # 최신 릴리즈로 업데이트 (.env / DB / 에이전트 유지)
+chitchats help       # 전체 명령어
+```
+
+주요 설치 옵션:
+
+```bash
+curl -fsSL <위 URL> | bash -s -- --dir ~/apps/chitchats --version v1.2.0
+```
+
+http://localhost:5173 에서 설정한 비밀번호로 로그인하세요. (백엔드: http://localhost:8001)
+
+PostgreSQL을 쓰려면 `createdb chitchats` 후 `.env`의 `USE_SQLITE`를 주석 처리하고 `DATABASE_URL`을 설정하세요.
 자세한 내용은 [docs/SETUP.md](docs/SETUP.md)를 참조하세요.
 
-### 4. 실행
+### 소스에서 실행 (개발자용)
 
 ```bash
-make dev
+git clone https://github.com/sorryhyun/chitchats-public.git
+cd chitchats-public
+make install         # 의존성 설치
+make env             # .env 생성 (비밀번호 입력)
+make dev             # 실행
 ```
-
-http://localhost:5173 에서 비밀번호로 로그인하세요. (백엔드: http://localhost:8001)
 
 ## 시뮬레이션
 
@@ -97,12 +117,23 @@ agents/
 
 ## 명령어
 
+설치 스크립트로 설치한 경우 (macOS / 리눅스 / WSL):
+
+```bash
+chitchats          # 실행
+chitchats update   # 업데이트
+chitchats stop     # 서버 중지
+```
+
+소스에서 실행하는 경우:
+
 ```bash
 make dev           # 풀스택 실행 (PostgreSQL)
 make dev-voice     # 풀스택 + 음성 TTS 서버 (포트 8002)
 make dev-sqlite    # 풀스택 실행 (SQLite)
 make install       # 의존성 설치
 make build-exe     # 윈도우 단독 실행 파일 빌드
+make agents-zip    # 에이전트 배포용 zip 생성
 make stop          # 서버 중지
 make clean         # 빌드 파일 정리
 ```

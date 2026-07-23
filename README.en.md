@@ -34,43 +34,64 @@ To use on Windows, you need to install at least one of the following:
 
 You can select the installed provider when creating a room.
 
-## Quick Start (Windows)
+## Install
 
-Download the latest exe from Releases and run it.
+### Windows
 
-## Quick Start (WSL, Linux, etc.)
+Run this in PowerShell. It installs `ChitChats.exe` plus the default agents from the
+latest release into `%LOCALAPPDATA%\ChitChats` and creates Start Menu / Desktop shortcuts.
 
-### 1. Install Dependencies
-
-```bash
-make install
+```powershell
+irm https://github.com/sorryhyun/chitchats-public/releases/latest/download/install.ps1 | iex
 ```
 
-### 2. Prepare the Database
+To pass options, download the script first:
 
-```bash
-createdb chitchats  # Create the PostgreSQL database
+```powershell
+irm https://github.com/sorryhyun/chitchats-public/releases/latest/download/install.ps1 -OutFile install.ps1
+.\install.ps1 -InstallDir D:\ChitChats
 ```
 
-To run without PostgreSQL, use `make dev-sqlite` to fall back to SQLite.
+Launch **ChitChats** from the Start Menu; it asks for a password on first run and opens your browser.
 
-### 3. Configure Authentication
-
-```bash
-make generate-hash  # Generate password hash
-python -c "import secrets; print(secrets.token_hex(32))"  # Generate JWT secret
-cp .env.example .env  # Add API_KEY_HASH and JWT_SECRET to .env
-```
-
-See [docs/SETUP.md](docs/SETUP.md) for details.
-
-### 4. Run & Access
+### macOS / Linux / WSL
 
 ```bash
-make dev
+curl -fsSL https://github.com/sorryhyun/chitchats-public/releases/latest/download/install.sh | bash
 ```
 
-Open http://localhost:5173 and login with your password. (Backend: http://localhost:8001)
+This installs the latest release into `~/.chitchats`, installs dependencies, walks you through
+creating `.env` (password prompt), and drops a `chitchats` launcher in `~/.local/bin`.
+**Node.js 20+** is required; `uv` is installed automatically if missing.
+
+```bash
+chitchats            # Run backend + frontend
+chitchats sqlite     # Run with SQLite (no PostgreSQL needed)
+chitchats voice      # Also start the voice TTS server
+chitchats update     # Upgrade to the latest release (keeps .env, DB and agents)
+chitchats help       # All commands
+```
+
+Common installer options:
+
+```bash
+curl -fsSL <url above> | bash -s -- --dir ~/apps/chitchats --version v1.2.0
+```
+
+Open http://localhost:5173 and log in with the password you set. (Backend: http://localhost:8001)
+
+For PostgreSQL, run `createdb chitchats`, then comment out `USE_SQLITE` and set `DATABASE_URL`
+in `.env`. See [docs/SETUP.md](docs/SETUP.md) for details.
+
+### From source (contributors)
+
+```bash
+git clone https://github.com/sorryhyun/chitchats-public.git
+cd chitchats-public
+make install         # Install dependencies
+make env             # Create .env (password prompt)
+make dev             # Run
+```
 
 ## Simulation
 
@@ -97,12 +118,23 @@ See [CLAUDE.md](CLAUDE.md) for detailed configuration options including third-pe
 
 ## Commands
 
+Installed via the install script (macOS / Linux / WSL):
+
+```bash
+chitchats          # Run
+chitchats update   # Upgrade
+chitchats stop     # Stop servers
+```
+
+Running from source:
+
 ```bash
 make dev           # Run full stack (PostgreSQL)
 make dev-voice     # Run full stack + voice TTS server (port 8002)
 make dev-sqlite    # Run full stack (SQLite)
 make install       # Install dependencies
 make build-exe     # Build standalone Windows executable
+make agents-zip    # Package agents/ for distribution
 make stop          # Stop servers
 make clean         # Clean build artifacts
 ```

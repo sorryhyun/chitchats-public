@@ -55,17 +55,29 @@ jobs:
       - name: Build Windows executable
         run: uv run pyinstaller ChitChats.spec --noconfirm
 
+      # The exe does not bundle agents; it extracts agents.zip from its own
+      # directory on first launch, and the installers place it there.
+      - name: Package default agents
+        shell: pwsh
+        run: Compress-Archive -Path agents -DestinationPath dist/agents.zip -Force
+
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
           name: ChitChats-Windows
-          path: dist/ChitChats.exe
+          path: |
+            dist/ChitChats.exe
+            dist/agents.zip
           if-no-files-found: error
 
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ChitChats.exe
+          files: |
+            dist/ChitChats.exe
+            dist/agents.zip
+            scripts/install/install.sh
+            scripts/install/install.ps1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

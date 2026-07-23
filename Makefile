@@ -1,4 +1,4 @@
-.PHONY: help install run-backend run-frontend run-voice run-tunnel-backend run-tunnel-frontend dev dev-voice dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri
+.PHONY: help install run-backend run-frontend run-voice run-tunnel-backend run-tunnel-frontend dev dev-voice dev-win dev-sqlite prod stop clean env generate-hash simulate build-exe build-non-tauri agents-zip
 
 # Use bash for all commands
 SHELL := /bin/bash
@@ -19,6 +19,7 @@ help:
 	@echo "Build:"
 	@echo "  make build-exe         - Build standalone Windows exe"
 	@echo "  make build-non-tauri   - Build standalone Windows exe (same as build-exe)"
+	@echo "  make agents-zip        - Package agents/ as dist/agents.zip (ships next to the exe)"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make env               - Create .env file (prompts for password)"
@@ -150,6 +151,15 @@ simulate:
 # =============================================================================
 # Build Commands
 # =============================================================================
+
+# Default agents, zipped for distribution alongside the exe.
+# The exe extracts this into its own directory on first launch.
+agents-zip:
+	@echo "Packaging agents/ into dist/agents.zip..."
+	@mkdir -p dist
+	@rm -f dist/agents.zip
+	@zip -qr dist/agents.zip agents -x '*/__pycache__/*' '*.DS_Store'
+	@echo "Created dist/agents.zip"
 
 # Windows executable build (standalone PyInstaller)
 build-exe:
