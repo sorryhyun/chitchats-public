@@ -1,0 +1,4 @@
+# The Windows release runner checks out with core.autocrlf=true, which would
+# hand out an install.sh full of CRLF line endings - unrunnable by any shell.
+# Shell scripts stay LF everywhere.
+*.sh text eol=lf
